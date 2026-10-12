@@ -1,0 +1,413 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202124;
+  background: #f8fafc;
+}
+
+.records-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-header,
+.toolbar,
+.actions,
+menu {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 4px;
+  background: white;
+}
+
+.tab-button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #475569;
+  font-weight: 800;
+  background: transparent;
+}
+
+.tab-button.active {
+  color: white;
+  background: #166534;
+}
+
+.page-header {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+}
+
+.summary-line {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 14px;
+}
+
+h2 {
+  font-size: 20px;
+}
+
+h3 {
+  font-size: 15px;
+}
+
+button,
+.import-label,
+.primary-action,
+.secondary-action {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  color: #111827;
+  background: white;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.actions button,
+.import-label,
+.primary-action,
+.secondary-action {
+  font-weight: 700;
+}
+
+.primary-action {
+  border-color: #166534;
+  color: white;
+  background: #166534;
+}
+
+.secondary-action {
+  color: #1a73e8;
+}
+
+.toolbar {
+  margin-bottom: 16px;
+}
+
+.application-info-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.application-info-header p,
+.application-info-empty p {
+  margin: 6px 0 0;
+  color: #475569;
+}
+
+.application-info-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.application-info-group {
+  display: grid;
+  gap: 14px;
+}
+
+.application-info-card,
+.application-info-empty {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  background: white;
+}
+
+.application-info-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.application-info-card h3,
+.application-info-card h4 {
+  margin: 0;
+}
+
+.application-info-card h4 {
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.application-info-card dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.application-info-card dl div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.application-info-card dt {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.application-info-card dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.application-info-card button[data-action="copy-item"] {
+  border: 1px solid #cbd5e1;
+  padding: 5px 8px;
+  color: #111827;
+  font-size: 12px;
+  background: white;
+}
+
+.bulk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 10px;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.bulk-toolbar select {
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  padding: 7px;
+  font: inherit;
+  background: white;
+}
+
+.danger-button {
+  border-color: #fecaca;
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.toolbar input,
+.toolbar select,
+dialog input,
+dialog select,
+dialog textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  background: white;
+}
+
+@media (max-width: 820px) {
+  .application-info-list {
+    grid-template-columns: 1fr;
+  }
+
+  .application-info-header {
+    display: grid;
+  }
+}
+
+.toolbar input {
+  min-width: 260px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+th:first-child,
+td:first-child {
+  width: 42px;
+  text-align: center;
+}
+
+th {
+  font-size: 13px;
+  background: #f1f5f9;
+}
+
+.company-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #0f172a;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.company-link:hover {
+  color: #1a73e8;
+}
+
+.company-avatar {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 6px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+  background: #e0f2fe;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.status-select {
+  max-width: 190px;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 28px 5px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.status-neutral {
+  color: #334155;
+  background: #e2e8f0;
+}
+
+.status-active {
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
+.status-success {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.status-danger {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.status-warning {
+  color: #713f12;
+  background: #fef3c7;
+}
+
+tr.overdue {
+  background: #fee2e2;
+}
+
+tr.upcoming {
+  background: #fef3c7;
+}
+
+.sort-button {
+  border: 0;
+  padding: 0;
+  font-weight: 700;
+  background: transparent;
+}
+
+.message,
+.errors {
+  margin: 0 0 12px;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.message {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.errors {
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+dialog {
+  width: min(720px, calc(100vw - 32px));
+  border: 0;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+dialog::backdrop {
+  background: rgb(15 23 42 / 0.45);
+}
+
+#editForm {
+  display: grid;
+  gap: 10px;
+}
+
+#editForm label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+menu {
+  justify-content: flex-end;
+  padding: 0;
+  margin: 8px 0 0;
+}

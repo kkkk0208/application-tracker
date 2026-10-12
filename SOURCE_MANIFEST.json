@@ -1,0 +1,624 @@
+{
+  "date": "2026-10-12",
+  "files": [
+    {
+      "file": "application-tracker-extension/src/ai/ai.css",
+      "bytes": 1514,
+      "sha256": "461b18482da98cadd8bd0d0afe3ab46ef2e83e1eeca6b9b056fa4ce836a79418"
+    },
+    {
+      "file": "application-tracker-extension/src/ai/ai.html",
+      "bytes": 2096,
+      "sha256": "778dc3376a0704dfe285bc05f8bbe1a22bbce88cfa3c7d80ab5b1adadf88282a"
+    },
+    {
+      "file": "application-tracker-extension/src/ai/ai.js",
+      "bytes": 938,
+      "sha256": "d9d249862679e11e528fed02f22450c3dd449fe76d78348e2703f82f5ea3cd15"
+    },
+    {
+      "file": "application-tracker-extension/src/aiProfileMemory.js",
+      "bytes": 19591,
+      "sha256": "3dcd9f56f22effa1e0c1d121d3cb7a51983997211107538d925fd6dd5bfd3924"
+    },
+    {
+      "file": "application-tracker-extension/src/aiSettings.js",
+      "bytes": 547,
+      "sha256": "4fac7592810791167c13d640c95f8510ca3b251e26d8001270a9e147873dc1e8"
+    },
+    {
+      "file": "application-tracker-extension/src/aiSuggest.js",
+      "bytes": 5652,
+      "sha256": "2037d0c9910dd628534dc65f4d1305686058bc4bb288135591b669f5de33e7fc"
+    },
+    {
+      "file": "application-tracker-extension/src/applicationInfo.js",
+      "bytes": 5433,
+      "sha256": "cb2ec57354471060d72c7aaed036acc3b93f22a0407cf2b62cc4ae6d30e78b7b"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/ai.js",
+      "bytes": 10071,
+      "sha256": "8bff00f00daca6c0508c889a406341ced914a93e32af2bbe10051aeaada9c9ce"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/background.js",
+      "bytes": 1694,
+      "sha256": "656451807adf8e9e070b988af483cb1d43a2b1bd23dfb5e8ef83a6d3ee458469"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/dateValue.js",
+      "bytes": 2924,
+      "sha256": "4eda259ebdb3ec8c3660b61774fd2dd4ba3d58d23fe3b462d1bdc22c8dbac655"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/optionMatch.js",
+      "bytes": 2976,
+      "sha256": "263e65dd4eddee86692ba9a189d5cec8287d20851476dcd64e2c12d8de89b822"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/pageBridge.js",
+      "bytes": 70572,
+      "sha256": "bf90483d8d6e96414f5a8207e7ee7dc4f5fd66cd934623510c52e2b400911ccc"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/planner.js",
+      "bytes": 18827,
+      "sha256": "14d48349db51fdd469d63cf7103c965b9a199580452199bcb1d9ee1f9dfad0fe"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/preview.js",
+      "bytes": 2115,
+      "sha256": "2e0b0f810755baa4f22d99f003314241b888953fddfdbc750f819e186fddf25d"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/reconcile.js",
+      "bytes": 1913,
+      "sha256": "29ee9612f67f584d82a9e25cbd98c90ff3c06b9be3845621341031a227b6c46f"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/session.js",
+      "bytes": 4940,
+      "sha256": "29aa8c42082285f9ee0bb95ea32055e930b474e02b42c4d00c1335f3be0f70fc"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/store.js",
+      "bytes": 971,
+      "sha256": "c9a59987fb447eb1a3234dc191c78ca738ade9c1e7844b20de35417496d56237"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/vision.js",
+      "bytes": 16046,
+      "sha256": "c662fbad81408ed39a2614f4afd67953f44c7fc3795c2cbeffffccc3de80fc12"
+    },
+    {
+      "file": "application-tracker-extension/src/assistant/visualCapture.js",
+      "bytes": 10916,
+      "sha256": "8b719082f450e8b9e2084dd59baaab2bf024cf64594e79e26cba692524a7eb6c"
+    },
+    {
+      "file": "application-tracker-extension/src/backup.js",
+      "bytes": 10271,
+      "sha256": "e866bfd28d7d2cc058fff269bfb3d57b3a309405592da99bf351c71a0ffe9e83"
+    },
+    {
+      "file": "application-tracker-extension/src/board.js",
+      "bytes": 902,
+      "sha256": "e2eac31094cb25b717269b4ca907e814d19796a2e89722795823751232ec8fda"
+    },
+    {
+      "file": "application-tracker-extension/src/board/board.css",
+      "bytes": 3234,
+      "sha256": "bdf3caeb35bb5b7f338cff120603fb2c66fa0d7a53ba5f51a8713a38b417332e"
+    },
+    {
+      "file": "application-tracker-extension/src/board/board.html",
+      "bytes": 998,
+      "sha256": "cfb6099900cd441bc52c505f0aae0d2fb67b8d8ba4fa27c6d52470a0ce80879e"
+    },
+    {
+      "file": "application-tracker-extension/src/board/board.js",
+      "bytes": 5081,
+      "sha256": "121c8991a952beeca3c01dfd9e904e81c41a5c664e9185b75e77decb15dcfe97"
+    },
+    {
+      "file": "application-tracker-extension/src/bulk.js",
+      "bytes": 805,
+      "sha256": "3ad5973df077c8bdf0469cf2a7083ee41b1fbce61696b747a46fa0cda5ad8a6c"
+    },
+    {
+      "file": "application-tracker-extension/src/constants.js",
+      "bytes": 1491,
+      "sha256": "d235dc8253ccc8ebbc0233eaa50034f02cecd9eb6f179a2cc73751cfc29d6c9f"
+    },
+    {
+      "file": "application-tracker-extension/src/dateUtils.js",
+      "bytes": 913,
+      "sha256": "70a2fbb62217e4a846c97509d3ea0f01f409d9e6c852f7d4ce01c99a28903e94"
+    },
+    {
+      "file": "application-tracker-extension/src/duplicates.js",
+      "bytes": 903,
+      "sha256": "ef7ae8039a7451c26157835a92fa0ef84253f35218954b689b6b91ca8d6ae3cb"
+    },
+    {
+      "file": "application-tracker-extension/src/excel.js",
+      "bytes": 2534,
+      "sha256": "b8414dff60f0e032cca151851adbe07fb3e7f3450ff0fa327b37f770b74582cf"
+    },
+    {
+      "file": "application-tracker-extension/src/jobInfo/aiJobInfo.js",
+      "bytes": 6823,
+      "sha256": "06c06f1948857333060380a3a44bffb35476be5003ddc808185e4f7c1ba6a5b5"
+    },
+    {
+      "file": "application-tracker-extension/src/jobInfo/collectSignals.js",
+      "bytes": 8440,
+      "sha256": "bc2fc8306aa6a8d6b36841f32a43da523181117b96feb7fe7bf21a6d84114ab5"
+    },
+    {
+      "file": "application-tracker-extension/src/jobInfo/extractJobInfo.js",
+      "bytes": 5535,
+      "sha256": "c53f2e63d9e27bb8b8ce2a91c54f65935bfac83e0e0c1e57378cfe25547cb052"
+    },
+    {
+      "file": "application-tracker-extension/src/memory/memory.css",
+      "bytes": 4717,
+      "sha256": "46f60127f78ca5951c746c91a5e5c95cb3629c25afb93eafc10f852f2122afb3"
+    },
+    {
+      "file": "application-tracker-extension/src/memory/memory.html",
+      "bytes": 2398,
+      "sha256": "33aa371ba4c38930ba1507dd142ccc8f3e25649571c8c53aa66b4ca1110ee921"
+    },
+    {
+      "file": "application-tracker-extension/src/memory/memory.js",
+      "bytes": 11224,
+      "sha256": "116aba9eac196e1683c18668335d89fe768155db2da47cce9c7386415cd89be7"
+    },
+    {
+      "file": "application-tracker-extension/src/model.js",
+      "bytes": 3801,
+      "sha256": "1d0812b60afddfcfdce5f4f75f1cce6310067c2d43e7304053812094fbb33953"
+    },
+    {
+      "file": "application-tracker-extension/src/popup/popup.css",
+      "bytes": 6205,
+      "sha256": "71a515536ec280f26a1c1d523db5222002c1967331fe17c0c846287e9dde3fc2"
+    },
+    {
+      "file": "application-tracker-extension/src/popup/popup.html",
+      "bytes": 3330,
+      "sha256": "073106f48cd1dbdf77a06e9c4bdd4c4d0f1c2d4b512170d97bec712a5a0c3375"
+    },
+    {
+      "file": "application-tracker-extension/src/popup/popup.js",
+      "bytes": 14673,
+      "sha256": "89edf18f5807d352c8ff7100aaa3f2fd8cff46a91204198c001bc0de61d349bf"
+    },
+    {
+      "file": "application-tracker-extension/src/presentation.js",
+      "bytes": 945,
+      "sha256": "e3d7d63f44a5a84f124bdff05afb21e59da97ebdd66817fbc6b75308c56cad9e"
+    },
+    {
+      "file": "application-tracker-extension/src/profile.js",
+      "bytes": 3618,
+      "sha256": "8529ba7bc4d40cdb8381442323aed016d5e9ab256db6565ff17bc91f93775f60"
+    },
+    {
+      "file": "application-tracker-extension/src/profile/profile.css",
+      "bytes": 4329,
+      "sha256": "15e3c25d31ceb8900baadd912e6735dd062a6b20e3cbe4affedfe49644661ffc"
+    },
+    {
+      "file": "application-tracker-extension/src/profile/profile.html",
+      "bytes": 9249,
+      "sha256": "9f822d47b594726e1d2151a40f84c56a1afb994c14d5835964f58752d19bbbfa"
+    },
+    {
+      "file": "application-tracker-extension/src/profile/profile.js",
+      "bytes": 10447,
+      "sha256": "9dc576a90b0e97d5070e2ff1da076a95369f01614e92fa0e16a9be05fb14d0d0"
+    },
+    {
+      "file": "application-tracker-extension/src/questionMemory.js",
+      "bytes": 4694,
+      "sha256": "041daad33ad5427f7b52fd124ab3c98d96da901188de030e00d526fb49df6468"
+    },
+    {
+      "file": "application-tracker-extension/src/records/records.css",
+      "bytes": 5853,
+      "sha256": "7b6669e7290aedff8154aae73f2bb2de3d6310872ebb5604cd9448c56217d19f"
+    },
+    {
+      "file": "application-tracker-extension/src/records/records.html",
+      "bytes": 4727,
+      "sha256": "f3599d8ad8558c581994cbcb6e1d3ec656fe8e2833b40fa4bbb9b064e2d6a8a7"
+    },
+    {
+      "file": "application-tracker-extension/src/records/records.js",
+      "bytes": 18683,
+      "sha256": "42b33a50106ea8038be4d992b0dc9a94443184759548544c784f3bfae2ccd4e8"
+    },
+    {
+      "file": "application-tracker-extension/src/sidepanel/assistant.css",
+      "bytes": 4327,
+      "sha256": "11e7fba0b4ddfc6400ce6d8334ebdb264318b5ce04b6091269879015ffb7588c"
+    },
+    {
+      "file": "application-tracker-extension/src/sidepanel/assistant.html",
+      "bytes": 3667,
+      "sha256": "15d96851886f8611dc771cac1ed70701e2c58c58caea76c5454e918a16af11ac"
+    },
+    {
+      "file": "application-tracker-extension/src/sidepanel/assistant.js",
+      "bytes": 38165,
+      "sha256": "80a4912ebba5d816e7f8a40878015040cb28ece86a55db61a2bfdc6a7d42149e"
+    },
+    {
+      "file": "application-tracker-extension/src/sourceDetection.js",
+      "bytes": 782,
+      "sha256": "2070ac7c8b2f7be3fb612a740c1a47dfc5b4f096707a1f13334b55bd7cfbe087"
+    },
+    {
+      "file": "application-tracker-extension/src/storage.js",
+      "bytes": 2776,
+      "sha256": "fb2d5c79861f4e3adc24b6533eacad7055047b54f049f2ebf8c79cfd799b6ba1"
+    },
+    {
+      "file": "application-tracker-extension/src/storageClient.js",
+      "bytes": 343,
+      "sha256": "18bd10366d57a0cb9218fbfef950bc2386dc05ab988b43068c3549006bfce8b0"
+    },
+    {
+      "file": "application-tracker-extension/src/storageKeys.js",
+      "bytes": 233,
+      "sha256": "3a61c54e28fcfc5a6eaf6d994f0f3de5d3ded036b4dd8db7376c3c1b26e37ffd"
+    },
+    {
+      "file": "application-tracker-extension/src/storageMutations.js",
+      "bytes": 7877,
+      "sha256": "2e39dde9ae26da3787cb0ccca7525647d019c21c4d3809fdae6725d4e91947fd"
+    },
+    {
+      "file": "application-tracker-extension/scripts/browser-tests.mjs",
+      "bytes": 22238,
+      "sha256": "ff22d6a6f34cdfb89384e24ec0d54c6b7e6e53af8685920daaff2453164d454c"
+    },
+    {
+      "file": "application-tracker-extension/scripts/choice-browser-tests.mjs",
+      "bytes": 11391,
+      "sha256": "f7e78c3f18ca79232e25b0da6ddb3a25779cc5c2b7c41df6a91483e307681421"
+    },
+    {
+      "file": "application-tracker-extension/scripts/component-browser-tests.mjs",
+      "bytes": 14252,
+      "sha256": "d35097d89e5c7d3731b771ab014bb9132f39f56b46497b941ab98adc7d8f470f"
+    },
+    {
+      "file": "application-tracker-extension/scripts/data-ui-tests.mjs",
+      "bytes": 9485,
+      "sha256": "d9445b01563b8d55e645647993416a7a548098847a5d4512503b87465c4a3cf4"
+    },
+    {
+      "file": "application-tracker-extension/scripts/extension-tests.mjs",
+      "bytes": 26661,
+      "sha256": "5a8ef0e1d1ab91e045b6b4bf2e5a0e24c7b2d6a51395a33a2520ecd824d4a269"
+    },
+    {
+      "file": "application-tracker-extension/scripts/job-info-browser-tests.mjs",
+      "bytes": 11102,
+      "sha256": "847a791d9b1c388cdb5416882e7b43a15b044ce039fb76f63f668f6b197daee8"
+    },
+    {
+      "file": "application-tracker-extension/scripts/real-page-tests.mjs",
+      "bytes": 6799,
+      "sha256": "c8b2e5f986bc3240d4560c22375c5eaf0dd094dac4849e9dc982769f8393e30f"
+    },
+    {
+      "file": "application-tracker-extension/scripts/sanitize-real-page.mjs",
+      "bytes": 6576,
+      "sha256": "0180363effb947192564fd7c3d5c284bea88db6aac81b5715f20fa0a91268cef"
+    },
+    {
+      "file": "application-tracker-extension/scripts/ui-tests.mjs",
+      "bytes": 39223,
+      "sha256": "edc28d70d115e2ba972016af9c26160d75aa694645f68a1a7cc1697b56ed175e"
+    },
+    {
+      "file": "application-tracker-extension/scripts/vision-browser-tests.mjs",
+      "bytes": 11167,
+      "sha256": "148892a5f2ce7191344951036a6d3937b81f8155d443966395704130431f3433"
+    },
+    {
+      "file": "application-tracker-extension/test/adapterValidation.test.js",
+      "bytes": 1785,
+      "sha256": "ec4c942a2da4d24ab9c0f0871dbd08c99424d9318271f1586d9473460ad67720"
+    },
+    {
+      "file": "application-tracker-extension/test/aiJobInfo.test.js",
+      "bytes": 7771,
+      "sha256": "2668002cb1e2949e3566d64feb9f54ff7781e80cbb25939b4be0bc896aaeeeec"
+    },
+    {
+      "file": "application-tracker-extension/test/aiProfileMemory.test.js",
+      "bytes": 6810,
+      "sha256": "8f92fb1d6da21d6b48eaa871a1cbbab953a8a3154556a2ae77b5cee3cc0653fd"
+    },
+    {
+      "file": "application-tracker-extension/test/aiSettings.test.js",
+      "bytes": 1497,
+      "sha256": "d4eaa885d02f3b0bb680a90e86152c17e746a7c0036002f6607859eec61f0be5"
+    },
+    {
+      "file": "application-tracker-extension/test/aiSuggest.test.js",
+      "bytes": 1963,
+      "sha256": "b5786ae87441f6f4c936a79df4f3f3f9bfae11cbb0e682c58c7a982089e42eb6"
+    },
+    {
+      "file": "application-tracker-extension/test/applicationInfo.test.js",
+      "bytes": 3513,
+      "sha256": "2eb9cf61031b5b1dc3ef63dc97bbdeb79a83a3d5ef40f50b71aff385b09ab9b2"
+    },
+    {
+      "file": "application-tracker-extension/test/assistant.test.js",
+      "bytes": 20692,
+      "sha256": "47ec027e95a1a018d8f71f738350f0c26db08778bf6414a0d73adbfc2a20ab59"
+    },
+    {
+      "file": "application-tracker-extension/test/backup.test.js",
+      "bytes": 5173,
+      "sha256": "7b1018f7dfc7990cf7bc540f9d3cbda65b7f7afe6b19aabbf8dcd594244aee87"
+    },
+    {
+      "file": "application-tracker-extension/test/board.test.js",
+      "bytes": 1288,
+      "sha256": "481984ef56f73ebe9400409ab9aa163261013450ce3e97e2ef49b1136d035699"
+    },
+    {
+      "file": "application-tracker-extension/test/bulk.test.js",
+      "bytes": 1438,
+      "sha256": "2b4374491279ca478dfdaa68c3bccfce1c5adca27103e84d8f8c75b67b64058f"
+    },
+    {
+      "file": "application-tracker-extension/test/commonAnswers.test.js",
+      "bytes": 2604,
+      "sha256": "b4185ea429ac99dcc8e8df89e66ce3470280acfde5fd6a950adc437ccf7719b9"
+    },
+    {
+      "file": "application-tracker-extension/test/dateUtils.test.js",
+      "bytes": 2071,
+      "sha256": "da22a4196861d0c582216cc10ec63921418b7267f8004f97224ed10d38a00180"
+    },
+    {
+      "file": "application-tracker-extension/test/dateValue.test.js",
+      "bytes": 1541,
+      "sha256": "4bb0be7e59968fb108193a45fe20fcfb407f6f27a80f610d1e450040ea6bdb66"
+    },
+    {
+      "file": "application-tracker-extension/test/duplicates.test.js",
+      "bytes": 1485,
+      "sha256": "6bebf36213d8e4119ac64e2fb0b09f40115e8f4bac6769b4a848e23542c744bb"
+    },
+    {
+      "file": "application-tracker-extension/test/excel.test.js",
+      "bytes": 4040,
+      "sha256": "957c9c5ec4ae5eeb5540650d411da2e5d25b7a1672c599c4889db7ac1397f3d9"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/README.md",
+      "bytes": 803,
+      "sha256": "7032ca9a388671fb2bbcfaffeccc9070c41db9d397b1832382a50d68c55aacea"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/antd-fixture.js",
+      "bytes": 3182,
+      "sha256": "a5d958fed9b8f9f042b5d856052dc2159891965f292a2b5cb40c3cbbeb3ad041"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/antd3.html",
+      "bytes": 671,
+      "sha256": "de1920e9fcae6df20fc2f76ee474b63453b436bfb8a667b20e4ccc188dfc6eb0"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/antd5.html",
+      "bytes": 666,
+      "sha256": "7fd10ccd3acc5efabc2b98565503b23677944d9477bd8ed40526cc9e3562d453"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/element.html",
+      "bytes": 3192,
+      "sha256": "4f1c3d1efb845c1ac9c899fca67c05f87784c32a96a61994dab650d821fdd85c"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/fixture.css",
+      "bytes": 279,
+      "sha256": "cbb4990e0a07417fdad78eeb7206bea7f032a219b2e0b4455eeb5ebf9ab027f5"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/components/my97.html",
+      "bytes": 1124,
+      "sha256": "abd5b9ae4774fd2caebc0e823569099fc32bf6d7b49e144b6d2dd1878dbecedd"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/optionMatchCases.js",
+      "bytes": 3259,
+      "sha256": "b185b21e546bd2a39715e830b0235d980430f5a6632647510a3c742b5104e573"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/real-pages/chinahr-applyjob.expected.json",
+      "bytes": 16216,
+      "sha256": "9e9c6a66fd5740393f37e904715f771c1b272a9a652f6ceeb6a6985ac23fabc3"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/real-pages/huarun-runjob.expected.json",
+      "bytes": 4797,
+      "sha256": "25c5cbad3f416d8544f937586e2684242418be6a156df768f11904d6e888e31a"
+    },
+    {
+      "file": "application-tracker-extension/test/fixtures/real-pages/wintalent-crc.expected.json",
+      "bytes": 10413,
+      "sha256": "42cf80a41b920f2c8bbc3bcfa21a8a0619266bdf00d61d3c6aaeca129047fa99"
+    },
+    {
+      "file": "application-tracker-extension/test/jobInfo.test.js",
+      "bytes": 7690,
+      "sha256": "8174589e5743330e6df788986110b3a4e1a807539284b507b65f091f1596e356"
+    },
+    {
+      "file": "application-tracker-extension/test/model.test.js",
+      "bytes": 3425,
+      "sha256": "88aab7073ff36ca0091b45c492ec891cd12a60faf955e57553f8d909cfa5cf59"
+    },
+    {
+      "file": "application-tracker-extension/test/mokaJobExtractor.test.js",
+      "bytes": 2045,
+      "sha256": "20d7d786987dcf007df91759f56c3777529fcd1d930fe848b9f96605e6221c35"
+    },
+    {
+      "file": "application-tracker-extension/test/optionMatch.test.js",
+      "bytes": 1876,
+      "sha256": "4bd41e432b933c828b760f1e358fba5ed2a260ed46ea02f16a209e1f2a9b9083"
+    },
+    {
+      "file": "application-tracker-extension/test/presentation.test.js",
+      "bytes": 1227,
+      "sha256": "10477b3e01f53b1fa0f4ea2a305c3e5be226d1dbb058200938ab54ca8a7eb5f3"
+    },
+    {
+      "file": "application-tracker-extension/test/preview.test.js",
+      "bytes": 6805,
+      "sha256": "c9c10630faa5e9efcf98bf73b52a256351dd04fd746c2c5dd53a89e04afb76c7"
+    },
+    {
+      "file": "application-tracker-extension/test/profile.test.js",
+      "bytes": 4512,
+      "sha256": "41196108770e1344ada02cdb70bd9cd7ea6fab58d50b2824e762eee6445732c6"
+    },
+    {
+      "file": "application-tracker-extension/test/questionMemory.test.js",
+      "bytes": 3917,
+      "sha256": "4b96424a5e9698ae44bbfd52390edb8ad6d23968ff497011badebbe17557fd06"
+    },
+    {
+      "file": "application-tracker-extension/test/reconcile.test.js",
+      "bytes": 1501,
+      "sha256": "24ef38f20c07b2530b42efad5cd547cbd9fa221749870f14595da87e65a0c06e"
+    },
+    {
+      "file": "application-tracker-extension/test/session.test.js",
+      "bytes": 2835,
+      "sha256": "527ab62b68e9c034603792c195e519c3f7907d5d8f05f7930aac9845c4aa4859"
+    },
+    {
+      "file": "application-tracker-extension/test/sourceDetection.test.js",
+      "bytes": 1583,
+      "sha256": "6dc1410f9ac3b2092a73194b24afa4b2529d0d26bf3ec2f5ef9ba350cf595d8e"
+    },
+    {
+      "file": "application-tracker-extension/test/storageMutations.test.js",
+      "bytes": 8132,
+      "sha256": "79ac78bb72be57b842090ad885c5e08cabe3fcc31167d003223071ba4160e71d"
+    },
+    {
+      "file": "application-tracker-extension/test/vision.test.js",
+      "bytes": 17931,
+      "sha256": "4b0c913ca4025fd3ab53aa21cbba0779eb5ebfe1a199a76e533fa20b1b653072"
+    },
+    {
+      "file": "application-tracker-extension/test/visualCapture.test.js",
+      "bytes": 9850,
+      "sha256": "5cedc11a498d74fce6c78182ed2f043911972dbec0f18d188c8dd804c788f277"
+    },
+    {
+      "file": "application-tracker-extension/docs/2026-09-28-execution.md",
+      "bytes": 2325,
+      "sha256": "22a4d2370cc168037cc5bed6f509e0a75ce57676ff9a3a94887e966c800dd1ce"
+    },
+    {
+      "file": "application-tracker-extension/docs/autofill-profile.md",
+      "bytes": 8687,
+      "sha256": "f3bc48fa63449c98c50b06582c4efb96b9a4bf0031f9d8e4f986ef58b9a99053"
+    },
+    {
+      "file": "application-tracker-extension/vendor/xlsx.full.min.js",
+      "bytes": 881727,
+      "sha256": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99"
+    },
+    {
+      "file": "application-tracker-extension/manifest.json",
+      "bytes": 1068,
+      "sha256": "510cb02b30a37f8a780ed1a29fb21fe3e55a62776730483658d424e0e2d1dd60"
+    },
+    {
+      "file": "application-tracker-extension/package.json",
+      "bytes": 901,
+      "sha256": "5019566e63c2462452ac61e9d1293cd09fb62bb7be138a0c8d447124464415d7"
+    },
+    {
+      "file": "application-tracker-extension/package-lock.json",
+      "bytes": 117085,
+      "sha256": "f76ed988797974d9f4c36bb4d70e1ab9ccf9d6f0cf4f210d30ea05b50f788245"
+    },
+    {
+      "file": "application-tracker-extension/README.md",
+      "bytes": 10983,
+      "sha256": "55cf452d6eb20cfa742e0b6bedfceffb1518444608b9047ef42e1e8ffd33f5f3"
+    },
+    {
+      "file": "application-tracker-extension/CHANGELOG.md",
+      "bytes": 7384,
+      "sha256": "faf5a01db86c738f0ec349e9a72a321bd4e2a88fc830d43664f85b8ac3e33d62"
+    },
+    {
+      "file": "application-tracker-extension/RELEASE_CHECKLIST.md",
+      "bytes": 7793,
+      "sha256": "825e547908b4e423099d3c7f6e7d03aef5c707e4fc25e727895b996c31d72e50"
+    },
+    {
+      "file": "application-tracker-extension/.gitignore",
+      "bytes": 43,
+      "sha256": "cedc805b75d4305f4146352ec76d6e66aa952eb9d913f8e2261f562d629292c6"
+    },
+    {
+      "file": "docs/PROJECT_MEMORY.md",
+      "bytes": 8142,
+      "sha256": "a154948ce59410b1bf45871e91d4b28dab85512aeecb0dc85904e58756051343"
+    },
+    {
+      "file": "docs/2026-09-28-improvement-plan.md",
+      "bytes": 51053,
+      "sha256": "a13073c90c70a57a1dbca3d1189ea1d3e3fc9df23ad71b2abd8e5462ad89f126"
+    },
+    {
+      "file": "docs/2026-09-26-visual-recognition.md",
+      "bytes": 5739,
+      "sha256": "76907b5201ac6c56d7a56876b23bb5f4699d90c774abff9678be46f697182daf"
+    },
+    {
+      "file": "docs/2026-09-22-reliability-verification.md",
+      "bytes": 4460,
+      "sha256": "c6e0c34b6724d7eb90535db74a376f9fb3d5746c3dc62a87e7e4e2d4314c6c87"
+    },
+    {
+      "file": "docs/2026-09-22-preview-confirmation.md",
+      "bytes": 2414,
+      "sha256": "829c75f52ad136514ddf7d186e1aa712d1514f71ef9ef9124cf9168f77c7963c"
+    }
+  ],
+  "omittedHistoricalLogs": [
+    "application-tracker-extension/test-artifacts/stage2-browser-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-components-antd3-date-second.log",
+    "application-tracker-extension/test-artifacts/stage2-components-antd3-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-components-antd3-range-debug.log",
+    "application-tracker-extension/test-artifacts/stage2-components-antd5-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-components-element-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-components-my97-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-real-pages-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-ui-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-unit-initial.log",
+    "application-tracker-extension/test-artifacts/stage2-unit.log"
+  ],
+  "notes": "Original source bytes preserved; raw recruitment HTML, browser data and historical artifacts excluded."
+}

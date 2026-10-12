@@ -1,0 +1,532 @@
+Application Tracker / ASSISTANT_FLOW
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/src/sidepanel/assistant.js
+
+========================================================================
+FILE: application-tracker-extension/src/sidepanel/assistant.js
+SHA256: 80a4912ebba5d816e7f8a40878015040cb28ece86a55db61a2bfdc6a7d42149e
+LINES: 520
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { getProfile, getAiSettings } from "../storage.js";
+L0002 | import { PROFILE_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY } from "../constants.js";
+L0003 | import { factsFromProfile, preparePlan, validateValue, versionOf, scopeFor } from "../assistant/planner.js";
+L0004 | import { buildAiBatches, requestBatch, recognizeQuestions, recognitionCandidates } from "../assistant/ai.js";
+L0005 | import { scanPage, checkTarget, fieldAction, pageChanges, inspectOptions } from "../assistant/session.js";
+L0006 | import { getMemories, saveMemory, loadSession, saveSession, MEMORY_KEY } from "../assistant/store.js";
+L0007 | import { reconcilePlan, entityLabel } from "../assistant/reconcile.js";
+L0008 | import { isFillable, finalizePreview, previewStats } from "../assistant/preview.js";
+L0009 | import { captureVisualContext } from "../assistant/visualCapture.js";
+L0010 | import { needsVisualRecognition, visionCandidates, requestVisualRecognition, applyVisualObservations, restoreVisualContext } from "../assistant/vision.js";
+L0011 | 
+L0012 | const $ = (id) => document.getElementById(id);
+L0013 | const escape = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+L0014 | const labels = { ready: "已有明确答案", review: "请重点核对", missing: "缺少资料", filled: "已填写", unsupported: "需在网页处理" };
+L0015 | let session = null;
+L0016 | let windowId;
+L0017 | let targetId;
+L0018 | let facts = [];
+L0019 | let busy = false;
+L0020 | let aborter;
+L0021 | let cancelled = false;
+L0022 | let learnItems = [];
+L0023 | let saves = Promise.resolve();
+L0024 | const owner = crypto.randomUUID();
+L0025 | const SESSION_VERSION = 6;
+L0026 | const targetKey = () => `applicationTracker.assistant.target.${windowId}`;
+L0027 | const tell = (text) => { $("message").textContent = text; };
+L0028 | function persist() {
+L0029 |   const value = structuredClone(session);
+L0030 |   saves = saves.catch(() => {}).then(() => saveSession(windowId, value));
+L0031 |   return saves;
+L0032 | }
+L0033 | function setBusy(value, phase = "review") {
+L0034 |   busy = value;
+L0035 |   if (session) session.phase = phase;
+L0036 |   for (const id of ["prepare", "useCurrent", "language", "learn", "refresh", "saveLearned", "saveResults", "selectAll", "clearSelection"]) $(id).disabled = value;
+L0037 |   document.querySelectorAll("[data-answer], [data-selected], [data-binding], [data-locate], [data-learn-check], [data-learn-answer], [data-learn-scope], [data-frame-origin]").forEach((input) => { input.disabled = value || input.dataset.unavailable === "true"; });
+L0038 |   $("cancel").hidden = !value || phase === "saving";
+L0039 |   $("cancel").disabled = false;
+L0040 |   $("connection").textContent = value ? phase === "filling" ? "填写中" : phase === "saving" ? "保存中" : "准备中" : session?.stale ? "需要重新识别" : targetId ? "已绑定页面" : "等待连接";
+L0041 |   refreshSummary();
+L0042 | }
+L0043 | function refreshSummary() {
+L0044 |   const plan = session?.plan || [];
+L0045 |   const stats = previewStats(plan);
+L0046 |   $("fill").textContent = `确认并填写 ${stats.selected} 项`;
+L0047 |   $("fill").disabled = busy || session?.stale || !stats.selected;
+L0048 |   $("selectAll").disabled = busy || session?.stale || !stats.eligible;
+L0049 |   $("clearSelection").disabled = busy || !stats.selected;
+L0050 |   $("undo").disabled = busy || session?.stale || !(session?.results || []).some((r) => r.status === "verified" && !r.undone);
+L0051 |   $("summary").textContent = `待确认填写 ${stats.selected} 项 · 需补充或网页处理 ${stats.missing} 项 · 网页已有 ${stats.filled} 项`;
+L0052 |   $("reviewSummary").textContent = stats.review ? `其中 ${stats.review} 项为草稿或需核对的答案，已标出；查看后可一次确认，无需逐项勾选。` : "有有效答案的项目已默认选中；可取消本次不想填写的项目。";
+L0053 | }
+L0054 | function render() {
+L0055 |   $("targetTitle").textContent = session?.snapshot?.title || "在申请页面打开助手";
+L0056 |   $("targetUrl").textContent = session?.snapshot ? scopeFor(session.snapshot.url) : "";
+L0057 |   $("language").value = session?.language || "zh";
+L0058 |   $("overview").hidden = !session?.snapshot;
+L0059 |   $("visionStatus").hidden = !session?.visual?.message;
+L0060 |   $("visionStatus").textContent = session?.visual?.message || "";
+L0061 |   const pageType = session?.snapshot?.pageType;
+L0062 |   $("pageTypeNotice").hidden = !["job", "unknown"].includes(pageType);
+L0063 |   $("pageTypeNotice").textContent = pageType === "job" ? "当前页面像岗位详情页，已列出检测到的控件，请核对是否属于申请表。" : "尚未确定页面类型，已列出检测到的控件，请核对题目和答案。";
+L0064 |   const failedOrigins = [...new Set((session?.snapshot?.failedFrames || []).filter((frame) => frame.frameId !== 0 && /^https?:\/\//.test(frame.origin)).map((frame) => frame.origin))];
+L0065 |   $("framePermissions").hidden = !failedOrigins.length;
+L0066 |   $("framePermissions").innerHTML = failedOrigins.map((origin) => `<button type="button" data-frame-origin="${escape(origin)}" ${busy ? "disabled" : ""}>允许读取内嵌表单（${escape(new URL(origin).host)}）</button>`).join("");
+L0067 |   if (session?.snapshot) {
+L0068 |     const c = session.snapshot.coverage;
+L0069 |     $("coverage").textContent = `已检查 ${c.scanned}/${c.total} 个页面区域${c.failed || c.unknown ? "；有区域未检查，请在网页核对" : "；仅包含当前可见、可访问控件"}`;
+L0070 |   }
+L0071 |   const groups = new Map();
+L0072 |   const filter = $("filter").value;
+L0073 |   for (const item of session?.plan || []) {
+L0074 |     if (filter === "attention" ? item.value || (isFillable(item) && item.status === "ready") : filter !== "all" && item.status !== filter) continue;
+L0075 |     if (!groups.has(item.groupId)) groups.set(item.groupId, []);
+L0076 |     groups.get(item.groupId).push(item);
+L0077 |   }
+L0078 |   $("questions").innerHTML = [...groups.entries()].map(([id, items]) => {
+L0079 |     const name = [items[0].section, items[0].group].filter(Boolean).join(" / ") || "当前页面";
+L0080 |     const needsBinding = items.some((p) => /^(education|experience)\./.test(p.entityId));
+L0081 |     const entities = [...new Set(facts.filter((f) => /^(education|experience)\./.test(f.entityId)).map((f) => f.entityId))];
+L0082 |     const binding = needsBinding ? `<details class="binding" ${items.some((p) => p.entityId.includes("unknown")) ? "open" : ""}><summary>对应资料：${escape(entityLabel(items[0].entityId))} · 调整</summary><select aria-label="此分组对应的经历" data-binding="${escape(id)}" ${busy ? "disabled" : ""}><option value="">按页面识别（模糊单组教育默认硕士）</option>${entities.map((e) => `<option value="${escape(e)}" ${session.bindings?.[id] === e ? "selected" : ""}>${escape(entityLabel(e))}</option>`).join("")}</select></details>` : "";
+L0083 |     const collapsed = session.collapsedGroups?.includes(id);
+L0084 |     return `<section class="group"><div class="group-header"><h2>${escape(name)}</h2><button data-collapse="${escape(id)}" aria-expanded="${!collapsed}">${collapsed ? "展开" : "收起"}</button>${binding}</div><div ${collapsed ? "hidden" : ""}>${items.map(renderItem).join("")}</div></section>`;
+L0085 |   }).join("");
+L0086 |   renderResults();
+L0087 |   refreshSummary();
+L0088 | }
+L0089 | function renderItem(item) {
+L0090 |   const unavailable = !!item.value || !item.supported;
+L0091 |   const unselectable = !isFillable(item);
+L0092 |   const disabled = busy ? "disabled" : "";
+L0093 |   let input;
+L0094 |   if (unavailable) input = `<p class="hint">${escape(item.value ? "网页已有内容，保留原值" : item.reason)}</p>`;
+L0095 |   else if (item.options?.length && item.kind !== "cascader" && !item.dateRange) {
+L0096 |     let chosen;
+L0097 |     try { chosen = item.constraints.multiple ? JSON.parse(item.answer || "[]") : [item.answer]; } catch { chosen = []; }
+L0098 |     input = `<select class="answer" aria-label="${escape(item.label)}的答案" data-answer ${disabled} ${item.constraints.multiple ? "multiple" : ""}><option value="" ${item.constraints.multiple ? "disabled" : ""}>请选择</option>${item.options.filter((op) => !op.disabled).map((op) => `<option value="${escape(op.text)}" ${chosen.includes(op.text) ? "selected" : ""}>${escape(op.text)}</option>`).join("")}</select>`;
+L0099 |   } else if (item.narrative) input = `<textarea class="answer" data-answer ${disabled} rows="4" aria-label="${escape(item.label)}的答案" placeholder="补充本次答案">${escape(item.answer)}</textarea>`;
+L0100 |   else input = `<input class="answer" data-answer ${disabled} type="${!item.dateRange && item.kind !== "cascader" && ["date", "month", "email", "number"].includes(item.type) ? item.type : "text"}" aria-label="${escape(item.label)}的答案" placeholder="${item.dateRange ? '两个日期，如 [&quot;2022-09&quot;,&quot;2026-06&quot;]' : item.kind === "cascader" ? '路径，如 [&quot;广东省&quot;,&quot;深圳市&quot;]' : "补充本次答案"}" value="${escape(item.answer)}">`;
+L0101 |   const labelWarning = ["placeholder", "none"].includes(item.labelSource) ? '<span class="badge" data-label-warning>题目未识别</span>' : "";
+L0102 |   return `<article class="question ${item.status === "review" ? "needs-review" : ""}" data-id="${escape(item.fieldId)}"><div class="question-head"><input aria-label="选中${escape(item.label)}" type="checkbox" data-selected data-unavailable="${unselectable}" ${item.selected ? "checked" : ""} ${unselectable || busy ? "disabled" : ""}><label>${escape(item.label)}${item.constraints.required ? " *" : ""}</label><button data-locate ${disabled}>定位</button></div><span class="status ${item.status}">${labels[item.status]}</span>${labelWarning}${input}<p class="source">${escape(item.source || item.reason)}</p>${item.visualEvidence ? `<p class="source">截图辅助：${escape(item.visualEvidence)}</p>` : ""}${item.optionError ? `<p class="source">选项读取：${escape(item.optionError)}</p>` : ""}<p class="source" data-error>${escape(item.answer ? validateValue(item, item.answer) : "")}</p></article>`;
+L0103 | }
+L0104 | function renderResults() {
+L0105 |   const results = session?.results || [];
+L0106 |   $("results").hidden = !results.length;
+L0107 |   const verified = results.filter((r) => r.status === "verified" && !r.undone).length;
+L0108 |   const undone = results.filter((r) => r.undone).length;
+L0109 |   $("saveResults").hidden = !verified;
+L0110 |   $("saveResults").disabled = busy;
+L0111 |   $("resultSummary").textContent = `已核验 ${verified}/${results.length} 项${undone ? ` · 已撤销 ${undone} 项` : ""} · ${results.filter((r) => r.status !== "verified").length} 项需处理。成功只表示网页当前保留该值。`;
+L0112 |   $("resultList").innerHTML = results.map((r) => `<div class="result-row"><strong>${escape(r.label || session.plan.find((p) => p.fieldId === r.fieldId)?.label || "字段")}</strong><p>${escape(r.undone ? "已撤销" : r.undoReason ? `撤销未完成：${r.undoReason}` : r.reason)}</p>${r.status === "verified" && !r.undone ? `<button data-save-answer="${escape(r.operationId)}">核对并保存为记忆</button>` : ""}</div>`).join("");
+L0113 | }
+L0114 | async function bindCurrent() {
+L0115 |   const [tab] = await chrome.tabs.query({ active: true, windowId });
+L0116 |   if (!/^https?:\/\//.test(tab?.url || "")) throw new Error("请切换到申请网站，再点击改为当前页面");
+L0117 |   targetId = tab.id;
+L0118 |   session = { tabId: targetId, language: $("language").value, plan: [], bindings: {}, results: [], phase: "idle" };
+L0119 |   await chrome.storage.session.set({ [targetKey()]: targetId });
+L0120 |   await persist();
+L0121 |   render();
+L0122 |   $("targetTitle").textContent = tab.title;
+L0123 |   $("targetUrl").textContent = scopeFor(tab.url);
+L0124 |   await tabNotice();
+L0125 |   setBusy(false);
+L0126 |   tell("已绑定此页面，点击“识别并预览”，查看答案后一次确认填写。");
+L0127 | }
+L0128 | async function prepare(learning = false, preserve = false) {
+L0129 |   if (busy) return;
+L0130 |   if (!targetId) await bindCurrent();
+L0131 |   cancelled = false;
+L0132 |   aborter = new AbortController();
+L0133 |   setBusy(true, "scanning");
+L0134 |   tell("正在识别当前页面的分区、问题与控件…");
+L0135 |   let previousChoices = [];
+L0136 |   let previewReady = false;
+L0137 |   try {
+L0138 |     const previous = session;
+L0139 |     const language = $("language").value;
+L0140 |     const [snapshot, profile, memories, settings] = await Promise.all([scanPage(targetId), getProfile(), getMemories(), getAiSettings()]);
+L0141 |     if (cancelled) return;
+L0142 |     facts = factsFromProfile(profile, language);
+L0143 |     const sameDocuments = preserve && previous?.snapshot?.url === snapshot.url && JSON.stringify(previous.snapshot.frames.map((f) => f.documentId)) === JSON.stringify(snapshot.frames.map((f) => f.documentId));
+L0144 |     const bindings = sameDocuments ? previous.bindings || {} : {};
+L0145 |     session = { schemaVersion: SESSION_VERSION, tabId: targetId, snapshot, language, profileVersion: versionOf(profile), memoryVersion: versionOf(memories), bindings, results: sameDocuments ? previous.results || [] : [], collapsedGroups: sameDocuments ? previous.collapsedGroups || [] : [], plan: preparePlan(snapshot, facts, memories, language, bindings), phase: "review", stale: false };
+L0146 |     if (snapshot.pageType === "login") {
+L0147 |       session.plan = session.plan.map((p) => ({ ...p, supported: false, selected: false, status: "unsupported", reason: "请先完成登录或身份验证" }));
+L0148 |       tell("请在网站完成登录或验证后重新识别。");
+L0149 |       render(); await persist(); return;
+L0150 |     }
+L0151 |     render(); await persist();
+L0152 |     if (learning) { showLearning(session.plan.filter((p) => p.supported && p.value).map((p) => ({ ...p, answer: p.value }))); tell("请核对读取到的答案与适用范围，再保存。"); return; }
+L0153 |     const errors = [];
+L0154 |     // Discover what the site actually offers before asking the model to select an answer.
+L0155 |     const selects = session.plan.filter((p) => p.supported && !p.value && p.kind === "custom-select");
+L0156 |     const optionErrors = new Map();
+L0157 |     for (let i = 0; i < selects.length; i++) {
+L0158 |       if (cancelled || session.stale) break;
+L0159 |       tell(`正在读取网页选项 ${i + 1}/${selects.length}：${selects[i].label}`);
+L0160 |       try {
+L0161 |         let result = await inspectOptions(snapshot, selects[i]);
+L0162 |         const candidate = selects[i];
+L0163 |         const query = candidate.ruleConfidence === "high" && /\.(university|major|company)(?:\.(zh|en))?$/.test(candidate.intent) && candidate.source.startsWith("个人信息") && candidate.answer?.length <= 120 ? candidate.answer : "";
+L0164 |         if (!cancelled && !session.stale && query && result.restored === true && (result.code === "OPTIONS_TIMEOUT" || result.status === "inspected" && !result.options?.length)) {
+L0165 |           result = await inspectOptions(snapshot, candidate, { query });
+L0166 |         }
+L0167 |         if (result.status !== "inspected") optionErrors.set(selects[i].fieldId, result.reason || "无法安全读取选项，请在网站核对");
+L0168 |       } catch (error) { optionErrors.set(selects[i].fieldId, error.message); }
+L0169 |     }
+L0170 |     session.plan = preparePlan(snapshot, facts, memories, language, bindings).map((item) => ({ ...item, optionError: optionErrors.get(item.fieldId) || "" }));
+L0171 |     if (sameDocuments && previous.language === language && restoreVisualContext(snapshot, previous.plan, session.plan)) {
+L0172 |       session.plan = preparePlan(snapshot, facts, memories, language, bindings).map((item) => ({ ...item, optionError: optionErrors.get(item.fieldId) || "" }));
+L0173 |     }
+L0174 |     if (sameDocuments && previous.language === language && previous.profileVersion === session.profileVersion && previous.memoryVersion === session.memoryVersion) {
+L0175 |       session.plan = reconcilePlan(previous.plan, session.plan);
+L0176 |       previousChoices = previous.plan;
+L0177 |     }
+L0178 |     previewReady = true;
+L0179 |     render(); await persist();
+L0180 |     if (cancelled || session.stale) return;
+L0181 |     if (settings.visionEnabled) {
+L0182 |       if (!settings.enabled || !settings.apiKey) session.visual = { status: "disabled", message: "截图辅助未运行：请在 AI 设置中启用 AI 并保存 API Key。" };
+L0183 |       else if (!session.plan.some(needsVisualRecognition)) session.visual = { status: "skipped", message: "当前题目已有可用答案或人工指定的结果，无需发送截图。" };
+L0184 |       else {
+L0185 |         let capture;
+L0186 |         try {
+L0187 |           tell("正在读取当前可见区域，遮盖输入控件后进行截图辅助识别…");
+L0188 |           capture = await captureVisualContext(snapshot, { signal: aborter.signal });
+L0189 |           if (cancelled || session.stale) return;
+L0190 |           if (!visionCandidates(session.plan, capture).length) session.visual = { status: "skipped", message: "当前可见区域没有待视觉识别的字段；可滚动到疑难题后更新预览。" };
+L0191 |           else {
+L0192 |             session.visual = { status: "sending", message: "本次将发送当前可见区域的遮盖截图；仅用于题目与分区识别，不存入本地记录。" };
+L0193 |             render();
+L0194 |             const observations = await requestVisualRecognition(settings, session.plan, capture, aborter.signal);
+L0195 |             if (cancelled || session.stale) return;
+L0196 |             await checkTarget(snapshot);
+L0197 |             const changes = await pageChanges(snapshot);
+L0198 |             if (changes.added || changes.changed.length) throw new Error("截图分析期间表单发生变化，本次视觉结果已放弃，请更新预览");
+L0199 |             const result = applyVisualObservations(snapshot, session.plan, observations);
+L0200 |             const count = result.applied + result.evidenceOnly;
+L0201 |             if (count) {
+L0202 |               session.plan = reconcilePlan(session.plan, preparePlan(snapshot, facts, memories, language, bindings).map((item) => ({ ...item, optionError: optionErrors.get(item.fieldId) || "" })));
+L0203 |               if (previousChoices.length) session.plan = reconcilePlan(previousChoices, session.plan);
+L0204 |             }
+L0205 |             session.visual = { status: "used", count, message: `已发送当前可见区域的遮盖截图，辅助识别 ${count} 项。请核对标有“截图辅助”的题目；截图不存入本地记录。` };
+L0206 |           }
+L0207 |         } catch (error) {
+L0208 |           if (cancelled || aborter.signal.aborted) return;
+L0209 |           session.visual = { status: "fallback", message: `截图辅助未完成，继续使用文字识别：${error.message}` };
+L0210 |         } finally { capture = null; }
+L0211 |       }
+L0212 |       render(); await persist();
+L0213 |     }
+L0214 |     if (cancelled || session.stale) return;
+L0215 |     if (settings.enabled && settings.apiKey) {
+L0216 |       $("aiDetails").hidden = false;
+L0217 |       $("aiDisclosure").textContent = "文字分析先发送题目、选项、提示与资料类别，再按题目发送相关资料片段与岗位背景。文字分析不发送网页已填答案；截图辅助的发送情况单独显示。";
+L0218 |       const unknown = recognitionCandidates(session.plan);
+L0219 |       for (let i = 0; i < unknown.length; i += 30) {
+L0220 |         if (cancelled || session.stale) break;
+L0221 |         tell(`AI 正在复核题意 ${i + 1}–${Math.min(i + 30, unknown.length)}/${unknown.length}…`);
+L0222 |         try {
+L0223 |           const mappings = await recognizeQuestions(settings, unknown.slice(i, i + 30), facts, aborter.signal);
+L0224 |           if (!cancelled && !session.stale) for (const mapping of mappings) {
+L0225 |             const item = session.plan.find((p) => p.fieldId === mapping.fieldId);
+L0226 |             if (item && !item.edited) Object.assign(item, mapping);
+L0227 |           }
+L0228 |         } catch (error) { if (!cancelled) errors.push(error.message); }
+L0229 |       }
+L0230 |     }
+L0231 |     const batches = buildAiBatches(session.plan, facts, snapshot, language);
+L0232 |     $("aiDetails").hidden = !batches.length;
+L0233 |     $("aiDisclosure").textContent = batches.length ? `文字分析拟发送 ${batches.reduce((n, b) => n + b.fields.length, 0)} 个问题及相关资料片段；文字请求不附带网页已填答案、完整网址或 API Key。截图辅助的发送情况单独显示。相关资料：${[...new Set(batches.flatMap((b) => b.facts.map((f) => f.label)))].join("、")}` : "";
+L0234 |     if (!settings.enabled || !batches.length) { tell(errors.length ? `已有答案可预览确认；${errors.join("；")}` : "预览已准备好，有效答案已默认选中。查看标记项后，点击底部“确认并填写”即可。"); return; }
+L0235 |     setBusy(true, "preparing");
+L0236 |     for (let i = 0; i < batches.length; i++) {
+L0237 |       if (cancelled || session.stale) break;
+L0238 |       tell(`本地建议已就绪，AI 正在补充第 ${i + 1}/${batches.length} 组…`);
+L0239 |       try {
+L0240 |         const response = await requestBatch(settings, batches[i], session.plan, facts, aborter.signal);
+L0241 |         if (cancelled || session.stale) break;
+L0242 |         for (const update of response.accepted) {
+L0243 |           const item = session.plan.find((p) => p.fieldId === update.fieldId);
+L0244 |           if (item && !item.edited) Object.assign(item, update);
+L0245 |         }
+L0246 |         if (response.errors.length) errors.push(`${response.errors.length} 项未通过来源或格式校验`);
+L0247 |         render(); await persist();
+L0248 |       } catch (error) { if (!cancelled) errors.push(error.name === "TimeoutError" ? "AI 请求超时" : error.message); }
+L0249 |     }
+L0250 |     tell(session.stale ? "个人资料或目标页面已变化，请重新识别。" : cancelled ? "已停止 AI 准备，保留已得到的结果。" : errors.length ? `已有答案可预览确认；${errors.join("；")}` : "预览已准备好，草稿已标出并默认选中。核对后一次确认填写。");
+L0251 |   } finally {
+L0252 |     if (previewReady && !session.stale) session.plan = finalizePreview(session.plan.map((item) => item.visualEvidence && !item.value && item.answer ? { ...item, status: "review" } : item), previousChoices);
+L0253 |     setBusy(false); render(); if (session) await persist();
+L0254 |   }
+L0255 | }
+L0256 | async function fillSelected(undo = false) {
+L0257 |   if (busy || !session?.snapshot || session.stale) return;
+L0258 |   cancelled = false;
+L0259 |   setBusy(true, "filling");
+L0260 |   let acquired = false;
+L0261 |   let needsRefresh = false;
+L0262 |   try {
+L0263 |   const profileVersion = versionOf(await getProfile());
+L0264 |   if (cancelled) return;
+L0265 |   if (profileVersion !== session.profileVersion) { session.stale = true; render(); throw new Error("个人资料已更新，请重新识别"); }
+L0266 |   const memoryVersion = versionOf(await getMemories());
+L0267 |   if (cancelled) return;
+L0268 |   if (memoryVersion !== session.memoryVersion) { session.stale = true; render(); throw new Error("问答记忆已更新，请更新问题后再核对填写"); }
+L0269 |   const work = undo ? session.results.filter((r) => r.status === "verified" && !r.undone).slice().reverse() : session.plan.filter((p) => p.selected && isFillable(p));
+L0270 |   if (!work.length) return;
+L0271 |   const lock = await chrome.runtime.sendMessage({ type: "assistant-lock", tabId: targetId, owner });
+L0272 |   if (!lock?.ok) throw new Error("此页面已有另一个助手在填写，请稍后重试");
+L0273 |   acquired = true;
+L0274 |   if (cancelled || session.stale) return;
+L0275 |   if (!undo) session.results = session.results.filter((r) => r.status === "verified" && !r.undone);
+L0276 |     await checkTarget(session.snapshot);
+L0277 |     for (let i = 0; i < work.length; i++) {
+L0278 |       if (cancelled || session.stale) break;
+L0279 |       const entry = work[i];
+L0280 |       const item = session.plan.find((p) => p.fieldId === entry.fieldId);
+L0281 |       if (!item) continue;
+L0282 |       const operationId = crypto.randomUUID();
+L0283 |       const value = undo ? entry.before : item.answer;
+L0284 |       tell(`${undo ? "正在撤销" : "正在填写并核验"} ${i + 1}/${work.length}：${item.label}`);
+L0285 |       session.pending = { operationId, fieldId: item.fieldId, answer: value, undo, label: item.label, contextPath: item.contextPath, entityId: item.entityId, language: session.language, pageUrl: session.snapshot.url };
+L0286 |       await persist();
+L0287 |       if (cancelled || session.stale) { session.pending = null; break; }
+L0288 |       let result;
+L0289 |       try { result = await fieldAction(session.snapshot, item, undo ? "undo" : "fill", { operationId, value, expected: undo ? entry.after : undefined }); }
+L0290 |       catch (error) { result = { status: "changed", reason: error.message }; }
+L0291 |       if (undo) {
+L0292 |         entry.undoReason = result.reason;
+L0293 |         if (result.status === "verified") { entry.undone = true; item.value = entry.before || ""; item.status = item.value ? "filled" : "review"; }
+L0294 |         else tell(`撤销未完成：${result.reason}`);
+L0295 |       } else {
+L0296 |         session.results.push({ ...result, ...session.pending });
+L0297 |         item.selected = false;
+L0298 |         if (result.status === "verified") { item.value = result.after; item.status = "filled"; }
+L0299 |         else if (result.status === "changed" || ["OPTIONS_CHANGED", "FIELD_CHANGED", "FIELD_REPLACED", "FIELD_MISSING", "FIELD_AMBIGUOUS"].includes(result.code)) { session.stale = true; needsRefresh = true; }
+L0300 |       }
+L0301 |       session.pending = null;
+L0302 |       await persist();
+L0303 |       render();
+L0304 |       await chrome.runtime.sendMessage({ type: "assistant-lock", tabId: targetId, owner });
+L0305 |       // Conditional questions and cascaded options need a new preview, not old approval.
+L0306 |       if (!undo && !cancelled && !session.stale) {
+L0307 |         const changes = await pageChanges(session.snapshot);
+L0308 |         if (changes.added || changes.changed.length) { needsRefresh = true; break; }
+L0309 |       }
+L0310 |     }
+L0311 |     tell(undo ? "撤销处理结束。用户修改过的字段不会被覆盖，请核对下方结果。" : cancelled ? "已停止。已完成的字段保留在结果中。" : session.stale ? "页面已变化，剩余项已停止，请重新识别。" : "本次填写已结束，请在网页核对。新答案需要单独确认才会进入问答记忆。");
+L0312 |   } finally {
+L0313 |     if (acquired) await chrome.runtime.sendMessage({ type: "assistant-release", tabId: targetId, owner });
+L0314 |     await persist(); setBusy(false); render();
+L0315 |   }
+L0316 |   if (needsRefresh && !cancelled) {
+L0317 |     await prepare(false, true);
+L0318 |     if (!cancelled && !session.stale) tell("网页出现变化，预览已自动更新。查看新增或变化的答案后，再点击一次确认继续；已完成结果保留在下方。");
+L0319 |   }
+L0320 | }
+L0321 | function showLearning(items) {
+L0322 |   items = items.map((item) => ({ ...item, language: item.language || session.language, pageUrl: item.pageUrl || session.snapshot.url }));
+L0323 |   learnItems = items;
+L0324 |   $("learnPreview").hidden = !items.length;
+L0325 |   $("learnList").innerHTML = items.map((item, index) => `<article class="memory-preview" data-learn="${index}"><label><input type="checkbox" data-learn-check checked> ${escape(item.contextPath || item.label)}</label><textarea class="answer" data-learn-answer rows="3">${escape(item.answer)}</textarea><label>复用范围 <select data-learn-scope><option value="page">仅此岗位链接</option><option value="global">通用答案</option></select></label><p class="hint">主体：${escape(entityLabel(item.entityId))} · ${(item.language || session.language) === "en" ? "English" : "中文"}</p></article>`).join("");
+L0326 |   if (!items.length) tell("未找到可学习的已填写答案。");
+L0327 | }
+L0328 | async function saveLearned() {
+L0329 |   if (busy) return;
+L0330 |   // Freeze the entire reviewed batch before any await can yield to another UI action.
+L0331 |   const selected = [...$("learnList").querySelectorAll("[data-learn]")].filter((node) => node.querySelector("[data-learn-check]").checked).map((node) => {
+L0332 |     const item = learnItems[Number(node.dataset.learn)];
+L0333 |     const scope = node.querySelector("[data-learn-scope]").value === "global" ? "global" : scopeFor(item.pageUrl || session.snapshot.url);
+L0334 |     return { node, memory: { question: item.label, answer: node.querySelector("[data-learn-answer]").value.trim(), language: item.language || session.language, entityId: item.entityId, scope, origin: "user_confirmed", contextPath: item.contextPath } };
+L0335 |   });
+L0336 |   if (!selected.length) { tell("请先选中已核对的答案。"); return; }
+L0337 |   if (selected.some(({ memory }) => !memory.answer)) throw new Error("选中的答案不能为空，请补充后再保存。");
+L0338 |   setBusy(true, "saving");
+L0339 |   try {
+L0340 |     for (const { node, memory } of selected) {
+L0341 |       await saveMemory(memory);
+L0342 |       node.querySelector("[data-learn-check]").checked = false;
+L0343 |     }
+L0344 |     tell("已保存选中的问答。个人信息保持原样。");
+L0345 |     $("learnPreview").hidden = true;
+L0346 |   } finally {
+L0347 |     setBusy(false);
+L0348 |     await persist();
+L0349 |   }
+L0350 | }
+L0351 | async function tabNotice() {
+L0352 |   const [tab] = await chrome.tabs.query({ active: true, windowId });
+L0353 |   $("tabNotice").hidden = !targetId || tab?.id === targetId;
+L0354 |   $("tabNotice").textContent = "当前查看的是另一标签页；助手仍绑定原申请页面。";
+L0355 | }
+L0356 | function handleError(error) { tell(error.message || "操作失败，请重试"); }
+L0357 | function run(fn) { return (...args) => Promise.resolve().then(() => fn(...args)).catch(handleError); }
+L0358 | $("useCurrent").addEventListener("click", run(bindCurrent));
+L0359 | $("prepare").addEventListener("click", run(() => prepare()));
+L0360 | $("framePermissions").addEventListener("click", (event) => {
+L0361 |   const button = event.target.closest("[data-frame-origin]");
+L0362 |   if (!button || busy || !session?.snapshot) return;
+L0363 |   const origin = button.dataset.frameOrigin;
+L0364 |   const snapshot = session.snapshot;
+L0365 |   if (!snapshot.failedFrames?.some((frame) => frame.frameId !== 0 && frame.origin === origin) || !/^https?:\/\//.test(origin)) return;
+L0366 |   // Call request directly in the click handler so Chrome sees the user gesture.
+L0367 |   let pending;
+L0368 |   try { pending = chrome.permissions.request({ origins: [origin + "/*"] }); }
+L0369 |   catch (error) { handleError(error); return; }
+L0370 |   button.disabled = true;
+L0371 |   Promise.resolve(pending).then(async (granted) => {
+L0372 |     if (session?.snapshot !== snapshot || targetId !== snapshot.tabId) return;
+L0373 |     if (!granted) { tell("尚未允许读取该内嵌表单，已保留当前预览；可以稍后重试。"); return; }
+L0374 |     tell("已获得内嵌表单访问权限，正在重新识别。");
+L0375 |     await prepare(false, true);
+L0376 |   }).catch(handleError).finally(() => { if (button.isConnected) button.disabled = busy; });
+L0377 | });
+L0378 | $("refresh").addEventListener("click", run(() => prepare(false, true)));
+L0379 | for (const [id, selected] of [["selectAll", true], ["clearSelection", false]]) $(id).addEventListener("click", run(async () => {
+L0380 |   if (busy || !session || session.stale) return;
+L0381 |   session.plan = session.plan.map((item) => isFillable(item) ? { ...item, selected, selectionExplicit: true } : item);
+L0382 |   render(); await persist();
+L0383 | }));
+L0384 | $("nextMissing").addEventListener("click", () => {
+L0385 |   const missing = session?.plan.find((p) => p.constraints.required && !p.value && !isFillable(p));
+L0386 |   if (!missing) { tell("当前可见问题没有待补充的必填缺口；请在网站核对隐藏题目和最终要求。"); return; }
+L0387 |   $("filter").value = "all";
+L0388 |   session.collapsedGroups = (session.collapsedGroups || []).filter((id) => id !== missing.groupId);
+L0389 |   render();
+L0390 |   const card = [...document.querySelectorAll(".question")].find((node) => node.dataset.id === missing.fieldId);
+L0391 |   card?.scrollIntoView({ block: "center", behavior: "smooth" });
+L0392 |   card?.querySelector("[data-answer]")?.focus({ preventScroll: true });
+L0393 | });
+L0394 | $("learn").addEventListener("click", run(() => prepare(true)));
+L0395 | $("fill").addEventListener("click", run(() => fillSelected()));
+L0396 | $("undo").addEventListener("click", run(() => fillSelected(true)));
+L0397 | $("saveLearned").addEventListener("click", run(saveLearned));
+L0398 | $("cancel").addEventListener("click", () => { cancelled = true; aborter?.abort(); $("cancel").disabled = true; tell("已请求停止，当前控件完成核验后停止后续操作。"); });
+L0399 | $("filter").addEventListener("change", render);
+L0400 | $("language").addEventListener("change", () => { if (session) { session.stale = true; refreshSummary(); tell("语言已切换，请重新识别。"); } });
+L0401 | $("questions").addEventListener("input", run(async (event) => {
+L0402 |   if (event.target.matches("[data-binding]")) return;
+L0403 |   const node = event.target.closest("[data-id]");
+L0404 |   const item = session?.plan.find((p) => p.fieldId === node?.dataset.id);
+L0405 |   if (!item || busy) return;
+L0406 |   if (event.target.matches("[data-answer]")) {
+L0407 |     item.answer = event.target.multiple ? JSON.stringify([...event.target.selectedOptions].map((op) => op.value).filter(Boolean)) : event.target.value;
+L0408 |     item.edited = true; item.source = "本次手动编辑"; item.factIds = []; item.status = "review";
+L0409 |     item.selectionExplicit = false;
+L0410 |     item.selected = isFillable(item);
+L0411 |     const checkbox = node.querySelector("[data-selected]");
+L0412 |     checkbox.checked = item.selected; checkbox.disabled = !item.selected; checkbox.dataset.unavailable = String(!item.selected);
+L0413 |     const status = node.querySelector(".status");
+L0414 |     status.className = "status review"; status.textContent = labels.review;
+L0415 |     node.classList.add("needs-review");
+L0416 |     node.querySelector(".source").textContent = item.source;
+L0417 |     node.querySelector("[data-error]").textContent = validateValue(item, item.answer);
+L0418 |   }
+L0419 |   if (event.target.matches("[data-selected]")) { item.selected = event.target.checked && isFillable(item); item.selectionExplicit = true; }
+L0420 |   refreshSummary(); await persist();
+L0421 | }));
+L0422 | $("questions").addEventListener("change", run(async (event) => {
+L0423 |   if (!event.target.matches("[data-binding]") || busy) return;
+L0424 |   session.bindings[event.target.dataset.binding] = event.target.value;
+L0425 |   const newPlan = preparePlan(session.snapshot, facts, await getMemories(), session.language, session.bindings);
+L0426 |   session.plan = newPlan.map((p) => p.groupId === event.target.dataset.binding ? finalizePreview([p])[0] : session.plan.find((old) => old.fieldId === p.fieldId) || p);
+L0427 |   render(); await persist();
+L0428 | }));
+L0429 | $("questions").addEventListener("click", run(async (event) => {
+L0430 |   if (event.target.matches("[data-collapse]")) {
+L0431 |     const id = event.target.dataset.collapse;
+L0432 |     const collapsed = new Set(session.collapsedGroups || []);
+L0433 |     if (collapsed.has(id)) collapsed.delete(id); else collapsed.add(id);
+L0434 |     session.collapsedGroups = [...collapsed]; render(); await persist(); return;
+L0435 |   }
+L0436 |   if (busy) return;
+L0437 |   if (!event.target.matches("[data-locate]")) return;
+L0438 |   const item = session.plan.find((p) => p.fieldId === event.target.closest("[data-id]").dataset.id);
+L0439 |   await chrome.tabs.update(targetId, { active: true });
+L0440 |   await fieldAction(session.snapshot, item, "locate");
+L0441 | }));
+L0442 | $("resultList").addEventListener("click", (event) => {
+L0443 |   const id = event.target.dataset.saveAnswer;
+L0444 |   if (!id || busy) return;
+L0445 |   const result = session.results.find((r) => r.operationId === id && r.status === "verified" && !r.undone);
+L0446 |   if (!result) return;
+L0447 |   const item = session.plan.find((p) => p.fieldId === result.fieldId);
+L0448 |   showLearning([{ ...item, ...result }]);
+L0449 |   $("learnPreview").scrollIntoView({ behavior: "smooth" });
+L0450 | });
+L0451 | $("saveResults").addEventListener("click", () => {
+L0452 |   if (busy || !session) return;
+L0453 |   const latest = new Map();
+L0454 |   for (const result of session.results) if (result.status === "verified" && !result.undone) latest.set(result.fieldId, result);
+L0455 |   showLearning([...latest.values()].map((result) => ({ ...session.plan.find((item) => item.fieldId === result.fieldId), ...result })));
+L0456 |   $("learnPreview").scrollIntoView({ behavior: "smooth" });
+L0457 | });
+L0458 | chrome.tabs.onActivated.addListener(run(tabNotice));
+L0459 | chrome.tabs.onUpdated.addListener((id, change) => {
+L0460 |   if (id === targetId && (change.url || change.status === "loading") && session?.snapshot) { session.stale = true; cancelled = true; aborter?.abort(); refreshSummary(); tell("目标页面已变化，请重新识别当前步骤。"); }
+L0461 | });
+L0462 | chrome.storage.onChanged.addListener((changes, area) => {
+L0463 |   if (area === "local" && changes[AI_SETTINGS_STORAGE_KEY] && session?.snapshot) { session.stale = true; cancelled = true; aborter?.abort(); refreshSummary(); tell("AI 设置已更新，请重新识别以使用新设置。"); }
+L0464 |   if (area === "local" && changes[PROFILE_STORAGE_KEY] && session?.snapshot) { session.stale = true; cancelled = true; aborter?.abort(); refreshSummary(); tell("个人信息已更新，请重新识别以使用最新资料。"); }
+L0465 |   if (area === "local" && changes[MEMORY_KEY] && session?.memoryVersion) { session.stale = true; cancelled = true; aborter?.abort(); refreshSummary(); tell("问答记忆已更新，请更新问题以使用最新答案。"); }
+L0466 | });
+L0467 | run(async () => {
+L0468 |   windowId = (await chrome.windows.getCurrent()).id;
+L0469 |   const data = await chrome.storage.session.get(targetKey());
+L0470 |   targetId = data[targetKey()];
+L0471 |   session = await loadSession(windowId);
+L0472 |   if (session?.tabId !== targetId) session = null;
+L0473 |   facts = factsFromProfile(await getProfile(), session?.language || "zh");
+L0474 |   if (session?.snapshot) {
+L0475 |     try { await checkTarget(session.snapshot); } catch { session.stale = true; }
+L0476 |     if (session.schemaVersion !== SESSION_VERSION || versionOf(await getMemories()) !== session.memoryVersion) session.stale = true;
+L0477 |     if (versionOf(await getProfile()) !== session.profileVersion) session.stale = true;
+L0478 |     if (session.pending && !session.stale) {
+L0479 |       const pending = session.pending;
+L0480 |       const item = session.plan.find((p) => p.fieldId === pending.fieldId);
+L0481 |       try {
+L0482 |         const result = await fieldAction(session.snapshot, item, "operation-result", { operationId: pending.operationId });
+L0483 |         if (result.status === "verified" && !pending.undo) {
+L0484 |           session.results.push({ ...result, ...pending }); item.value = result.after; item.status = "filled"; item.selected = false;
+L0485 |         } else session.stale = true;
+L0486 |       } catch { session.stale = true; }
+L0487 |       session.pending = null;
+L0488 |       tell("已恢复上次结果，请核对后继续；未确认的操作不会自动重试。");
+L0489 |     }
+L0490 |   }
+L0491 |   if (!targetId) await bindCurrent();
+L0492 |   else { render(); setBusy(false); await tabNotice(); }
+L0493 | })();
+L0494 | 
+L0495 | let checkingChanges = false;
+L0496 | setInterval(async () => {
+L0497 |   if (busy || checkingChanges || !session?.snapshot || session.stale || document.hidden) return;
+L0498 |   checkingChanges = true;
+L0499 |   const checkedSession = session;
+L0500 |   const checkedSnapshot = session.snapshot;
+L0501 |   try {
+L0502 |     const changes = await pageChanges(checkedSnapshot);
+L0503 |     if (busy || session !== checkedSession || session.snapshot !== checkedSnapshot) return;
+L0504 |     const changeSignature = JSON.stringify(changes);
+L0505 |     if ((changes.added || changes.changed.length) && session.changeSignature !== changeSignature) {
+L0506 |       session.changeSignature = changeSignature;
+L0507 |       for (const item of session.plan) if (changes.changed.includes(item.fieldId) && item.status !== "filled") {
+L0508 |         item.selected = false; item.supported = false; item.status = "unsupported"; item.reason = "字段已变化，请重新识别";
+L0509 |       }
+L0510 |       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点击“更新预览，保留修改”查看后再统一确认。`);
+L0511 |       render();
+L0512 |     }
+L0513 |   } catch {
+L0514 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
+L0515 |       session.stale = true; refreshSummary(); tell("目标页面已变化，请重新识别。");
+L0516 |     }
+L0517 |   }
+L0518 |   finally { checkingChanges = false; }
+L0519 | }, 2500);
+L0520 | 

@@ -1,0 +1,985 @@
+Application Tracker / PAGE_BRIDGE
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/src/assistant/pageBridge.js
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/pageBridge.js
+SHA256: bf90483d8d6e96414f5a8207e7ee7dc4f5fd66cd934623510c52e2b400911ccc
+LINES: 973
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Self-contained: Chrome serializes this function into the isolated content world.
+L0002 | export async function pageBridge(request) {
+L0003 |   const KEY = "__applicationAssistantV2";
+L0004 |   const clean = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
+L0005 |   const norm = (v) => clean(v).normalize("NFKC").toLowerCase();
+L0006 |   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+L0007 |   const problem = (code, reason, retryable = false) => Object.assign(new Error(reason), { code, retryable });
+L0008 |   async function until(probe, { timeout = 2200, stableFor = 0, guard = () => {} } = {}) {
+L0009 |     const end = performance.now() + timeout;
+L0010 |     let since = 0;
+L0011 |     let previous;
+L0012 |     while (performance.now() < end) {
+L0013 |       guard();
+L0014 |       const current = probe();
+L0015 |       if (current && current === previous) { if (performance.now() - since >= stableFor) return current; }
+L0016 |       else { previous = current; since = performance.now(); if (current && !stableFor) return current; }
+L0017 |       await wait(40);
+L0018 |     }
+L0019 |     return null;
+L0020 |   }
+L0021 |   const visible = (el) => !!el?.isConnected && !el.closest('[hidden], [inert], [aria-hidden="true"]') && [...el.getClientRects()].some((rect) => rect.width > 0 && rect.height > 0) && getComputedStyle(el).visibility !== "hidden";
+L0022 |   const all = (selector, root = document) => {
+L0023 |     const result = [...root.querySelectorAll(selector)];
+L0024 |     for (const host of root.querySelectorAll("*")) if (host.shadowRoot) result.push(...all(selector, host.shadowRoot));
+L0025 |     return result;
+L0026 |   };
+L0027 |   const state = globalThis[KEY] ||= { token: crypto.randomUUID(), nodes: new Map(), ids: new WeakMap(), sequence: 0, scanId: "", operations: new Map(), busy: false };
+L0028 |   const idFor = (node) => {
+L0029 |     if (!state.ids.has(node)) state.ids.set(node, `f${++state.sequence}`);
+L0030 |     return state.ids.get(node);
+L0031 |   };
+L0032 |     const placeholder = (text) => /^(请选择.*|选择.*|please select.*|select|choose|please choose.*)$/i.test(clean(text));
+L0033 |   const containerFor = (el) => el.closest('.form-item--phoenix, [class*="apply-field"]:not([class*="apply-fields"]), .form-item, .form-group, .ant-form-item, .el-form-item, [data-field], fieldset') || el.parentElement;
+L0034 |   const CONTROL_SEL = 'input:not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]), select, textarea, [role="combobox"], [contenteditable="true"]';
+L0035 |   const hasControl = (node) => !!(node.matches?.(CONTROL_SEL) || node.querySelector?.(CONTROL_SEL));
+L0036 |   const GENERIC_HINT = /^(请输入|请选择|请填写|请选择日期|选择日期|请输入内容|选择|输入|please (enter|select|choose)\b.*|select|choose|enter|checkbox-group|radio-group)$/i;
+L0037 |   const cleanQ = (t) => clean(t).replace(/^[*＊\s]+/, "").replace(/\s*[*＊]\s*$/, "").replace(/\s*[:：]\s*$/, "").replace(/\s*[*＊]\s*$/, "").trim();
+L0038 |   const labelLike = (node) => {
+L0039 |     if (!node || node.nodeType !== 1 || !visible(node) || hasControl(node)) return "";
+L0040 |     const t = cleanQ(node.textContent);
+L0041 |     return t && t.length <= 60 && !/^(请输入|请选择|请选择日期|选择日期)$/.test(t) ? t : "";
+L0042 |   };
+L0043 |   function questionFor(el, skipOwnLabel = false) {
+L0044 |     const root = el.getRootNode();
+L0045 |     const aria = cleanQ((el.getAttribute?.("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => root.getElementById?.(id)?.textContent).filter(Boolean).join(" ") || el.getAttribute?.("aria-label") || "");
+L0046 |     if (aria && !GENERIC_HINT.test(aria)) return { text: aria, source: "aria" };
+L0047 |     if (!skipOwnLabel && el.labels?.length) {
+L0048 |       const own = cleanQ([...el.labels].map((n) => n.textContent).join(" "));
+L0049 |       if (own && !GENERIC_HINT.test(own)) return { text: own, source: "label" };
+L0050 |     }
+L0051 |     const box = el.closest('.ant-form-item, .el-form-item, .ivu-form-item, .arco-form-item, .t-form__item, .layui-form-item, .form-item--phoenix, .form-group');
+L0052 |     const known = box?.querySelector('.ant-form-item-label, .el-form-item__label, .ivu-form-item-label, .arco-form-label-item, .t-form__label, .layui-form-label, .form-item__text, label.control-label');
+L0053 |     if (known && cleanQ(known.textContent)) return { text: cleanQ(known.textContent), source: "container" };
+L0054 |     const cell = el.closest("td, th");
+L0055 |     if (cell) for (let prev = cell.previousElementSibling; prev; prev = prev.previousElementSibling) {
+L0056 |       const t = labelLike(prev); if (t) return { text: t, source: "table" };
+L0057 |       if (hasControl(prev)) break;
+L0058 |     }
+L0059 |     let node = el;
+L0060 |     for (let depth = 0; node && node !== document.body && depth < 6; depth++, node = node.parentElement) {
+L0061 |       let steps = 0;
+L0062 |       for (let prev = node.previousElementSibling; prev && steps < 3; prev = prev.previousElementSibling, steps++) {
+L0063 |         // A real heading marks a section boundary, never the question of the next control.
+L0064 |         if (hasControl(prev) || prev.matches("h1, h2, h3, h4, h5, h6, legend")) break;
+L0065 |         const t = labelLike(prev); if (t) return { text: t, source: "nearby" };
+L0066 |       }
+L0067 |     }
+L0068 |     const ph = cleanQ(el.getAttribute?.("placeholder") || el.querySelector?.("[placeholder]")?.getAttribute("placeholder") || "");
+L0069 |     if (ph && !GENERIC_HINT.test(ph)) return { text: ph, source: "placeholder" };
+L0070 |     return { text: "", source: "none" };
+L0071 |   }
+L0072 |   const TITLE_CLASS = /(^|[-_\s])(module-title|form-tit|settitle|section-title|block-title|group-title|title|tit|heading|caption)($|[-_\s])/i;
+L0073 |   const classOf = (n) => typeof n.className === "string" ? n.className : n.className?.baseVal || "";
+L0074 |   function titleLike(node) {
+L0075 |     if (!node || node.nodeType !== 1 || !visible(node) || hasControl(node) || node.matches("td, th, label") || /label/i.test(classOf(node))) return "";
+L0076 |     const pool = [node, ...node.querySelectorAll('h1,h2,h3,h4,h5,h6,legend,[class*="title"],[class*="Title"],[class*="tit"]')]
+L0077 |       .filter((n) => n.matches("h1,h2,h3,h4,h5,h6,legend") || TITLE_CLASS.test(classOf(n)))
+L0078 |       .map((n) => cleanQ(n.textContent)).filter((t) => t.length <= 30 && /[\u4e00-\u9fa5A-Za-z]{2,}/.test(t));
+L0079 |     return pool.sort((a, b) => a.length - b.length)[0] || "";
+L0080 |   }
+L0081 |   function sectionFor(el) {
+L0082 |     for (let node = el; node && node !== document.body; node = node.parentElement) {
+L0083 |       let steps = 0;
+L0084 |       for (let prev = node.previousElementSibling; prev && steps < 12; prev = prev.previousElementSibling, steps++) {
+L0085 |         const t = titleLike(prev); if (t) return t;
+L0086 |       }
+L0087 |     }
+L0088 |     return "";
+L0089 |   }
+L0090 |   const signatureOf = (n) => n.tagName + "." + [...n.classList].filter((c) => !/active|open|hover|focus|error|checked|selected|first|last|^on$/i.test(c)).sort().join(".");
+L0091 |   function blockFor(el) {
+L0092 |     for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+L0093 |       const parent = node.parentElement; if (!parent) break;
+L0094 |       const peers = [...parent.children].filter((c) => signatureOf(c) === signatureOf(node) && c.querySelector(CONTROL_SEL));
+L0095 |       if (peers.length < 2) continue;
+L0096 |       const questions = new Set([...node.querySelectorAll(CONTROL_SEL)].slice(0, 12).map((c) => questionFor(["radio", "checkbox"].includes(c.type) ? c.closest('.ant-radio-group,.ant-checkbox-group,.el-radio-group,.el-checkbox-group,[role="radiogroup"],[role="group"]') || containerFor(c) : c, ["radio", "checkbox"].includes(c.type)).text).filter(Boolean));
+L0097 |       if (questions.size >= 2) return { index: peers.indexOf(node) + 1, key: idFor(parent) };
+L0098 |     }
+L0099 |     return { index: 1, key: "" };
+L0100 |   }
+L0101 |   function labelFor(el) {
+L0102 |     const root = el.getRootNode();
+L0103 |     const labelled = (el.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => root.getElementById?.(id)?.textContent).filter(Boolean).join(" ");
+L0104 |     const own = labelled || el.getAttribute("aria-label") || [...(el.labels || [])].map((n) => n.textContent).join(" ");
+L0105 |     if (clean(own)) return clean(own);
+L0106 |     const box = containerFor(el);
+L0107 |     return clean(box?.querySelector('.form-item__text, .ant-form-item-label, .el-form-item__label, [class*="field-label"], label, legend')?.textContent || el.getAttribute("placeholder") || el.name || "未命名问题");
+L0108 |   }
+L0109 |   function context(el) {
+L0110 |     const group = el.closest('fieldset, [data-experience], [data-education], [class*="experience-item"], [class*="education-item"], [class*="relation-item"]');
+L0111 |     const section = el.closest('section, [role="group"], [class*="form-section"], [class*="complete-form"], form');
+L0112 |     const nearestHeading = (() => {
+L0113 |       for (let node = el; node && node !== document.body; node = node.parentElement) {
+L0114 |         for (let previous = node.previousElementSibling; previous; previous = previous.previousElementSibling) {
+L0115 |           if (previous.matches('h1, h2, h3, h4, legend, [data-group-label]')) return clean(previous.textContent);
+L0116 |         }
+L0117 |       }
+L0118 |       return "";
+L0119 |     })();
+L0120 |     const evidence = [
+L0121 |       { source: "label", text: labelFor(el) },
+L0122 |       { source: "group", text: clean(group?.querySelector("legend, h2, h3, h4, [data-group-label]")?.textContent) },
+L0123 |       { source: "section", text: clean(section?.querySelector("h1, h2, h3, legend, [data-section-label]")?.textContent) },
+L0124 |       { source: "nearby-heading", text: nearestHeading }
+L0125 |     ].filter((item) => item.text).map((item) => ({ ...item, text: item.text.slice(0, 240) }));
+L0126 |     const entity = (text) => /父亲|母亲|父母|家庭|亲属|紧急联系人|family|father|mother|emergency contact/i.test(text) ? "family" : /教育|学校|大学|学位|学历|education|university|degree/i.test(text) ? "education" : /工作|实习|雇主|employment|work experience|internship/i.test(text) ? "employment" : "";
+L0127 |     const ownEntity = entity(evidence.find((item) => item.source === "label")?.text || "");
+L0128 |     const groupEntities = evidence.filter((item) => item.source !== "label").map((item) => entity(item.text)).filter(Boolean);
+L0129 |     const conflicts = ownEntity === "family" && groupEntities.some((item) => item !== "family") || groupEntities.includes("family") && groupEntities.some((item) => item !== "family");
+L0130 |     const block = blockFor(el);
+L0131 |     const sectionTitle = clean(section?.querySelector("h1, h2, h3, legend, [data-section-label]")?.textContent) || sectionFor(el);
+L0132 |     return {
+L0133 |       groupIndex: block.index, blockKey: block.key,
+L0134 |       groupId: block.key ? `${block.key}:${block.index}` : group ? idFor(group) : section ? idFor(section) : "page",
+L0135 |       group: clean(group?.querySelector("legend, h2, h3, h4, [data-group-label]")?.textContent),
+L0136 |       section: sectionTitle,
+L0137 |       entityHint: ownEntity === "family" || groupEntities.includes("family") ? "family" : groupEntities[0] || ownEntity || "self",
+L0138 |       contextEvidence: evidence,
+L0139 |       contextConflicts: conflicts ? ["字段与周围分组的所属对象不一致，请核对"] : []
+L0140 |     };
+L0141 |   }
+L0142 |   function optionsFor(entry) {
+L0143 |     if (["custom-select", "cascader"].includes(entry.kind)) return entry.inspectedOptions || [];
+L0144 |     if (entry.kind === "choice") return entry.members.map((el) => ({ id: idFor(el), text: clean(el.textContent), value: el.getAttribute("data-value") || clean(el.textContent), disabled: el.getAttribute("aria-disabled") === "true" || el.matches(".disabled,.is-disabled") || !visible(el) }));
+L0145 |     if (entry.kind === "select") return [...entry.el.options].map((op) => ({ id: idFor(op), text: clean(op.textContent), value: op.value, disabled: op.disabled || placeholder(op.textContent) || !op.value }));
+L0146 |     if (["radio", "checkboxes"].includes(entry.kind)) return entry.members.map((el) => ({ id: idFor(el), text: labelFor(el), value: el.value, disabled: el.disabled || !(visible(el) || visible(el.closest("label"))) }));
+L0147 |     return [];
+L0148 |   }
+L0149 |   function nearbyText(el) {
+L0150 |     const box = containerFor(el) || el.parentElement;
+L0151 |     if (!box) return "";
+L0152 |     const texts = [];
+L0153 |     const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+L0154 |     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+L0155 |       const parent = node.parentElement;
+L0156 |       if (!parent || !visible(parent) || parent.closest('input,textarea,select,option,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="combobox"],script,style,[data-private]')) continue;
+L0157 |       texts.push(node.textContent);
+L0158 |     }
+L0159 |     return clean(texts.join(" ")).slice(0, 160);
+L0160 |   }
+L0161 |   function choiceSelected(el) {
+L0162 |     return el.getAttribute("aria-checked") === "true" || [...el.classList].some((name) => /^(?:is-checked|active|selected|checked|on)$|(?:^|[-_])(?:active|selected|checked)$/.test(name));
+L0163 |   }
+L0164 |   function dateInputs(entry) {
+L0165 |     return entry.el.matches("input") ? [entry.el] : [...entry.el.querySelectorAll('input:not([type="hidden"])')];
+L0166 |   }
+L0167 |   function dateFormat(entry) {
+L0168 |     if (entry.adapter === "my97-date") return /dateFmt\s*:\s*['"]([^'"]+)['"]/.exec(entry.el.getAttribute("onclick") || "")?.[1] || "yyyy-MM-dd";
+L0169 |     const input = dateInputs(entry)[0];
+L0170 |     const format = entry.el.getAttribute("data-date-format") || input?.getAttribute("data-date-format") || input?.placeholder || "";
+L0171 |     if (/y{4}.*m{1,2}/i.test(format)) return format;
+L0172 |     if (input?.type === "month" || /month|月份|选择月|年月/i.test(`${classOf(entry.el)} ${format}`)) return "YYYY-MM";
+L0173 |     return "YYYY-MM-DD";
+L0174 |   }
+L0175 |   function dateParts(value) {
+L0176 |     const match = clean(value).match(/^(\d{4})[-/年](\d{1,2})(?:[-/月](\d{1,2}))?[月日]?$/);
+L0177 |     if (!match) return null;
+L0178 |     const year = Number(match[1]), month = Number(match[2]), day = match[3] ? Number(match[3]) : null;
+L0179 |     if (year < 1 || month < 1 || month > 12 || (day !== null && (day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate()))) return null;
+L0180 |     return { year, month, day };
+L0181 |   }
+L0182 |   function formatDate(value, format) {
+L0183 |     const parts = dateParts(value);
+L0184 |     if (!parts) throw problem("DATE_INVALID", "日期不存在或格式不正确");
+L0185 |     if (/d/i.test(format) && parts.day === null) throw problem("DATE_INCOMPLETE", "此日期需要具体到日，请核对资料");
+L0186 |     return format.replace(/yyyy|YYYY/g, String(parts.year)).replace(/MM/g, String(parts.month).padStart(2, "0")).replace(/dd|DD/g, String(parts.day).padStart(2, "0"));
+L0187 |   }
+L0188 |   function parseValues(value) {
+L0189 |     if (value === "") return [];
+L0190 |     let values;
+L0191 |     try { values = JSON.parse(value); } catch { values = [value]; }
+L0192 |     if (!Array.isArray(values)) values = [value];
+L0193 |     if (!values.every((item) => typeof item === "string")) throw problem("ANSWER_INVALID", "请按选项选择答案");
+L0194 |     return values;
+L0195 |   }
+L0196 |   function sameDate(actual, expected, entry) {
+L0197 |     if (!actual || !expected) return actual === expected;
+L0198 |     const left = parseValues(actual), right = parseValues(expected);
+L0199 |     if (left.length !== right.length) return false;
+L0200 |     return left.every((value, index) => {
+L0201 |       const a = dateParts(value), b = dateParts(right[index]);
+L0202 |       return a && b && a.year === b.year && a.month === b.month && (!/d/i.test(dateFormat(entry)) || (a.day ?? 1) === (b.day ?? 1));
+L0203 |     });
+L0204 |   }
+L0205 |   function read(entry) {
+L0206 |     const el = entry.el;
+L0207 |     if (entry.kind === "date") {
+L0208 |       const values = dateInputs(entry).map((input) => clean(input.value));
+L0209 |       return values.length > 1 ? (values.some(Boolean) ? JSON.stringify(values) : "") : values[0] || "";
+L0210 |     }
+L0211 |     if (entry.kind === "cascader") {
+L0212 |       const selected = el.querySelector('.ant-cascader-picker-label,.ant-select-selection-item');
+L0213 |       const input = el.querySelector('input:not([type="hidden"])');
+L0214 |       const text = clean(selected?.textContent || (entry.activeSearch?.el === input ? entry.activeSearch.baseline : input?.value));
+L0215 |       return placeholder(text) ? "" : text;
+L0216 |     }
+L0217 |     if (entry.kind === "choice") {
+L0218 |       const values = entry.members.filter(choiceSelected).map((member) => clean(member.textContent));
+L0219 |       return entry.multiple ? values.length ? JSON.stringify(values) : "" : values[0] || "";
+L0220 |     }
+L0221 |     if (entry.kind === "select") {
+L0222 |       const texts = [...el.selectedOptions].filter((op) => op.value && !placeholder(op.textContent)).map((op) => clean(op.textContent));
+L0223 |       return el.multiple ? (texts.length ? JSON.stringify(texts) : "") : texts[0] || "";
+L0224 |     }
+L0225 |     if (entry.kind === "radio") return entry.members.find((m) => m.checked) ? labelFor(entry.members.find((m) => m.checked)) : "";
+L0226 |     if (entry.kind === "checkboxes") {
+L0227 |       const texts = entry.members.filter((m) => m.checked).map(labelFor);
+L0228 |       return texts.length ? JSON.stringify(texts) : "";
+L0229 |     }
+L0230 |     if (entry.kind === "custom-select") {
+L0231 |       const selected = el.querySelector('.phoenix-select__value, .phoenix-select__single, [class*="singleValue"], .sd-Select-value, [class*="sd-Select-value"], [class*="selected-value"], .ant-select-selection-item, .ant-select-selection-selected-value');
+L0232 |       const input = el.matches("input") ? el : el.querySelector('input:not([type="hidden"])');
+L0233 |       if (el.querySelector(".phoenix-select__placeHolder--show")) return "";
+L0234 |       const queryInProgress = entry.activeSearch?.el === input && input?.value === entry.activeSearch.query;
+L0235 |       const text = clean(selected?.textContent || (queryInProgress ? entry.activeSearch.baseline : input?.value));
+L0236 |       return placeholder(text) ? "" : text;
+L0237 |     }
+L0238 |     return el.value || "";
+L0239 |   }
+L0240 |   function descriptor(entry) {
+L0241 |     const el = entry.el;
+L0242 |     const ctx = context(el);
+L0243 |     const groupBox = entry.members?.length > 1 ? entry.members.reduce((box, m) => { let b = box; while (b && !b.contains(m)) b = b.parentElement; return b; }, entry.members[0].parentElement) : null;
+L0244 |     const legend = entry.members?.length > 1 ? cleanQ(el.closest("fieldset, [role='radiogroup'], [role='group']")?.querySelector("legend, [data-question], .form-item__text")?.textContent) : "";
+L0245 |     const asked = legend ? { text: legend, source: "legend" } : groupBox ? questionFor(groupBox, true) : questionFor(el);
+L0246 |     const label = asked.text || (entry.members?.length > 1 ? "" : labelFor(el)) || "未命名问题";
+L0247 |     const input = el.matches("input, textarea, select") ? el : el.querySelector("input, textarea, select");
+L0248 |     const type = input?.type || entry.kind;
+L0249 |     const partHint = clean(input?.placeholder || el.querySelector('[class*="placeholder"], [class*="placeHolder"]')?.textContent || el.getAttribute("data-date-part"));
+L0250 |     const datePart = entry.datePart || (/^(year|年|年份)$/i.test(partHint) ? "year" : /^(month|月|月份)$/i.test(partHint) ? "month" : /^(day|日|日期中的日)$/i.test(partHint) ? "day" : "");
+L0251 |     const unsafe = ["password", "file", "hidden", "submit", "button", "reset"].includes(type) || /验证码|密码|captcha|verification code|one.time.password/i.test(label);
+L0252 |     const consent = /同意|承诺|声明|签名|隐私|consent|agree|declaration|signature|terms and conditions/i.test(label);
+L0253 |     const widget = ["date", "cascader", "custom-select"].includes(entry.kind);
+L0254 |     const disabled = Boolean(input?.disabled || (input?.readOnly && !widget) || el.matches('[aria-disabled="true"]'));
+L0255 |     const shown = visible(el) || (["radio", "checkboxes"].includes(entry.kind) && visible(el.closest("label")));
+L0256 |     const supported = !unsafe && !consent && !["unsupported", "chooser"].includes(entry.kind) && !disabled && shown;
+L0257 |     return {
+L0258 |       fieldId: idFor(el), ...ctx, label, kind: entry.kind, type, adapter: entry.adapter, datePart, dateGroupId: datePart ? idFor(containerFor(el)) : "",
+L0259 |       identity: { id: el.id || "", name: input?.name || "", autocomplete: input?.getAttribute("autocomplete") || "" },
+L0260 |       question: label, contextPath: [ctx.section, ctx.group, label].filter(Boolean).join(" > "),
+L0261 |       value: unsafe ? "" : read(entry), supported,
+L0262 |       reason: unsafe || consent ? "请在网站中手动处理" : entry.kind === "chooser" ? "需要在网页弹窗中选择，请手动处理" : disabled ? "字段只读或不可编辑" : !shown ? "字段已隐藏" : entry.kind === "unsupported" ? "此控件暂不支持自动填写" : "",
+L0263 |       labelSource: asked.source, order: entry.order ?? 0,
+L0264 |       nearbyText: ["placeholder", "none"].includes(asked.source) ? nearbyText(el) : "",
+L0265 |       dateFormat: entry.kind === "date" ? dateFormat(entry) : "", dateRange: entry.kind === "date" && dateInputs(entry).length > 1,
+L0266 |       options: optionsFor(entry), optionsQuery: entry.optionsQuery || "",
+L0267 |       constraints: { required: Boolean(input?.required || el.getAttribute("aria-required") === "true" || /[*＊]/.test(labelFor(el)) || el.closest('.ant-form-item-required,.is-required') || containerFor(el)?.querySelector('.ant-form-item-required')), maxLength: input?.maxLength > 0 ? input.maxLength : null, min: input?.min || "", max: input?.max || "", pattern: input?.pattern || "", multiple: !!input?.multiple || entry.kind === "checkboxes" || !!entry.multiple },
+L0268 |       help: clean(containerFor(el)?.querySelector('[class*="help"], [class*="hint"], [aria-live]')?.textContent).slice(0, 300)
+L0269 |     };
+L0270 |   }
+L0271 |   const signature = (field) => JSON.stringify([field.label, field.kind, field.type, field.groupId, field.group, field.section, field.constraints, field.options, field.datePart, field.dateFormat, field.dateRange, field.entityHint, field.contextEvidence, field.contextConflicts]);
+L0272 |   const semanticOptions = (options) => options.map(({ text, value, disabled }) => ({ text, value, disabled }));
+L0273 |   const fingerprint = (field) => JSON.stringify([field.label, field.kind, field.type, field.group, field.section, field.identity, field.constraints, semanticOptions(field.options), field.datePart, field.dateFormat, field.dateRange, field.entityHint, field.contextEvidence, field.contextConflicts]);
+L0274 |   function discover() {
+L0275 |     const entries = [];
+L0276 |     const claimed = new Set();
+L0277 |     const controls = all("input, textarea, select");
+L0278 |     const claimWidget = (selector, kind, adapter) => {
+L0279 |       for (const el of all(selector)) {
+L0280 |         if (!visible(el) || claimed.has(el) || entries.some((entry) => entry.el.contains(el) || el.contains(entry.el))) continue;
+L0281 |         entries.push({ el, kind, adapter });
+L0282 |         claimed.add(el);
+L0283 |         for (const child of el.querySelectorAll("input, select")) claimed.add(child);
+L0284 |       }
+L0285 |     };
+L0286 |     claimWidget('.ant-cascader-picker, .ant-select.ant-cascader, .el-cascader', "cascader", "cascader");
+L0287 |     claimWidget('.ant-calendar-picker, .ant-picker, .el-date-editor', "date", "picker-date");
+L0288 |     claimWidget('input.Wdate, input[onclick*="WdatePicker"]', "date", "my97-date");
+L0289 |     claimWidget('.magnify-glass', "chooser", "popup-chooser");
+L0290 |     for (const el of controls) if (/^showName/.test(el.id || el.name || "") && !claimed.has(el) && visible(el)) { entries.push({ el, kind: "chooser", adapter: "popup-chooser" }); claimed.add(el); }
+L0291 |     for (const el of all('.phoenix-select, .ant-select, .el-select, .sd-Select-container, [class*="sd-Select-container"], .sd-Dropdown-container, [class*="sd-Dropdown-container"], [role="combobox"]')) {
+L0292 |       if (!visible(el) || el.closest('[role="listbox"]') || el.tagName === "SELECT" || claimed.has(el)) continue;
+L0293 |       if (entries.some((entry) => entry.el.contains(el))) continue;
+L0294 |       entries.push({ el, kind: "custom-select", adapter: el.matches(".el-select") ? "element" : el.closest(".form-item--phoenix") ? "phoenix" : "custom" });
+L0295 |       claimed.add(el);
+L0296 |       for (const child of el.querySelectorAll("input, select")) claimed.add(child);
+L0297 |     }
+L0298 |     for (const el of all('[role="radio"],[role="checkbox"],[class*="radio"],[class*="check"],[class*="option"],[class*="tag"],[class*="choice"]')) {
+L0299 |       const safeChoice = (node) => node.matches('div,span,li,button[type="button"]') && !node.closest('a[href],button:not([type="button"])');
+L0300 |       if (!safeChoice(el) || !visible(el) || claimed.has(el) || el.querySelector("input") || entries.some((entry) => entry.el.contains(el)) || el.closest(menuSelector)) continue;
+L0301 |       const role = el.getAttribute("role");
+L0302 |       const scope = el.closest('[role="radiogroup"],[role="group"]') || el.parentElement;
+L0303 |       const members = role ? [...scope.querySelectorAll(`[role="${role}"]`)].filter((node) => safeChoice(node) && !node.querySelector("input") && visible(node))
+L0304 |         : [...(el.parentElement?.children || [])].filter((node) => safeChoice(node) && node.tagName === el.tagName && signatureOf(node) === signatureOf(el) && visible(node) && !node.querySelector("input") && clean(node.textContent).length > 0 && clean(node.textContent).length <= 40 && (node.matches("button,[tabindex],[onclick]") || getComputedStyle(node).cursor === "pointer"));
+L0305 |       if (members.length < 2 || members.some((member) => claimed.has(member))) continue;
+L0306 |       members.forEach((member) => claimed.add(member));
+L0307 |       entries.push({ el: members[0], members, multiple: role === "checkbox" || /check|multiple|multi-select/i.test(classOf(scope)), kind: "choice", adapter: "choice" });
+L0308 |     }
+L0309 |     for (const el of controls) {
+L0310 |       if (claimed.has(el) || (!visible(el) && !(["radio", "checkbox"].includes(el.type) && visible(el.closest("label")))) || ["hidden", "button", "submit", "reset"].includes(el.type)) continue;
+L0311 |       let kind = el.tagName === "SELECT" ? "select" : el.tagName === "TEXTAREA" ? "textarea" : "text";
+L0312 |       let members;
+L0313 |       if (["radio", "checkbox"].includes(el.type)) {
+L0314 |         kind = el.type === "radio" ? "radio" : "checkboxes";
+L0315 |         const widgetGroup = el.closest('.ant-radio-group,.ant-checkbox-group,.el-radio-group,.el-checkbox-group,[role="radiogroup"],[role="group"]');
+L0316 |         const scope = widgetGroup || el.closest("fieldset") || el.form || el.getRootNode();
+L0317 |         members = controls.filter((other) => other.type === el.type && other.getRootNode() === el.getRootNode() && (el.name ? other.name === el.name && (other.form || null) === (el.form || null) && scope.contains(other) : widgetGroup ? widgetGroup.contains(other) : other === el));
+L0318 |         members.forEach((item) => claimed.add(item));
+L0319 |       }
+L0320 |       if (["date", "month"].includes(el.type)) kind = "date";
+L0321 |       entries.push({ el, kind, members, adapter: kind === "date" ? "native-date" : el.closest(".form-item--phoenix") ? "phoenix" : el.className?.includes("sd-Input") ? "moka" : "native" });
+L0322 |     }
+L0323 |     for (const el of all('[contenteditable="true"], [role="textbox"], [role="slider"], input[type="file"]')) {
+L0324 |       if (visible(el) && !entries.some((e) => e.el === el || e.el.contains(el))) entries.push({ el, kind: "unsupported", adapter: "unknown" });
+L0325 |     }
+L0326 |     entries.sort((a, b) => a.el === b.el ? 0 : a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+L0327 |     return entries;
+L0328 |   }
+L0329 |   function assertTarget() {
+L0330 |     if (request.token !== state.token || request.scanId !== state.scanId || request.url !== location.href) throw problem("PAGE_CHANGED", "页面已变化，请重新识别");
+L0331 |   }
+L0332 |   const fail = (reason, status = "failed", code = "CONTROL_FAILED", retryable = false) => ({ status, reason, code, retryable });
+L0333 |   function rebind(entry, expected) {
+L0334 |     assertTarget();
+L0335 |     const matches = discover().filter((candidate) => {
+L0336 |       candidate.inspectedOptions = entry.inspectedOptions;
+L0337 |       candidate.optionsQuery = entry.optionsQuery;
+L0338 |       return fingerprint(descriptor(candidate)) === fingerprint(entry.snapshot);
+L0339 |     });
+L0340 |     if (matches.length !== 1) throw problem(matches.length ? "AMBIGUOUS_REPLACEMENT" : "FIELD_REPLACED", matches.length ? "替换后的字段不唯一，请重新识别" : "原字段已被替换，未找到相同题目");
+L0341 |     const candidate = matches[0];
+L0342 |     if (!descriptor(candidate).supported || read(candidate) !== expected) throw problem("USER_EDITED", "替换后的字段已有内容或状态变化，保留原值");
+L0343 |     state.ids.set(candidate.el, request.fieldId);
+L0344 |     Object.assign(entry, candidate, { rebound: true });
+L0345 |     entry.snapshot = descriptor(entry);
+L0346 |     entry.signature = signature(entry.snapshot);
+L0347 |     return entry;
+L0348 |   }
+L0349 |   function resolve(requireWritable = true, expected) {
+L0350 |     assertTarget();
+L0351 |     const entry = state.nodes.get(request.fieldId);
+L0352 |     if (!entry) throw problem("FIELD_MISSING", "原字段已不存在，请重新识别");
+L0353 |     if (!entry.el.isConnected || entry.members?.some((el) => !el.isConnected)) rebind(entry, expected ?? entry.baseline);
+L0354 |     const current = descriptor(entry);
+L0355 |     if (signature(current) !== entry.signature || (requireWritable && !current.supported)) throw problem("FIELD_CHANGED", current.reason || "题目或选项已变化，请重新识别");
+L0356 |     return entry;
+L0357 |   }
+L0358 |   function transaction(entry, baseline) {
+L0359 |     const scope = { menu: null, userEdited: false, queryInput: null, queryValue: null, expected: baseline };
+L0360 |     const onEdit = (event) => {
+L0361 |       if (event.isTrusted && !scope.ownMutation && (entry.el === event.target || entry.el.contains(event.target) || entry.members?.some((member) => member === event.target || member.closest("label")?.contains(event.target)) || scope.menu?.contains(event.target) || (scope.opening && event.target.closest?.(menuSelectorFor(entry))))) scope.userEdited = true;
+L0362 |     };
+L0363 |     document.addEventListener("input", onEdit, true);
+L0364 |     document.addEventListener("change", onEdit, true);
+L0365 |     document.addEventListener("keydown", onEdit, true);
+L0366 |     document.addEventListener("pointerdown", onEdit, true);
+L0367 |     scope.act = (action) => { scope.ownMutation = true; try { return action(); } finally { scope.ownMutation = false; } };
+L0368 |     scope.guardStructure = (expected = scope.expected) => {
+L0369 |       assertTarget();
+L0370 |       if (scope.userEdited) throw problem("USER_EDITED", "操作期间检测到手动输入，已停止并保留网页内容");
+L0371 |       resolve(true, expected);
+L0372 |     };
+L0373 |     scope.guard = (expected = scope.expected) => {
+L0374 |       scope.guardStructure(expected);
+L0375 |       if (read(entry) !== expected) throw problem("VALUE_CHANGED", "操作期间网页内容发生变化，已停止并保留原值");
+L0376 |       if (scope.queryInput?.isConnected && scope.queryValue !== null && scope.queryInput.value !== scope.queryValue) throw problem("USER_EDITED", "搜索内容已变化，已停止操作");
+L0377 |     };
+L0378 |     scope.release = () => {
+L0379 |       for (const event of ["input", "change", "keydown", "pointerdown"]) document.removeEventListener(event, onEdit, true);
+L0380 |       delete entry.activeSearch;
+L0381 |     };
+L0382 |     return scope;
+L0383 |   }
+L0384 |   function setValue(el, value) {
+L0385 |     const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : el.tagName === "SELECT" ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+L0386 |     Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
+L0387 |     el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+L0388 |     el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+L0389 |     el.dispatchEvent(new Event("blur", { bubbles: true }));
+L0390 |   }
+L0391 | function optionMatch(options, value, { location = false } = {}) {
+L0392 |   const text = (option) => typeof option === "string" ? option : option?.text ?? option?.label ?? option?.value ?? "";
+L0393 |   const normalize = (input) => {
+L0394 |     let result = typeof input === "string" ? input.normalize("NFKC").toLowerCase().replace(/\s+/g, "") : "";
+L0395 |     if (location) result = result.replace(/(?:(?:壮族|回族|维吾尔)?自治区|特别行政区|省|市|区|县)$/, "");
+L0396 |     return result;
+L0397 |   };
+L0398 |   const expected = normalize(value);
+L0399 |   if (!expected || !Array.isArray(options)) return null;
+L0400 |   const available = options.filter((option) => option != null && !option.disabled && normalize(text(option)));
+L0401 |   const unique = (matches) => matches.length === 1 ? matches[0] : null;
+L0402 |   let matches = available.filter((option) => text(option) === value);
+L0403 |   if (matches.length) return unique(matches);
+L0404 |   matches = available.filter((option) => normalize(text(option)) === expected);
+L0405 |   if (matches.length) return unique(matches);
+L0406 |   const groups = [
+L0407 |     ["男", "Male", "M", "先生"], ["女", "Female", "F", "女士"],
+L0408 |     ["本科", "大学本科", "学士", "Bachelor", "Undergraduate"],
+L0409 |     ["硕士", "硕士研究生", "研究生", "Master", "Postgraduate"],
+L0410 |     ["博士", "博士研究生", "PhD", "Doctor"], ["大专", "专科", "Associate"],
+L0411 |     ["学士学位", "学士", "Bachelor's degree"], ["硕士学位", "硕士", "Master's degree"],
+L0412 |     ["中共党员", "党员", "中国共产党党员"], ["中共预备党员", "预备党员"],
+L0413 |     ["共青团员", "团员"], ["未婚", "单身", "Single"], ["已婚", "Married"],
+L0414 |     ["汉族", "汉"], ["是", "Yes", "有"], ["否", "No", "无", "没有"],
+L0415 |     ["中国", "中国大陆", "中华人民共和国", "China", "CN"],
+L0416 |     ["中国香港", "香港", "Hong Kong", "Hong Kong SAR"], ["全日制", "统招", "Full-time"],
+L0417 |     ["大学英语六级", "英语六级", "CET-6", "CET6"], ["大学英语四级", "英语四级", "CET-4", "CET4"],
+L0418 |     ["雅思", "IELTS"], ["托福", "TOEFL"]
+L0419 |   ].map((group) => group.map(normalize));
+L0420 |   const related = groups.filter((group) => group.includes(expected));
+L0421 |   matches = available.filter((option) => related.some((group) => group.includes(normalize(text(option)))));
+L0422 |   if (matches.length) return unique(matches);
+L0423 |   // A substring cannot turn a categorical answer into a different category or
+L0424 |   // erase negation. Single letters and single Chinese characters are too weak.
+L0425 |   if (expected.length < 2 || related.length) return null;
+L0426 |   const negative = (input) => /不|无|否|未|没有|非/.test(input) || /\b(?:not|no|without|never)\b/i.test(input);
+L0427 |   matches = available.filter((option) => {
+L0428 |     const candidate = normalize(text(option));
+L0429 |     return candidate.length >= 2 && negative(value) === negative(text(option))
+L0430 |       && (candidate.includes(expected) || expected.includes(candidate));
+L0431 |   });
+L0432 |   return unique(matches);
+L0433 | }
+L0434 |   function exactOption(options, value, context = {}) {
+L0435 |     const match = optionMatch(options, value, context);
+L0436 |     if (!match) throw problem("OPTION_AMBIGUOUS", "未找到唯一匹配选项，请核对");
+L0437 |     return match;
+L0438 |   }
+L0439 |   function validation(entry) {
+L0440 |     const nodes = entry.members || [entry.el];
+L0441 |     if (nodes.some((el) => el.validity && !el.validity.valid)) return "网站拒绝该格式";
+L0442 |     const error = containerFor(entry.el)?.querySelector('[aria-invalid="true"], .ant-form-item-explain-error, .el-form-item__error, [data-error]');
+L0443 |     return error && visible(error) ? "网站显示字段校验错误" : "";
+L0444 |   }
+L0445 |   const menuSelector = '[role="listbox"], .common-unmodeled-layer, .phoenix-select-dropdown, .phoenix-select__dropdown, .sd-Menu, [class*="sd-Menu"], .ant-select-dropdown, .el-select-dropdown, .ant-cascader-menus, .ant-cascader-dropdown, .el-cascader__dropdown, .ant-calendar-picker-container, .ant-picker-dropdown, .el-picker-panel';
+L0446 |   const menuSelectorFor = (entry) => entry.kind === "date" ? '.ant-calendar-picker-container,.ant-picker-dropdown,.el-picker-panel' : entry.kind === "cascader" ? '.ant-cascader-menus,.ant-cascader-dropdown,.el-cascader__dropdown' : menuSelector;
+L0447 |   function currentMenu(entry) {
+L0448 |     const controlled = entry.el.getAttribute("aria-controls") || entry.el.querySelector("[aria-controls]")?.getAttribute("aria-controls");
+L0449 |     if (controlled) {
+L0450 |       const root = entry.el.getRootNode();
+L0451 |       const matches = [...new Set(controlled.split(/\s+/).map((id) => root.getElementById?.(id) || document.getElementById(id)).map((node) => node?.closest('.ant-select-dropdown,.el-select-dropdown,.ant-cascader-dropdown,.el-cascader__dropdown') || node?.closest(menuSelectorFor(entry)) || node).filter(visible))];
+L0452 |       if (matches.length > 1) throw problem("MENU_AMBIGUOUS", "字段关联了多个菜单，请手动核对");
+L0453 |       if (matches[0]) return matches[0];
+L0454 |     }
+L0455 |     const menus = all(menuSelectorFor(entry)).filter(visible);
+L0456 |     const roots = menus.filter((candidate) => !menus.some((other) => other !== candidate && other.contains(candidate)));
+L0457 |     if (roots.length > 1) throw problem("MENU_AMBIGUOUS", "存在多个菜单，无法确定目标");
+L0458 |     return roots[0] || null;
+L0459 |   }
+L0460 |   function menuOptions(entry, menu) {
+L0461 |     const candidates = all('[role="option"], .list-item-container, .sd-Menu-content-item, [class*="sd-Menu-content-item"], .phoenix-select-dropdown__item, .phoenix-select__option, .ant-select-dropdown-menu-item, .ant-select-item-option, .el-select-dropdown__item, .el-cascader-node, li', menu).filter(visible);
+L0462 |     const nodes = candidates.filter((node) => !candidates.some((other) => other !== node && node.contains(other)));
+L0463 |     entry.optionIds ||= new Map();
+L0464 |     const occurrences = new Map();
+L0465 |     return nodes.map((el) => {
+L0466 |       const text = clean(el.textContent);
+L0467 |       const value = el.getAttribute("data-value") || el.getAttribute("value") || text;
+L0468 |       const key = JSON.stringify([text, value]);
+L0469 |       const occurrence = occurrences.get(key) || 0;
+L0470 |       occurrences.set(key, occurrence + 1);
+L0471 |       const identity = `${key}:${occurrence}`;
+L0472 |       if (!entry.optionIds.has(identity)) entry.optionIds.set(identity, `${request.fieldId}:option${entry.optionIds.size + 1}`);
+L0473 |       return { el, id: entry.optionIds.get(identity), text, value, disabled: el.getAttribute("aria-disabled") === "true" || el.matches('[disabled], .is-disabled, .disabled, .ant-select-item-option-disabled, .ant-select-dropdown-menu-item-disabled, .ant-cascader-menu-item-disabled') || placeholder(text) };
+L0474 |     });
+L0475 |   }
+L0476 |   async function openMenu(entry, scope) {
+L0477 |     scope.opening = true;
+L0478 |     let menu = currentMenu(entry);
+L0479 |     // An unlinked popup already on screen cannot safely be attributed to this field.
+L0480 |     const linked = entry.el.hasAttribute("aria-controls") || entry.el.querySelector("[aria-controls]");
+L0481 |     if (menu && !linked && entry.el.getAttribute("aria-expanded") !== "true") throw problem("MENU_AMBIGUOUS", "已有未关联的菜单打开，请先关闭后重试");
+L0482 |     const wasOpen = Boolean(menu);
+L0483 |     for (let attempt = 0; !menu && attempt < 2; attempt++) {
+L0484 |       scope.guard();
+L0485 |       const expanded = entry.el.getAttribute("aria-expanded") || entry.el.querySelector("[aria-expanded]")?.getAttribute("aria-expanded");
+L0486 |       if (attempt === 0 || expanded === "false") scope.act(() => activate(entry.el.querySelector('.ant-select-selector,.ant-select-selection') || (["date", "cascader"].includes(entry.kind) || entry.el.matches(".el-select") ? entry.el.querySelector('input:not([type="hidden"])') : null) || entry.el));
+L0487 |       menu = await until(() => currentMenu(entry), { timeout: 2200, guard: scope.guard });
+L0488 |       scope.retries = attempt;
+L0489 |     }
+L0490 |     if (!menu) throw problem("MENU_TIMEOUT", "菜单未能展开，请稍后重试", true);
+L0491 |     scope.menu = menu;
+L0492 |     scope.wasOpen = wasOpen;
+L0493 |     return menu;
+L0494 |   }
+L0495 |   async function stableOptions(entry, scope) {
+L0496 |     let options = [];
+L0497 |     const settled = await until(() => {
+L0498 |       const menu = currentMenu(entry);
+L0499 |       if (!menu) return null;
+L0500 |       scope.menu = menu;
+L0501 |       if (menu.matches('[aria-busy="true"], [data-loading="true"]') || menu.querySelector('[aria-busy="true"], [role="progressbar"], [data-loading="true"], .is-loading')) { scope.sawLoading = true; return null; }
+L0502 |       options = menuOptions(entry, menu);
+L0503 |       if (scope.searchPending && !scope.sawLoading && JSON.stringify(semanticOptions(options)) === scope.beforeSearchOptions) return null;
+L0504 |       return options.length ? JSON.stringify(options.map(({ el, ...option }) => option)) : null;
+L0505 |     }, { timeout: 3000, stableFor: 300, guard: scope.guard });
+L0506 |     if (!settled) throw problem("OPTIONS_TIMEOUT", "选项尚未加载完成或需要先输入搜索词", true);
+L0507 |     return options;
+L0508 |   }
+L0509 |   async function searchMenu(entry, scope, query) {
+L0510 |     if (!query) return;
+L0511 |     const search = scope.menu.querySelector('.phoenix-search input:not([type="password"]), input[type="search"], input[role="searchbox"]:not([type="password"])') || (entry.el.matches('input[aria-autocomplete]:not([type="password"])') ? entry.el : entry.el.querySelector('input[aria-autocomplete]:not([type="password"]),.el-input__inner:not([readonly]),.ant-cascader-input:not([readonly]),.ant-select-search__field:not([readonly])'));
+L0512 |     if (!search || search.disabled || search.readOnly) throw problem("SEARCH_UNSUPPORTED", "此控件没有可安全操作的搜索框");
+L0513 |     if (search.value && search.value !== query) throw problem("USER_EDITED", "搜索框已有内容，已保留");
+L0514 |     scope.guard();
+L0515 |     scope.queryInput = search;
+L0516 |     scope.originalQuery = search.value;
+L0517 |     scope.queryValue = query;
+L0518 |     if (search.value !== query) {
+L0519 |       scope.beforeSearchOptions = JSON.stringify(semanticOptions(menuOptions(entry, scope.menu)));
+L0520 |       scope.searchPending = true;
+L0521 |       scope.sawLoading = false;
+L0522 |       entry.activeSearch = { el: search, query, baseline: read(entry) };
+L0523 |       scope.act(() => { search.focus({ preventScroll: true }); setInputText(search, query); });
+L0524 |     }
+L0525 |   }
+L0526 |   async function restoreMenu(entry, scope) {
+L0527 |     if (scope.userEdited) return false;
+L0528 |     if (!scope.committed && scope.queryInput?.isConnected && scope.originalQuery !== undefined && scope.queryInput.value === scope.queryValue && scope.originalQuery !== scope.queryValue) {
+L0529 |       setValue(scope.queryInput, scope.originalQuery);
+L0530 |       scope.queryValue = scope.originalQuery;
+L0531 |       delete entry.activeSearch;
+L0532 |     }
+L0533 |     if (scope.wasOpen || !scope.menu?.isConnected || !visible(scope.menu)) return true;
+L0534 |     // Only use standard dismissal gestures: never select an option or alter page attributes.
+L0535 |     const target = scope.queryInput?.isConnected ? scope.queryInput : entry.el.querySelector("input") || entry.el;
+L0536 |     target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, composed: true }));
+L0537 |     if (await until(() => !visible(scope.menu), { timeout: 240 })) return true;
+L0538 |     const expanded = entry.el.getAttribute("aria-expanded") || entry.el.querySelector("[aria-expanded]")?.getAttribute("aria-expanded");
+L0539 |     if (expanded === "true") {
+L0540 |       entry.el.click();
+L0541 |       if (await until(() => !visible(scope.menu), { timeout: 400 })) return true;
+L0542 |     }
+L0543 |     if (typeof target.blur === "function") target.blur();
+L0544 |     // Framework popup components close on an outside mousedown. The document
+L0545 |     // body cannot submit a form or select another control.
+L0546 |     scope.act(() => document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
+L0547 |     return Boolean(await until(() => !visible(scope.menu), { timeout: 240 }));
+L0548 |   }
+L0549 |   function activate(el) {
+L0550 |     el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
+L0551 |     el.focus?.({ preventScroll: true });
+L0552 |     el.click();
+L0553 |     el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0 }));
+L0554 |   }
+L0555 |   function setInputText(el, value) {
+L0556 |     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(el, value);
+L0557 |     el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+L0558 |     el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+L0559 |   }
+L0560 |   function enter(el) {
+L0561 |     for (const type of ["keydown", "keypress", "keyup"]) el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+L0562 |   }
+L0563 |   async function mutate(entry, scope, action) {
+L0564 |     scope.guard();
+L0565 |     scope.act(action);
+L0566 |     await wait(60);
+L0567 |     scope.guardStructure();
+L0568 |     scope.expected = read(entry);
+L0569 |   }
+L0570 |   async function clearWidget(entry, scope) {
+L0571 |     scope.guard();
+L0572 |     scope.act(() => {
+L0573 |       for (const target of [entry.el, ...entry.el.querySelectorAll('.el-input')]) {
+L0574 |         target.dispatchEvent(new MouseEvent("mouseenter", { bubbles: false }));
+L0575 |         target.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+L0576 |       }
+L0577 |     });
+L0578 |     await wait(40);
+L0579 |     scope.guard();
+L0580 |     const clearButton = entry.el.querySelector('.ant-select-clear,.ant-select-selection__clear,.ant-cascader-picker-clear,.ant-picker-clear,.ant-calendar-picker-clear,.el-icon-circle-close,.el-select__caret.is-show-close,[aria-label="clear"],[aria-label="Clear"]');
+L0581 |     if (!clearButton) throw problem("UNDO_UNSUPPORTED", "网页没有提供清空按钮，请手动撤销");
+L0582 |     scope.act(() => activate(clearButton));
+L0583 |     const cleared = await until(() => read(entry) === "", { timeout: 1600, guard: scope.guardStructure });
+L0584 |     if (!cleared) throw problem("VALUE_NOT_RETAINED", "网站未清空此字段，请手动撤销");
+L0585 |     scope.expected = ""; scope.committed = true;
+L0586 |   }
+L0587 |   async function chooseCalendarDate(entry, value, scope) {
+L0588 |     const parts = dateParts(value);
+L0589 |     if (!parts) throw problem("DATE_INVALID", "日期不存在或格式不正确");
+L0590 |     const panel = () => currentMenu(entry) || scope.menu;
+L0591 |     const firstVisible = (selector) => [...panel().querySelectorAll(selector)].find(visible);
+L0592 |     const press = async (node) => {
+L0593 |       if (!node || !visible(node)) throw problem("DATE_UNSUPPORTED", "未找到日期面板中的目标，请手动核对");
+L0594 |       await mutate(entry, scope, () => node.click());
+L0595 |       scope.menu = currentMenu(entry) || scope.menu;
+L0596 |     };
+L0597 |     const yearButton = firstVisible('.ant-calendar-year-select,.ant-calendar-month-panel-year-select,.ant-picker-year-btn,.el-date-picker__header-label');
+L0598 |     if (!yearButton) throw problem("DATE_UNSUPPORTED", "此日期面板无法安全选择年份");
+L0599 |     await press(yearButton);
+L0600 |     const yearSelector = '.ant-calendar-year-panel-year,.ant-picker-year-panel .ant-picker-cell-inner,.year-table .cell';
+L0601 |     for (let attempts = 0; attempts < 30; attempts++) {
+L0602 |       const cells = [...panel().querySelectorAll(yearSelector)].filter(visible).filter((node) => /^\d{4}$/.test(clean(node.textContent)) && !node.closest('.disabled,.is-disabled,.ant-picker-cell-disabled'));
+L0603 |       const target = cells.find((node) => Number(clean(node.textContent)) === parts.year);
+L0604 |       if (target) { await press(target); break; }
+L0605 |       if (!cells.length || attempts === 29) throw problem("DATE_UNSUPPORTED", "年份超出日期面板可选择范围");
+L0606 |       const previous = parts.year < Number(clean(cells[0].textContent));
+L0607 |       await press(firstVisible(previous
+L0608 |         ? '.ant-calendar-year-panel-prev-decade-btn,.ant-picker-header-super-prev-btn,.el-date-picker__prev-btn.el-icon-d-arrow-left'
+L0609 |         : '.ant-calendar-year-panel-next-decade-btn,.ant-picker-header-super-next-btn,.el-date-picker__next-btn.el-icon-d-arrow-right'));
+L0610 |     }
+L0611 |     const monthSelector = '.ant-calendar-month-panel-month,.ant-picker-month-panel .ant-picker-cell-inner,.month-table .cell';
+L0612 |     let months = [...panel().querySelectorAll(monthSelector)].filter(visible);
+L0613 |     if (!months.length) {
+L0614 |       const monthButton = firstVisible('.ant-calendar-month-select,.ant-picker-month-btn') || [...panel().querySelectorAll('.el-date-picker__header-label')].filter(visible)[1];
+L0615 |       await press(monthButton);
+L0616 |       months = [...panel().querySelectorAll(monthSelector)].filter(visible);
+L0617 |     }
+L0618 |     if (months.length !== 12) throw problem("DATE_UNSUPPORTED", "日期面板的月份无法唯一识别");
+L0619 |     await press(months[parts.month - 1]);
+L0620 |     if (!/d/i.test(dateFormat(entry))) return;
+L0621 |     const menu = panel();
+L0622 |     const cells = [...menu.querySelectorAll('.ant-calendar-date,.ant-picker-date-panel .ant-picker-cell-inner,.el-date-table td.available span')].filter(visible);
+L0623 |     const candidates = cells.filter((node) => {
+L0624 |       const cell = node.closest("td") || node;
+L0625 |       return Number(clean(node.textContent)) === parts.day && !cell.matches('.disabled,.is-disabled,.ant-picker-cell-disabled,.prev-month,.next-month,.ant-calendar-last-month-cell,.ant-calendar-next-month-btn-day')
+L0626 |         && (!cell.classList.contains("ant-picker-cell") || cell.classList.contains("ant-picker-cell-in-view"));
+L0627 |     });
+L0628 |     // Range popups can show two months. Use the titled date when available.
+L0629 |     const titled = candidates.filter((node) => {
+L0630 |       const title = node.closest("td")?.getAttribute("title") || node.getAttribute("title") || "";
+L0631 |       const parsed = dateParts(title);
+L0632 |       return parsed && parsed.year === parts.year && parsed.month === parts.month && parsed.day === parts.day;
+L0633 |     });
+L0634 |     await press(titled[0] || candidates[0]);
+L0635 |   }
+L0636 |   async function writeDate(entry, value, undo, scope) {
+L0637 |     const inputs = dateInputs(entry);
+L0638 |     if (undo && !value) {
+L0639 |       if (entry.adapter === "my97-date" || entry.adapter === "native-date") {
+L0640 |         await mutate(entry, scope, () => inputs.forEach((input) => setValue(input, "")));
+L0641 |         scope.committed = true; return;
+L0642 |       }
+L0643 |       await clearWidget(entry, scope); return;
+L0644 |     }
+L0645 |     const values = parseValues(value);
+L0646 |     if (values.length !== inputs.length) throw problem("DATE_INVALID", "日期范围需要开始和结束两个日期");
+L0647 |     const formatted = values.map((item) => formatDate(item, dateFormat(entry)));
+L0648 |     if (entry.adapter === "my97-date" || entry.adapter === "native-date") {
+L0649 |       await mutate(entry, scope, () => inputs.forEach((input, index) => setValue(input, formatted[index])));
+L0650 |       scope.committed = true; return;
+L0651 |     }
+L0652 |     if (inputs.every((input) => !input.readOnly)) {
+L0653 |       for (let index = 0; index < inputs.length; index++) {
+L0654 |         await mutate(entry, scope, () => { inputs[index].focus(); setValue(inputs[index], formatted[index]); enter(inputs[index]); inputs[index].blur(); });
+L0655 |       }
+L0656 |       scope.menu = currentMenu(entry);
+L0657 |       scope.committed = true; return;
+L0658 |     }
+L0659 |     await openMenu(entry, scope);
+L0660 |     const panelInputs = [...scope.menu.querySelectorAll('.ant-calendar-input,input.el-input__inner')].filter((input) => visible(input) && !input.readOnly && !input.disabled);
+L0661 |     if (formatted.length === 1 && panelInputs.length && /d/i.test(dateFormat(entry))) {
+L0662 |       for (let index = 0; index < formatted.length; index++) {
+L0663 |         await mutate(entry, scope, () => { panelInputs[index].focus(); setValue(panelInputs[index], formatted[index]); enter(panelInputs[index]); });
+L0664 |       }
+L0665 |     } else {
+L0666 |       for (const item of formatted) await chooseCalendarDate(entry, item, scope);
+L0667 |     }
+L0668 |     const confirm = [...(currentMenu(entry) || scope.menu).querySelectorAll('button,.ant-calendar-ok-btn')].find((node) => visible(node) && !node.disabled && /^(确定|确认|OK|Confirm)$/i.test(clean(node.textContent)));
+L0669 |     if (confirm) await mutate(entry, scope, () => confirm.click());
+L0670 |     scope.committed = true;
+L0671 |   }
+L0672 |   async function writeCascader(entry, value, undo, scope) {
+L0673 |     if (undo && !value) { await clearWidget(entry, scope); return; }
+L0674 |     const values = parseValues(value);
+L0675 |     if (!values.length || values.some((item) => !item.trim())) throw problem("ANSWER_INVALID", "请选择完整的级联路径");
+L0676 |     await openMenu(entry, scope);
+L0677 |     for (let index = 0; index < values.length; index++) {
+L0678 |       let column;
+L0679 |       const ready = await until(() => {
+L0680 |         const menu = currentMenu(entry);
+L0681 |         if (!menu) return false;
+L0682 |         scope.menu = menu;
+L0683 |         column = [...menu.querySelectorAll('.ant-cascader-menu,.el-cascader-menu')].filter(visible)[index];
+L0684 |         return column && menuOptions(entry, column).length ? column : null;
+L0685 |       }, { timeout: 2200, stableFor: 120, guard: scope.guard });
+L0686 |       if (!ready) throw problem("OPTIONS_TIMEOUT", "级联的下一级选项未能展开，请核对", true);
+L0687 |       const selected = exactOption(menuOptions(entry, column), values[index], { location: true });
+L0688 |       await mutate(entry, scope, () => selected.el.click());
+L0689 |     }
+L0690 |     scope.committed = true;
+L0691 |   }
+L0692 |   async function writeChoice(entry, value, undo, scope) {
+L0693 |     const values = entry.multiple ? parseValues(value) : value ? [value] : [];
+L0694 |     const desired = new Set(values.map((item) => exactOption(optionsFor(entry), item).id));
+L0695 |     for (const member of entry.members) {
+L0696 |       if (choiceSelected(member) !== desired.has(idFor(member))) {
+L0697 |         // A selected custom radio may be toggleable; verify will reject a site
+L0698 |         // that does not provide a way to clear it without touching attributes.
+L0699 |         if (entry.multiple || desired.has(idFor(member)) || (undo && !values.length)) await mutate(entry, scope, () => member.click());
+L0700 |       }
+L0701 |     }
+L0702 |     scope.committed = true;
+L0703 |   }
+L0704 |   async function write(entry, value, undo = false, scope) {
+L0705 |     if (entry.kind === "date") return writeDate(entry, value, undo, scope);
+L0706 |     if (entry.kind === "cascader") return writeCascader(entry, value, undo, scope);
+L0707 |     if (entry.kind === "choice") return writeChoice(entry, value, undo, scope);
+L0708 |     if (entry.kind === "custom-select") {
+L0709 |       if (undo && !value) return clearWidget(entry, scope);
+L0710 |       await openMenu(entry, scope);
+L0711 |       await searchMenu(entry, scope, entry.optionsQuery || request.query || "");
+L0712 |       const options = await stableOptions(entry, scope);
+L0713 |       if (!undo && entry.inspectedOptions && JSON.stringify(semanticOptions(options)) !== JSON.stringify(semanticOptions(entry.inspectedOptions))) throw problem("OPTIONS_CHANGED", "候选选项已变化，请重新核对答案");
+L0714 |       const part = descriptor(entry).datePart;
+L0715 |       const dateValue = (text) => Number(clean(text).replace(/年|月|日/g, ""));
+L0716 |       const partMatches = part && /^\d+$/.test(value) ? options.filter((op) => !op.disabled && /^\d+[年月日]?$/.test(op.text) && dateValue(op.text) === Number(value)) : [];
+L0717 |       const selected = partMatches.length === 1 ? partMatches[0] : exactOption(options, value);
+L0718 |       if (request.optionId && selected.id !== request.optionId) throw problem("OPTIONS_CHANGED", "确认的选项与当前候选不一致，请重新核对");
+L0719 |       scope.guard();
+L0720 |       if (!selected.el.isConnected || !visible(selected.el)) throw problem("OPTIONS_CHANGED", "选项刚刚发生变化，请重新核对");
+L0721 |       scope.act(() => selected.el.click());
+L0722 |       scope.committed = true;
+L0723 |       delete entry.activeSearch;
+L0724 |       const confirm = [...scope.menu.querySelectorAll("button")].find((b) => visible(b) && !b.disabled && /^(确定|确认|OK|Confirm)$/i.test(clean(b.textContent)));
+L0725 |       if (confirm) scope.act(() => confirm.click());
+L0726 |       return;
+L0727 |     }
+L0728 |     scope.guard();
+L0729 |     const options = optionsFor(entry);
+L0730 |     if (entry.kind === "select" && !entry.el.multiple) {
+L0731 |       if (undo && !value) setValue(entry.el, "");
+L0732 |       else setValue(entry.el, exactOption(options, value).value);
+L0733 |     } else if (["checkboxes", "radio"].includes(entry.kind) || entry.el.multiple) {
+L0734 |       if (undo && !value && entry.kind === "radio" && entry.el.closest('.ant-radio-group,.el-radio-group')) throw problem("UNDO_UNSUPPORTED", "网页单选组没有取消入口，请手动修改");
+L0735 |       const values = entry.kind === "radio" ? (value ? [value] : []) : value ? JSON.parse(value) : [];
+L0736 |       if (!Array.isArray(values) || !values.every((v) => typeof v === "string")) throw new Error("请按选项选择答案");
+L0737 |       const ids = new Set(values.map((v) => exactOption(options, v).id));
+L0738 |       for (const node of entry.members || [...entry.el.options]) {
+L0739 |         const key = entry.el.multiple ? "selected" : "checked";
+L0740 |         const chosen = ids.has(idFor(node));
+L0741 |         if (node[key] === chosen) continue;
+L0742 |         if (key === "checked" && (chosen || node.type === "checkbox")) await mutate(entry, scope, () => node.click());
+L0743 |         else await mutate(entry, scope, () => {
+L0744 |           node[key] = chosen;
+L0745 |           node.dispatchEvent(new Event("input", { bubbles: true }));
+L0746 |           node.dispatchEvent(new Event("change", { bubbles: true }));
+L0747 |         });
+L0748 |       }
+L0749 |       if (entry.el.multiple) entry.el.dispatchEvent(new Event("change", { bubbles: true }));
+L0750 |     } else setValue(entry.el, value);
+L0751 |   }
+L0752 |   async function verify(entry, expected, undo = false, scope) {
+L0753 |     let observed = false;
+L0754 |     const verified = await until(() => {
+L0755 |       const datePart = descriptor(entry).datePart;
+L0756 |       const actual = read(entry);
+L0757 |       const sameDatePart = datePart && /^\d+[年月日]?$/.test(actual) && /^\d+[年月日]?$/.test(expected) && Number(actual.replace(/[年月日]/g, "")) === Number(expected.replace(/[年月日]/g, ""));
+L0758 |       const sameChoice = ["select", "radio", "checkboxes", "choice", "custom-select"].includes(entry.kind) && !!actual && !!expected && (() => {
+L0759 |         const left = parseValues(actual), right = parseValues(expected);
+L0760 |         return left.length === right.length && right.every((value) => optionMatch(left, value));
+L0761 |       })();
+L0762 |       const samePath = entry.kind === "cascader" && !!actual && !!expected && (() => {
+L0763 |         const left = actual.startsWith("[") ? parseValues(actual) : actual.split(/\s*[\/＞>›]\s*/).filter(Boolean);
+L0764 |         const right = parseValues(expected);
+L0765 |         return left.length === right.length && left.every((value, index) => optionMatch([value], right[index], { location: true }));
+L0766 |       })();
+L0767 |       if (actual !== expected && !sameDatePart && !(entry.kind === "date" && sameDate(actual, expected, entry)) && !sameChoice && !samePath) {
+L0768 |         if (observed) throw problem("VALUE_NOT_RETAINED", "网站未保留填写值，请核对");
+L0769 |         return null;
+L0770 |       }
+L0771 |       observed = true;
+L0772 |       const error = validation(entry);
+L0773 |       if (error && !undo) throw problem("VALIDATION_FAILED", error);
+L0774 |       return "retained";
+L0775 |     }, { timeout: 2600, stableFor: 700, guard: () => {
+L0776 |       assertTarget();
+L0777 |       if (scope.userEdited) throw problem("USER_EDITED", "核验期间检测到手动输入，已保留网页内容");
+L0778 |       resolve(true, expected);
+L0779 |     } });
+L0780 |     return verified ? { status: "verified", code: "VERIFIED", retryable: false, reason: "已在稳定窗口内回读核验" } : fail("网站未保留填写值，请核对", "failed", "VALUE_NOT_RETAINED");
+L0781 |   }
+L0782 |   if (request.action === "scan") {
+L0783 |     if (state.busy) throw new Error("正在填写，请稍后重新识别");
+L0784 |     state.visualWatch?.release();
+L0785 |     state.scanId = crypto.randomUUID();
+L0786 |     state.nodes.clear();
+L0787 |     const fields = discover().map((entry, order) => {
+L0788 |       entry.order = order;
+L0789 |       const field = descriptor(entry);
+L0790 |       entry.baseline = field.value;
+L0791 |       entry.datePart = field.datePart;
+L0792 |       entry.signature = signature(field);
+L0793 |       entry.snapshot = field;
+L0794 |       state.nodes.set(field.fieldId, entry);
+L0795 |       return field;
+L0796 |     });
+L0797 |     const headings = all("h1, h2, h3").filter(visible).map((el) => clean(el.textContent)).filter(Boolean).slice(0, 30);
+L0798 |     const title = document.title;
+L0799 |     const hasApplication = fields.some((f) => /学校|学历|简历|申请|教育|经历|university|education|resume|application|experience/i.test(f.contextPath));
+L0800 |     const login = !hasApplication && fields.some((f) => f.type === "password" || /验证码|captcha/i.test(f.label));
+L0801 |     const jobText = all('[class*="job-description"], [class*="jobDescription"], [data-job-description]').filter(visible).filter((el) => !el.querySelector('input, textarea, select, [contenteditable="true"]')).map((el) => clean(el.textContent)).join("\n").slice(0, 5000);
+L0802 |     return { token: state.token, scanId: state.scanId, url: location.href, title, headings, fields, jobText, pageType: login ? "login" : hasApplication ? "application" : fields.filter((f) => f.supported && !/search|搜索/i.test(f.label)).length > 1 ? "form" : jobText ? "job" : "unknown", iframeCount: all("iframe").length };
+L0803 |   }
+L0804 |   if (request.action === "ping") return { token: state.token, scanId: state.scanId, url: location.href };
+L0805 |   if (request.action === "visual-layout") {
+L0806 |     assertTarget();
+L0807 |     if (request.releaseWatch) {
+L0808 |       if (state.visualWatch?.id === request.releaseWatch) state.visualWatch.release();
+L0809 |       return { released: true };
+L0810 |     }
+L0811 |     if (request.watchId && state.visualWatch?.id !== request.watchId) throw problem("VISUAL_CHANGED", "截图布局观察已过期，请重新识别");
+L0812 |     if (state.busy) throw problem("VISUAL_BUSY", "页面正在填写或读取选项，请稍后再做截图识别");
+L0813 |     if (window !== window.top) throw problem("VISUAL_FRAME", "截图识别只支持当前主页面");
+L0814 |     const viewport = { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY, devicePixelRatio: window.devicePixelRatio || 1, visualScale: window.visualViewport?.scale || 1, visualOffsetX: window.visualViewport?.offsetLeft || 0, visualOffsetY: window.visualViewport?.offsetTop || 0 };
+L0815 |     const clip = (rect) => {
+L0816 |       const x = Math.max(0, rect.left), y = Math.max(0, rect.top);
+L0817 |       const right = Math.min(viewport.width, rect.right), bottom = Math.min(viewport.height, rect.bottom);
+L0818 |       return right > x && bottom > y ? { x, y, width: right - x, height: bottom - y } : null;
+L0819 |     };
+L0820 |     const rectangles = (node) => visible(node) ? [...node.getClientRects()].map(clip).filter(Boolean) : [];
+L0821 |     const redactions = [];
+L0822 |     const watchedNodes = new Set();
+L0823 |     const mask = (node) => { if (node) watchedNodes.add(node); redactions.push(...rectangles(node)); };
+L0824 |     // Geometry only: no control values, text, selectors, names or DOM fragments
+L0825 |     // leave this action. These rectangles are applied to a detached canvas.
+L0826 |     for (const node of all('input, textarea, select, button, output, [role="textbox"], [role="combobox"], [role="listbox"], [role="option"], [role="radio"], [role="checkbox"], [role="switch"], [role="slider"], [role="spinbutton"], [contenteditable]:not([contenteditable="false"]), iframe, frame, embed, object, [data-answer], [data-field-value], [class*="selected-value"], .ant-select-selection-item, .phoenix-select__value, .sd-Select-value')) mask(node);
+L0827 |     const fields = [];
+L0828 |     for (const [localFieldId, entry] of state.nodes) {
+L0829 |       if (!entry.el.isConnected || !visible(entry.el)) continue;
+L0830 |       const field = descriptor(entry);
+L0831 |       if (field.value || ["password", "file"].includes(field.type)) mask(containerFor(entry.el));
+L0832 |       if (!field.supported || field.value) continue;
+L0833 |       if (signature(field) !== entry.signature) throw problem("VISUAL_CHANGED", "页面问题或选项已变化，请更新问题后再截图");
+L0834 |       const nodes = entry.members?.length ? entry.members : [entry.el];
+L0835 |       nodes.forEach((node) => watchedNodes.add(node));
+L0836 |       const rects = nodes.flatMap(rectangles);
+L0837 |       if (!rects.length) continue;
+L0838 |       const x = Math.min(...rects.map((r) => r.x)), y = Math.min(...rects.map((r) => r.y));
+L0839 |       const rect = { x, y, width: Math.max(...rects.map((r) => r.x + r.width)) - x, height: Math.max(...rects.map((r) => r.y + r.height)) - y };
+L0840 |       const center = document.elementFromPoint(Math.min(viewport.width - 1, rect.x + rect.width / 2), Math.min(viewport.height - 1, rect.y + rect.height / 2));
+L0841 |       const onTop = nodes.some((node) => node === center || node.contains(center) || center === node.getRootNode()?.host);
+L0842 |       // A modal, opaque frame, or overlay covering the field is not a visible candidate.
+L0843 |       if (onTop && fields.length < 30) fields.push({ localFieldId, rect });
+L0844 |     }
+L0845 |     if (redactions.length > 5000) throw problem("VISUAL_TOO_LARGE", "当前页面内容过多，无法完整遮盖，请继续使用网页文字识别");
+L0846 |     const unique = [...new Map(redactions.map((rect) => [JSON.stringify(rect), rect])).values()];
+L0847 |     if (request.startWatch) {
+L0848 |       if (state.visualWatch) throw problem("VISUAL_BUSY", "此页面已有截图识别，请稍后重试");
+L0849 |       if (typeof request.startWatch !== "string" || request.startWatch.length > 80) throw problem("VISUAL_CHANGED", "无效的截图观察标识");
+L0850 |       const watch = { id: request.startWatch, changed: false };
+L0851 |       let frame;
+L0852 |       let timeout;
+L0853 |       const invalidate = () => { watch.changed = true; };
+L0854 |       const geometry = () => JSON.stringify([innerWidth, innerHeight, scrollX, scrollY, devicePixelRatio, visualViewport?.scale, visualViewport?.offsetLeft, visualViewport?.offsetTop, [...watchedNodes].map((node) => node.isConnected ? [...node.getClientRects()].map((r) => [r.x, r.y, r.width, r.height]) : null)]);
+L0855 |       const initial = geometry();
+L0856 |       const observeFrame = () => { if (geometry() !== initial) invalidate(); frame = requestAnimationFrame(observeFrame); };
+L0857 |       const observer = new MutationObserver(invalidate);
+L0858 |       // Labels can change through aria-label, placeholder, name, or framework
+L0859 |       // attributes without moving a control. Observe every attribute so even a
+L0860 |       // transient change cannot be mistaken for the original question.
+L0861 |       const options = { subtree: true, childList: true, characterData: true, attributes: true };
+L0862 |       observer.observe(document.documentElement, options);
+L0863 |       for (const host of all("*")) if (host.shadowRoot) observer.observe(host.shadowRoot, options);
+L0864 |       for (const name of ["scroll", "resize", "input", "change"]) window.addEventListener(name, invalidate, true);
+L0865 |       window.visualViewport?.addEventListener("resize", invalidate);
+L0866 |       window.visualViewport?.addEventListener("scroll", invalidate);
+L0867 |       watch.release = () => {
+L0868 |         cancelAnimationFrame(frame); clearTimeout(timeout); observer.disconnect();
+L0869 |         for (const name of ["scroll", "resize", "input", "change"]) window.removeEventListener(name, invalidate, true);
+L0870 |         window.visualViewport?.removeEventListener("resize", invalidate);
+L0871 |         window.visualViewport?.removeEventListener("scroll", invalidate);
+L0872 |         if (state.visualWatch === watch) state.visualWatch = null;
+L0873 |       };
+L0874 |       state.visualWatch = watch;
+L0875 |       frame = requestAnimationFrame(observeFrame);
+L0876 |       // Abandoned captures must not leave observers running after cancellation,
+L0877 |       // extension reload, or a lost message response.
+L0878 |       timeout = setTimeout(watch.release, 5000);
+L0879 |     }
+L0880 |     return { viewport, fields, redactions: unique, ...(state.visualWatch ? { watchId: state.visualWatch.id, changed: state.visualWatch.changed } : {}) };
+L0881 |   }
+L0882 |   if (request.action === "changes") {
+L0883 |     assertTarget();
+L0884 |     const currentEntries = discover();
+L0885 |     return {
+L0886 |       added: currentEntries.filter((entry) => !state.nodes.has(idFor(entry.el))).length,
+L0887 |       changed: [...state.nodes.entries()].filter(([, entry]) => !entry.el.isConnected || signature(descriptor(entry)) !== entry.signature || !visible(entry.el)).map(([id]) => id)
+L0888 |     };
+L0889 |   }
+L0890 |   if (request.action === "operation-result") {
+L0891 |     assertTarget();
+L0892 |     return state.operations.get(request.operationId) || { status: "unknown", reason: "上次操作未能确认，请在网页核对后重新识别" };
+L0893 |   }
+L0894 |   if (request.action === "locate") {
+L0895 |     const entry = resolve(false);
+L0896 |     entry.el.scrollIntoView({ block: "center", behavior: "smooth" });
+L0897 |     entry.el.animate([{ outline: "3px solid #167c68" }, { outline: "3px solid transparent" }], { duration: 1800 });
+L0898 |     return { status: "located" };
+L0899 |   }
+L0900 |   if (request.action === "inspect-options") {
+L0901 |     assertTarget();
+L0902 |     if (state.busy) return fail("此页面已有操作正在进行", "skipped", "BUSY", true);
+L0903 |     state.busy = true;
+L0904 |     let entry;
+L0905 |     let scope;
+L0906 |     let result;
+L0907 |     let restored = false;
+L0908 |     const focused = document.activeElement;
+L0909 |     try {
+L0910 |       entry = resolve();
+L0911 |       if (!["custom-select", "cascader"].includes(entry.kind)) return { status: "inspected", field: descriptor(entry), options: optionsFor(entry), restored: true };
+L0912 |       scope = transaction(entry, read(entry));
+L0913 |       await openMenu(entry, scope);
+L0914 |       if (request.query !== undefined && (typeof request.query !== "string" || request.query.length > 200 || /密码|验证码|password|captcha/i.test(entry.snapshot.label))) throw problem("UNSAFE_QUERY", "无法安全使用此搜索词");
+L0915 |       await searchMenu(entry, scope, request.query || "");
+L0916 |       const options = (await stableOptions(entry, scope)).map(({ el, ...option }) => option);
+L0917 |       scope.guard();
+L0918 |       restored = await restoreMenu(entry, scope);
+L0919 |       if (!restored) throw problem("MENU_RESTORE_FAILED", "已读取候选，但菜单无法安全恢复，请在网页关闭菜单后重新识别");
+L0920 |       scope.guard();
+L0921 |       entry.inspectedOptions = options;
+L0922 |       entry.optionsQuery = request.query || "";
+L0923 |       const field = descriptor(entry);
+L0924 |       entry.snapshot = field;
+L0925 |       entry.signature = signature(field);
+L0926 |       result = { status: "inspected", code: "OPTIONS_INSPECTED", retryable: false, field, options, query: entry.optionsQuery, restored: true, rebound: !!entry.rebound };
+L0927 |     } catch (error) {
+L0928 |       result = fail(error.message, error.code === "USER_EDITED" ? "skipped" : "failed", error.code, !!error.retryable);
+L0929 |     } finally {
+L0930 |       if (scope) {
+L0931 |         if (!restored) restored = await restoreMenu(entry, scope);
+L0932 |         scope.release();
+L0933 |         if (!scope.userEdited && focused?.isConnected && focused !== document.body) focused.focus({ preventScroll: true });
+L0934 |       }
+L0935 |       state.busy = false;
+L0936 |     }
+L0937 |     return { ...result, restored };
+L0938 |   }
+L0939 |   if (request.action === "fill" || request.action === "undo") {
+L0940 |     assertTarget();
+L0941 |     if (state.operations.has(request.operationId)) return state.operations.get(request.operationId);
+L0942 |     if (state.busy) return fail("此页面已有填写操作正在进行", "skipped", "BUSY", true);
+L0943 |     state.busy = true;
+L0944 |     let result;
+L0945 |     let entry;
+L0946 |     let before;
+L0947 |     let scope;
+L0948 |     try {
+L0949 |       entry = resolve(true, request.action === "undo" ? request.expected : undefined);
+L0950 |       before = read(entry);
+L0951 |       const undo = request.action === "undo";
+L0952 |       if (before !== (undo ? request.expected : entry.baseline) || (!undo && before !== "")) result = fail("网页已有内容或已被修改，保留原值", "skipped", "USER_EDITED");
+L0953 |       else {
+L0954 |         if (typeof request.value !== "string" || (!undo && !request.value.trim())) throw problem("ANSWER_INVALID", "答案为空或格式不正确");
+L0955 |         const maxLength = descriptor(entry).constraints.maxLength;
+L0956 |         if (maxLength && request.value.length > maxLength) throw problem("ANSWER_TOO_LONG", "答案超过网页字数限制");
+L0957 |         scope = transaction(entry, before);
+L0958 |         await write(entry, request.value, undo, scope);
+L0959 |         result = { ...await verify(entry, request.value, undo, scope), before, after: read(entry), rebound: !!entry.rebound, retries: scope.retries || 0 };
+L0960 |       }
+L0961 |     } catch (error) {
+L0962 |       result = { ...fail(error.message, error.code === "USER_EDITED" ? "skipped" : "failed", error.code, !!error.retryable), ...(entry ? { before, after: descriptor(entry).value, rebound: !!entry.rebound } : {}) };
+L0963 |     } finally {
+L0964 |       if (scope) { await restoreMenu(entry, scope); scope.release(); }
+L0965 |       state.busy = false;
+L0966 |     }
+L0967 |     state.operations.set(request.operationId, result);
+L0968 |     if (state.operations.size > 500) state.operations.delete(state.operations.keys().next().value);
+L0969 |     return result;
+L0970 |   }
+L0971 |   throw new Error("不支持的申请助手操作");
+L0972 | }
+L0973 | 

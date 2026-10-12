@@ -1,0 +1,7 @@
+body { margin: 24px; font-family: Arial, sans-serif; }
+main { width: 720px; }
+h1 { font-size: 22px; }
+.fixture-field { margin: 14px 0; }
+.fixture-field > label { display: block; margin-bottom: 8px; }
+.ant-form-item { margin-bottom: 18px; }
+.el-form-item { margin-bottom: 18px; }

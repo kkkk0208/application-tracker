@@ -1,0 +1,698 @@
+Application Tracker / BROWSER_TESTS_FIXTURES
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/scripts/extension-tests.mjs
+- application-tracker-extension/scripts/job-info-browser-tests.mjs
+- application-tracker-extension/scripts/real-page-tests.mjs
+- application-tracker-extension/scripts/sanitize-real-page.mjs
+
+========================================================================
+FILE: application-tracker-extension/scripts/extension-tests.mjs
+SHA256: 5a8ef0e1d1ab91e045b6b4bf2e5a0e24c7b2d6a51395a33a2520ecd824d4a269
+LINES: 323
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { mkdtemp, cp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir, tmpdir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | const require = createRequire(import.meta.url);
+L0008 | let playwright;
+L0009 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0010 | const root = path.resolve(import.meta.dirname, "..");
+L0011 | const fixture = '<!doctype html><html><head><meta charset="utf-8"><title>示例公司 · 分析师申请</title></head><body><form><section><h2>基本信息</h2><label>姓名<input id="name" required></label><label>邮箱<input id="email" type="email"></label></section><section><h2>硕士教育</h2><label>学校名称<input id="school"></label></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label><label>奖惩情况<textarea id="awards"></textarea></label></section></form><iframe src="/child"></iframe></body></html>';
+L0012 | const server = createServer((req, res) => {
+L0013 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0014 |   if (req.url === "/child") return res.end('<label>个人网站<input id="website"></label>');
+L0015 |   if (req.url === "/cross") return res.end(fixture.replace('src="/child"', `src="http://localhost:${server.address().port}/child"`));
+L0016 |   res.end(fixture);
+L0017 | });
+L0018 | let context;
+L0019 | let temporary;
+L0020 | try {
+L0021 |   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+L0022 |   const origin = `http://127.0.0.1:${server.address().port}`;
+L0023 |   temporary = await mkdtemp(path.join(tmpdir(), "application-assistant-test-"));
+L0024 |   const extensionPath = path.join(temporary, "extension");
+L0025 |   await cp(root, extensionPath, { recursive: true, filter: (source) => !["test-artifacts", "node_modules", ".git"].includes(path.basename(source)) });
+L0026 |   const manifest = JSON.parse(await readFile(path.join(extensionPath, "manifest.json"), "utf8"));
+L0027 |   manifest.host_permissions.push("http://127.0.0.1/*");
+L0028 |   await writeFile(path.join(extensionPath, "manifest.json"), JSON.stringify(manifest));
+L0029 |   // Always use a new disposable profile, including when using installed Chrome.
+L0030 |   const browserChoice = process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : { channel: process.platform === "win32" ? "chrome" : "chromium" };
+L0031 |   const bundledArgs = browserChoice.channel === "chromium" ? [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`] : [];
+L0032 |   context = await playwright.chromium.launchPersistentContext(path.join(temporary, "profile"), { ...browserChoice, headless: true, ignoreDefaultArgs: ["--disable-extensions"], args: ["--enable-unsafe-extension-debugging", ...bundledArgs] });
+L0033 |   context.setDefaultTimeout(15000);
+L0034 |   let extensionId = context.serviceWorkers().find((worker) => worker.url().startsWith("chrome-extension://"))?.url().split("/")[2];
+L0035 |   if (!extensionId) {
+L0036 |     // Extensions is a browser-target CDP domain, not a page-target domain.
+L0037 |     // This also supports Chrome versions that removed --load-extension.
+L0038 |     const cdp = await context.browser().newBrowserCDPSession();
+L0039 |     try { extensionId = (await cdp.send("Extensions.loadUnpacked", { path: extensionPath })).id; }
+L0040 |     finally { await cdp.detach(); }
+L0041 |   }
+L0042 |   // Wake MV3 through a real extension message; an idle worker need not start
+L0043 |   // merely because an unpacked extension has been registered.
+L0044 |   const recordsPage = await context.newPage();
+L0045 |   await recordsPage.goto(`chrome-extension://${extensionId}/src/records/records.html`);
+L0046 |   await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).replaceAllRecords([]));
+L0047 |   const worker = context.serviceWorkers().find((item) => item.url().startsWith("chrome-extension://")) || await context.waitForEvent("serviceworker", { predicate: (item) => item.url().startsWith("chrome-extension://"), timeout: 15000 });
+L0048 |   assert.equal(new URL(worker.url()).host, extensionId);
+L0049 |   assert.ok(worker.url().endsWith("/src/assistant/background.js"));
+L0050 |   console.log(`Runtime: Chrome ${context.browser().version()}, real MV3 worker ${extensionId}, disposable profile`);
+L0051 |   const target = await context.newPage(); await target.goto(origin + "/apply");
+L0052 |   const ids = await worker.evaluate(async (url) => { const tabs = await chrome.tabs.query({}); const tab = tabs.find((t) => t.url === url); return { tabId: tab.id, windowId: tab.windowId }; }, origin + "/apply");
+L0053 |   const originalProfile = { fullNameZh: "示例申请人", email: "profile@example.com", masterUniversityZh: "示例大学", website: "https://portfolio.example.com", commonAnswers: { selfIntroduction: { zh: "这是一段待核对的自我介绍。", en: "" } } };
+L0054 |   await worker.evaluate(async ({ ids, profile }) => {
+L0055 |     await chrome.storage.local.set({ "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false }, "applicationTracker.questionMemory": [{ id: "legacy-one", question: "其他技能", answer: "SQL", language: "zh", pageUrl: "https://example.com/apply" }] });
+L0056 |     await chrome.storage.session.set({ [`applicationTracker.assistant.target.${ids.windowId}`]: ids.tabId });
+L0057 |   }, { ids, profile: originalProfile });
+L0058 |   const panel = await context.newPage();
+L0059 |   const errors = []; panel.on("pageerror", (error) => errors.push(error.message));
+L0060 |   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
+L0061 |   const createRecords = (page, prefix) => page.evaluate(async (prefix) => {
+L0062 |     const { saveNewRecord } = await import(chrome.runtime.getURL("src/storage.js"));
+L0063 |     return Promise.all(Array.from({ length: 8 }, (_, index) => saveNewRecord({ company: `${prefix}-${index}`, role: "测试岗位", source: "company_portal", portalLink: "https://example.com/apply", appliedDate: "2026-09-21", status: "applied" })));
+L0064 |   }, prefix);
+L0065 |   const [leftRecords] = await Promise.all([createRecords(panel, "panel"), createRecords(recordsPage, "records")]);
+L0066 |   await Promise.all([
+L0067 |     panel.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { status: "oa" }); }, leftRecords[0].id),
+L0068 |     recordsPage.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { notes: "另一页面的更新" }); }, leftRecords[0].id)
+L0069 |   ]);
+L0070 |   const queuedRecords = await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).getRecords());
+L0071 |   assert.equal(queuedRecords.length, 16);
+L0072 |   assert.equal(new Set(queuedRecords.map((record) => record.id)).size, 16);
+L0073 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).status, "oa");
+L0074 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).notes, "另一页面的更新");
+L0075 |   console.log("PASS real background queue preserves concurrent writes and independent patches across extension pages");
+L0076 |   await panel.locator("#prepare").click();
+L0077 |   await panel.locator("#questions .question").first().waitFor();
+L0078 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0079 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0080 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
+L0081 |   assert.match(await panel.locator("#fill").textContent(), /5/);
+L0082 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0083 |   const introduction = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: "自我介绍的答案", exact: true }) });
+L0084 |   assert.equal(await introduction.locator("[data-answer]").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
+L0085 |   assert.equal(await introduction.locator("[data-selected]").isChecked(), true, "An existing personal narrative belongs in the one-confirmation batch with AI disabled");
+L0086 |   for (const selector of ["#name", "#email", "#school", "#intro", "#awards"]) assert.equal(await target.locator(selector).inputValue(), "", "Preparing the preview must not write to the application form");
+L0087 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0088 |   console.log("PASS real extension previews five local answers including personal narrative across both frames without writing before confirmation");
+L0089 |   await target.locator("#email").fill("user-change@example.com");
+L0090 |   const versionCheck = await panel.evaluate(async (windowId) => {
+L0091 |     const { versionOf } = await import(chrome.runtime.getURL("src/assistant/planner.js"));
+L0092 |     const { getMemories, loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0093 |     return { planned: (await loadSession(windowId)).memoryVersion, stored: versionOf(await getMemories()) };
+L0094 |   }, ids.windowId);
+L0095 |   assert.equal(versionCheck.planned, versionCheck.stored, "Chrome storage round-trip must preserve the memory version after migration");
+L0096 |   await panel.locator("#fill").click();
+L0097 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.querySelectorAll("#resultList .result-row").length === 5);
+L0098 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
+L0099 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
+L0100 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0101 |   assert.equal(await target.locator("#intro").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
+L0102 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
+L0103 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
+L0104 |   console.log("PASS one confirmation writes and verifies all previewed answers while preserving manual webpage edits");
+L0105 |   const profileAfter = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.profile"))["applicationTracker.profile"]);
+L0106 |   assert.deepEqual(profileAfter, originalProfile);
+L0107 |   const memories = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.assistant.memories.v2"))["applicationTracker.assistant.memories.v2"]);
+L0108 |   assert.equal(memories.length, 1); assert.equal(memories[0].confirmed, false);
+L0109 |   console.log("PASS fill never edits profile or automatically promotes learned answers");
+L0110 |   await panel.locator("#undo").click();
+L0111 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && [...document.querySelectorAll("#resultList .result-row p")].filter((node) => node.textContent === "已撤销").length === 4);
+L0112 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
+L0113 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0114 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0115 |   console.log("PASS extension undo restores only assistant-written fields");
+L0116 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0117 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0118 |   await panel.setViewportSize({ width: 420, height: 1000 }); await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
+L0119 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0120 |   await panel.setViewportSize({ width: 320, height: 900 });
+L0121 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0122 |   console.log("PASS side panel layout fits 320px and 420px widths");
+L0123 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor();
+L0124 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0125 |   console.log("PASS extension session restores after closing/reopening its document");
+L0126 |   await target.reload();
+L0127 |   await panel.waitForFunction(() => document.getElementById("fill").disabled);
+L0128 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
+L0129 |   console.log("PASS navigation invalidates the old fill plan");
+L0130 | 
+L0131 |   // An inactive extension tab executes the real popup document while preserving
+L0132 |   // the active application tab, then is destroyed to model popup dismissal.
+L0133 |   const openPopupDocument = async () => {
+L0134 |     await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
+L0135 |     const opened = context.waitForEvent("page");
+L0136 |     await worker.evaluate((url) => chrome.tabs.create({ url, active: false }), `chrome-extension://${extensionId}/src/popup/popup.html`);
+L0137 |     const popup = await opened;
+L0138 |     popup.on("pageerror", (error) => errors.push(error.message));
+L0139 |     await popup.waitForLoadState();
+L0140 |     await popup.waitForFunction(() => !!document.querySelector('[name="portalLink"]').value);
+L0141 |     return popup;
+L0142 |   };
+L0143 |   let popup = await openPopupDocument();
+L0144 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0145 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0146 |   assert.equal(await popup.locator('[data-job-source="company"]').textContent(), "网页标题");
+L0147 |   await popup.locator('[name="company"]').fill("草稿测试公司");
+L0148 |   assert.equal(await popup.locator('[data-job-source="company"]').isVisible(), false);
+L0149 |   await popup.locator('[name="role"]').fill("草稿测试岗位");
+L0150 |   await popup.locator('[name="notes"]').fill("最后一次输入后立即关闭");
+L0151 |   await popup.close();
+L0152 |   popup = await openPopupDocument();
+L0153 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
+L0154 |   assert.equal(await popup.locator('[name="role"]').inputValue(), "草稿测试岗位");
+L0155 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "最后一次输入后立即关闭");
+L0156 |   assert.match(await popup.locator("#saveMessage").textContent(), /恢复/);
+L0157 |   await popup.close();
+L0158 |   await target.goto(origin + "/apply?jobId=another-role");
+L0159 |   popup = await openPopupDocument();
+L0160 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0161 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "");
+L0162 |   await popup.close();
+L0163 |   await target.goto(origin + "/apply");
+L0164 |   popup = await openPopupDocument();
+L0165 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
+L0166 |   await popup.locator("#clearDraft").click();
+L0167 |   await popup.waitForFunction(() => document.getElementById("saveMessage").textContent.includes("已清空草稿"));
+L0168 |   await popup.close();
+L0169 |   popup = await openPopupDocument();
+L0170 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0171 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0172 |   await popup.close();
+L0173 |   console.log("PASS real popup document restores after destruction, isolates job IDs and honors explicit clearing");
+L0174 |   await target.evaluate(() => { document.title = "填写简历"; });
+L0175 |   popup = await openPopupDocument();
+L0176 |   await popup.locator("#recentJobBox").waitFor({ state: "visible" });
+L0177 |   const currentLink = await popup.locator('[name="portalLink"]').inputValue();
+L0178 |   await popup.locator("#recentJob").selectOption("0");
+L0179 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0180 |   assert.equal(await popup.locator('[data-job-source="role"]').textContent(), "最近岗位");
+L0181 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), currentLink);
+L0182 |   const recent = await worker.evaluate(async () => (await chrome.storage.session.get("applicationTracker.recentJobs"))["applicationTracker.recentJobs"]);
+L0183 |   assert.equal(recent.length, 1);
+L0184 |   assert.equal(new URL(recent[0].url).search, "");
+L0185 |   await popup.close();
+L0186 |   await target.reload();
+L0187 |   console.log("PASS real popup offers recent jobs on application pages and preserves the current application link");
+L0188 | 
+L0189 |   // Exercise the native download/file-input and MV3 message/storage path, which
+L0190 |   // the DOM tests' Chrome API adapter cannot verify.
+L0191 |   const memoryPage = await context.newPage();
+L0192 |   memoryPage.on("pageerror", (error) => errors.push(error.message));
+L0193 |   await memoryPage.goto(`chrome-extension://${extensionId}/src/memory/memory.html`);
+L0194 |   await memoryPage.locator(".memory-card").first().waitFor();
+L0195 |   const apiKeyFixture = "fixture-key-must-never-be-exported";
+L0196 |   await memoryPage.evaluate(async (apiKey) => {
+L0197 |     const { saveAiSettings } = await import(chrome.runtime.getURL("src/storage.js"));
+L0198 |     await saveAiSettings({ enabled: false, apiKey, model: "gpt-5-mini" });
+L0199 |   }, apiKeyFixture);
+L0200 |   const downloaded = memoryPage.waitForEvent("download");
+L0201 |   await memoryPage.locator("#exportBackup").click();
+L0202 |   const download = await downloaded;
+L0203 |   const backupPath = path.join(temporary, "downloaded-fixture-backup.json");
+L0204 |   await download.saveAs(backupPath);
+L0205 |   const backupText = await readFile(backupPath, "utf8");
+L0206 |   const downloadedBackup = JSON.parse(backupText);
+L0207 |   assert.match(download.suggestedFilename(), /^application-tracker-backup-\d{4}-\d{2}-\d{2}\.json$/);
+L0208 |   assert.equal(downloadedBackup.schemaVersion, 3);
+L0209 |   assert.equal(downloadedBackup.data.records.length, 16);
+L0210 |   assert.equal(downloadedBackup.data.memories.length, 1);
+L0211 |   assert.equal(downloadedBackup.data.profile.email, originalProfile.email);
+L0212 |   assert.ok(!backupText.includes(apiKeyFixture) && !backupText.includes('"apiKey"'));
+L0213 |   const readBackupState = () => memoryPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storageClient.js"))).requestStorageMutation({ operation: "backup.export" }));
+L0214 |   await memoryPage.evaluate(async () => {
+L0215 |     const { saveNewRecord, saveProfile, getProfile } = await import(chrome.runtime.getURL("src/storage.js"));
+L0216 |     const { getMemories, saveMemory } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0217 |     await saveNewRecord({ company: "导出后新增的公司", role: "恢复测试岗位", source: "company_portal", portalLink: "https://example.com/after-backup", appliedDate: "2026-09-21", status: "applied" });
+L0218 |     await saveProfile({ ...await getProfile(), email: "changed-before-restore@example.com" });
+L0219 |     const memory = (await getMemories())[0];
+L0220 |     await saveMemory({ ...memory, answer: "导入前更新的答案" });
+L0221 |   });
+L0222 |   const beforeImport = await readBackupState();
+L0223 |   assert.equal(beforeImport.data.records.length, 17);
+L0224 |   await memoryPage.locator("#importBackup").setInputFiles(backupPath);
+L0225 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
+L0226 |   await memoryPage.locator("#restoreMode").selectOption("replace");
+L0227 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled && document.getElementById("restoreDescription").textContent.includes("替换全部"));
+L0228 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 16 条投递/);
+L0229 |   assert.deepEqual((await readBackupState()).data, beforeImport.data, "A real backup preview must not write data");
+L0230 |   await memoryPage.locator("#confirmRestore").click();
+L0231 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
+L0232 |   assert.deepEqual((await readBackupState()).data, downloadedBackup.data);
+L0233 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
+L0234 |   await memoryPage.locator("#restoreRecovery").waitFor({ state: "visible" });
+L0235 |   await memoryPage.locator("#restoreRecovery").click();
+L0236 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
+L0237 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 17 条投递/);
+L0238 |   await memoryPage.locator("#confirmRestore").click();
+L0239 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
+L0240 |   assert.deepEqual((await readBackupState()).data, beforeImport.data);
+L0241 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
+L0242 |   console.log("PASS real backup download, file preview, replacement and recovery round-trip preserve data and exclude API credentials");
+L0243 | 
+L0244 |   // A host permission allows DOM inspection, but it does not grant the distinct
+L0245 |   // captureVisibleTab privilege. Programmatic activation and opening the popup
+L0246 |   // document above deliberately do not simulate a user extension-action grant.
+L0247 |   await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
+L0248 |   const deniedCapture = await panel.evaluate(async (tabId) => {
+L0249 |     const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0250 |     const { captureVisualContext } = await import(chrome.runtime.getURL("src/assistant/visualCapture.js"));
+L0251 |     const snapshot = await scanPage(tabId);
+L0252 |     try {
+L0253 |       await captureVisualContext(snapshot);
+L0254 |       return { captured: true };
+L0255 |     } catch (error) {
+L0256 |       return { captured: false, code: error.code, message: error.message };
+L0257 |     }
+L0258 |   }, ids.tabId);
+L0259 |   assert.equal(deniedCapture.captured, false);
+L0260 |   assert.equal(deniedCapture.code, "VISUAL_PERMISSION");
+L0261 |   assert.match(deniedCapture.message, /重新点击扩展图标/);
+L0262 |   assert.match(deniedCapture.message, /继续使用网页文字识别/);
+L0263 |   const savedState = await panel.evaluate(async () => JSON.stringify({ local: await chrome.storage.local.get(null), session: await chrome.storage.session.get(null) }));
+L0264 |   assert.equal(savedState.includes("data:image/"), false, "A denied screenshot must not leave image data in extension storage");
+L0265 |   console.log("PASS real screenshot permission denial explains recovery and preserves the text-recognition fallback without storing images");
+L0266 | 
+L0267 |   const aiPage = await context.newPage();
+L0268 |   aiPage.on("pageerror", (error) => errors.push(error.message));
+L0269 |   const priorAiSettings = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
+L0270 |   await aiPage.goto(`chrome-extension://${extensionId}/src/ai/ai.html`);
+L0271 |   await aiPage.waitForFunction(() => document.querySelector('[name="apiKey"]').value === "fixture-key-must-never-be-exported");
+L0272 |   assert.equal(await aiPage.locator('[name="visionEnabled"]').isChecked(), false);
+L0273 |   await aiPage.locator('[name="visionEnabled"]').check();
+L0274 |   await aiPage.locator('button[type="submit"]').click();
+L0275 |   await aiPage.locator("#message").waitFor({ state: "visible" });
+L0276 |   await aiPage.reload();
+L0277 |   await aiPage.waitForFunction(() => document.querySelector('[name="visionEnabled"]').checked);
+L0278 |   const optedIn = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
+L0279 |   assert.equal(optedIn.visionEnabled, true);
+L0280 |   assert.equal(optedIn.enabled, false, "Screenshot opt-in must not independently enable AI calls");
+L0281 |   assert.equal(optedIn.model, priorAiSettings.model);
+L0282 |   assert.equal(optedIn.apiKey, priorAiSettings.apiKey);
+L0283 |   await aiPage.locator('[name="visionEnabled"]').uncheck();
+L0284 |   await aiPage.locator('button[type="submit"]').click();
+L0285 |   await aiPage.locator("#message").waitFor({ state: "visible" });
+L0286 |   assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]), priorAiSettings);
+L0287 |   await aiPage.close();
+L0288 |   console.log("PASS real AI settings screen persists screenshot opt-in and opt-out without enabling AI or changing the model and key");
+L0289 |   await target.goto(origin + "/cross");
+L0290 |   await target.frameLocator("iframe").locator("#website").waitFor();
+L0291 |   await panel.locator("#prepare").click();
+L0292 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("1/2"));
+L0293 |   const crossOrigin = `http://localhost:${server.address().port}`;
+L0294 |   assert.equal(await panel.getByRole("button", { name: `允许读取内嵌表单（localhost:${server.address().port}）`, exact: true }).count(), 1);
+L0295 |   const crossState = await panel.evaluate(async (windowId) => {
+L0296 |     const { loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0297 |     const saved = await loadSession(windowId);
+L0298 |     return { failedFrames: saved.snapshot.failedFrames, fields: saved.snapshot.fields.length, permissions: await chrome.permissions.getAll() };
+L0299 |   }, ids.windowId);
+L0300 |   assert.equal(crossState.failedFrames.length, 1);
+L0301 |   assert.equal(crossState.failedFrames[0].origin, crossOrigin);
+L0302 |   assert.ok(crossState.failedFrames[0].frameId > 0);
+L0303 |   assert.equal(crossState.fields, 5);
+L0304 |   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
+L0305 |   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
+L0306 |   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
+L0307 |   assert.deepEqual(errors, []);
+L0308 |   console.log("Extension end-to-end cases passed: 14");
+L0309 | } catch (error) {
+L0310 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
+L0311 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
+L0312 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
+L0313 |   }
+L0314 |   throw error;
+L0315 | } finally {
+L0316 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
+L0317 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+L0318 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
+L0319 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
+L0320 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+L0321 |   }
+L0322 | }
+L0323 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/job-info-browser-tests.mjs
+SHA256: 847a791d9b1c388cdb5416882e7b43a15b044ce039fb76f63f668f6b197daee8
+LINES: 161
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Job identification acceptance tests. Every response is a sanitized local
+L0002 | // fixture or fictional HTML; no request reaches a real recruitment website.
+L0003 | import assert from "node:assert/strict";
+L0004 | import { readFile } from "node:fs/promises";
+L0005 | import { createRequire } from "node:module";
+L0006 | import { homedir } from "node:os";
+L0007 | import path from "node:path";
+L0008 | import { collectJobSignals } from "../src/jobInfo/collectSignals.js";
+L0009 | import { extractJobInfo } from "../src/jobInfo/extractJobInfo.js";
+L0010 | 
+L0011 | const require = createRequire(import.meta.url);
+L0012 | let playwright;
+L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0014 | const root = path.resolve(import.meta.dirname, "..");
+L0015 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0016 | let passed = 0;
+L0017 | 
+L0018 | try {
+L0019 |   const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: "block" });
+L0020 |   const responses = new Map();
+L0021 |   await context.route("**/*", (route) => {
+L0022 |     const body = responses.get(route.request().url());
+L0023 |     return body !== undefined
+L0024 |       ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body })
+L0025 |       : route.abort();
+L0026 |   });
+L0027 |   const page = await context.newPage();
+L0028 |   async function fixture(html, url = "https://careers.example.test/job/fixture") {
+L0029 |     const requestUrl = new URL(url);
+L0030 |     requestUrl.hash = "";
+L0031 |     responses.set(requestUrl.href, html);
+L0032 |     await page.goto(url, { waitUntil: "domcontentloaded" });
+L0033 |   }
+L0034 |   // Passing the function itself deliberately exercises Chrome-style function
+L0035 |   // serialization: any references to module-local helpers fail in the page.
+L0036 |   const collect = () => page.evaluate(collectJobSignals);
+L0037 |   async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
+L0038 |   const fields = ({ company, role, base }) => ({ company, role, base });
+L0039 |   const documentHtml = (body, head = "") => `<!doctype html><html><head><meta charset="utf-8"><title>Fixture</title>${head}</head><body>${body}</body></html>`;
+L0040 |   const posting = { "@type": "JobPosting", title: "财务实习生", hiringOrganization: { name: "示例科技有限公司" }, jobLocation: { address: { addressLocality: "深圳" } } };
+L0041 |   const jsonLd = (value) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
+L0042 | 
+L0043 |   for (const { file, url, company } of [
+L0044 |     { file: "huarun-runjob.html", url: "https://runjob.crc.com.cn/application/fixture", company: "华润集团" },
+L0045 |     { file: "chinahr-applyjob.html", url: "https://applyjob.chinahr.com/application/fixture" },
+L0046 |     { file: "wintalent-crc.html", url: "https://crc.wintalent.cn/application/fixture" }
+L0047 |   ]) {
+L0048 |     await check(`job identification on sanitized ${file}`, async () => {
+L0049 |       await fixture(await readFile(path.join(root, "test/fixtures/real-pages", file), "utf8"), url);
+L0050 |       const info = extractJobInfo(await collect());
+L0051 |       if (company) assert.equal(info.company, company);
+L0052 |       assert.equal(info.role, "", "Application form names must never be identified as job roles");
+L0053 |       assert.ok(!["填写简历", "简历填写"].includes(info.company));
+L0054 |     });
+L0055 |   }
+L0056 | 
+L0057 |   for (const [name, data] of [
+L0058 |     ["single object", posting],
+L0059 |     ["top-level array", [{ "@type": "WebSite", name: "Example" }, posting]],
+L0060 |     ["nested @graph", { "@context": "https://schema.org", "@graph": [{ "@type": "Organization" }, { "@graph": [posting] }] }]
+L0061 |   ]) {
+L0062 |     await check(`serialized collector reads JSON-LD ${name}`, async () => {
+L0063 |       await fixture(documentHtml("<h1>页面上的另一个职位</h1>", '<script type="application/ld+json">{invalid</script>' + jsonLd(data)));
+L0064 |       const info = extractJobInfo(await collect());
+L0065 |       assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "深圳" });
+L0066 |       assert.deepEqual(info.source, { company: "结构化数据", role: "结构化数据", base: "结构化数据" });
+L0067 |       assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0068 |     });
+L0069 |   }
+L0070 | 
+L0071 |   await check("JSON-LD handles type and jobLocation arrays", async () => {
+L0072 |     await fixture(documentHtml("", jsonLd({ ...posting, "@type": ["Thing", "JobPosting"], jobLocation: [
+L0073 |       { address: { addressRegion: "广东", addressLocality: "深圳" } },
+L0074 |       { address: { addressRegion: "香港", addressLocality: "香港" } }
+L0075 |     ] })));
+L0076 |     const info = extractJobInfo(await collect());
+L0077 |     assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "广东 深圳 / 香港" });
+L0078 |   });
+L0079 | 
+L0080 |   await check("explicit labels beat meta and nearby text is collected", async () => {
+L0081 |     await fixture(documentHtml('<div>公司名称：星海科技有限公司</div><dl><dt>岗位名称</dt><dd>审计助理</dd></dl><div><span>工作地点</span></div><p>深圳</p>', '<meta property="og:title" content="Graduate Analyst | Other Bank Careers"><meta property="og:site_name" content="Other Bank">'));
+L0082 |     const info = extractJobInfo(await collect());
+L0083 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "审计助理", base: "深圳" });
+L0084 |     assert.deepEqual(info.source, { company: "页面标签", role: "页面标签", base: "页面标签" });
+L0085 |   });
+L0086 | 
+L0087 |   await check("visible headings and metadata identify a generic job page", async () => {
+L0088 |     await fixture(documentHtml('<h1>Graduate Analyst</h1><h2 hidden>PRIVATE_HIDDEN_HEADING</h2><div style="display:none"><h1>PRIVATE_HIDDEN_PARENT</h1></div>', '<meta property="og:site_name" content="Fictional Bank"><meta name="twitter:title" content="Graduate Analyst | Fictional Bank Careers">'));
+L0089 |     const signals = await collect();
+L0090 |     const info = extractJobInfo(signals);
+L0091 |     assert.deepEqual(fields(info), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
+L0092 |     assert.equal(info.confidence.company, "medium");
+L0093 |     assert.equal(info.confidence.role, "medium");
+L0094 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_HIDDEN"), false);
+L0095 |   });
+L0096 | 
+L0097 |   await check("collection never reads input values or includes form and editable answers", async () => {
+L0098 |     await fixture(documentHtml(`
+L0099 |       <h1>Graduate Analyst</h1><div class="company-name">Fictional Bank</div>
+L0100 |       <input id="outside-input" value="PRIVATE_INPUT_VALUE">
+L0101 |       <textarea class="job-title">PRIVATE_TEXTAREA_ANSWER</textarea>
+L0102 |       <div contenteditable="true" class="company-name">PRIVATE_EDITABLE_ANSWER<h2>PRIVATE_EDITABLE_HEADING</h2></div>
+L0103 |       <div role="textbox"><h2>PRIVATE_TEXTBOX_HEADING</h2></div>
+L0104 |       <div class="logo" contenteditable="true"><img alt="PRIVATE_EDITABLE_LOGO" width="100" height="20"></div>
+L0105 |       <form><h2>PRIVATE_FORM_HEADING</h2><div>公司名称：PRIVATE_FORM_COMPANY</div><div class="job-title">PRIVATE_FORM_ROLE</div><p>PRIVATE_SAVED_ANSWER</p><label>姓名<input value="PRIVATE_FORM_INPUT"></label></form>
+L0106 |       <div role="form"><div class="company-name">PRIVATE_ROLE_FORM_COMPANY</div></div>
+L0107 |       <div class="ant-form-item"><div class="company-name">PRIVATE_COMPONENT_COMPANY</div><input></div>
+L0108 |       <div class="job-title">PRIVATE_CONTAINER_TEXT<input value="PRIVATE_CONTAINER_INPUT"></div>
+L0109 |     `), "https://careers.example.test/job/privacy?answer=PRIVATE_QUERY_VALUE#PRIVATE_HASH_VALUE");
+L0110 |     await page.evaluate(() => {
+L0111 |       for (const element of document.querySelectorAll("input,textarea")) {
+L0112 |         Object.defineProperty(element, "value", { get() { throw new Error("Job collection read a private input value"); } });
+L0113 |       }
+L0114 |     });
+L0115 |     const signals = await collect();
+L0116 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_"), false, "Job signals must exclude personal answers and URL query/hash data");
+L0117 |     assert.equal(signals.hostname, "careers.example.test");
+L0118 |     assert.equal(signals.pathname, "/job/privacy");
+L0119 |     assert.deepEqual(fields(extractJobInfo(signals)), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
+L0120 |   });
+L0121 | 
+L0122 |   await check("CTgoodjobs keeps its role, company and location adapter", async () => {
+L0123 |     await fixture(documentHtml('<h1>Finance Intern</h1><div class="company"><a>Fictional Capital Limited</a></div><div class="job-location">Hong Kong</div>'), "https://www.ctgoodjobs.hk/job/fictional-role");
+L0124 |     const info = extractJobInfo(await collect());
+L0125 |     assert.deepEqual(fields(info), { company: "Fictional Capital Limited", role: "Finance Intern", base: "Hong Kong" });
+L0126 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0127 |   });
+L0128 | 
+L0129 |   await check("CTgoodjobs keeps the company next to the job heading fallback", async () => {
+L0130 |     await fixture(documentHtml('<section><h1>Finance Intern</h1><p>Fictional Capital Limited</p></section>'), "https://www.ctgoodjobs.hk/job/fictional-nearby");
+L0131 |     const info = extractJobInfo(await collect());
+L0132 |     assert.equal(info.company, "Fictional Capital Limited");
+L0133 |     assert.equal(info.source.company, "页面标签");
+L0134 |   });
+L0135 | 
+L0136 |   await check("JobsDB keeps data-automation selectors", async () => {
+L0137 |     await fixture(documentHtml('<div data-automation="job-detail-title">Graduate Analyst</div><a data-automation="advertiser-name">Fictional Bank Limited</a><span data-automation="job-detail-location">Hong Kong</span>'), "https://hk.jobsdb.com/job/fictional-role");
+L0138 |     const info = extractJobInfo(await collect());
+L0139 |     assert.deepEqual(fields(info), { company: "Fictional Bank Limited", role: "Graduate Analyst", base: "Hong Kong" });
+L0140 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0141 |   });
+L0142 | 
+L0143 |   await check("Moka keeps explicit job page selectors", async () => {
+L0144 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1 class="jobTitle">财务实习生</h1><span class="workLocation">上海</span>'), "https://app.mokahr.com/campus-recruitment/fictional/job");
+L0145 |     const info = extractJobInfo(await collect());
+L0146 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "财务实习生", base: "上海" });
+L0147 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0148 |   });
+L0149 | 
+L0150 |   await check("Moka application wishes take priority over generic campus headings", async () => {
+L0151 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1>投递记录</h1><div class="jobTitle">校园</div><article><span>第 1 志愿</span><strong>2027届-财务专员（上海）</strong><p>状态：投递成功</p></article>'), "https://app.mokahr.com/candidate/fictional/applications");
+L0152 |     const info = extractJobInfo(await collect());
+L0153 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "2027届-财务专员（上海）", base: "" });
+L0154 |     assert.equal(info.confidence.role, "high");
+L0155 |   });
+L0156 | 
+L0157 |   console.log(`Job information browser cases passed: ${passed}`);
+L0158 | } finally {
+L0159 |   await browser.close();
+L0160 | }
+L0161 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/real-page-tests.mjs
+SHA256: c8b2e5f986bc3240d4560c22375c5eaf0dd094dac4849e9dc982769f8393e30f
+LINES: 106
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Real-page scan acceptance test. Loads sanitized copies of real application forms
+L0002 | // (test/fixtures/real-pages/*.html), runs pageBridge "scan", and scores the result
+L0003 | // against the hand-checked answers in *.expected.json.
+L0004 | //   node scripts/real-page-tests.mjs            -> fails (exit 1) below the thresholds
+L0005 | //   node scripts/real-page-tests.mjs --report   -> prints the report only
+L0006 | import { createServer } from "node:http";
+L0007 | import { readFile, readdir } from "node:fs/promises";
+L0008 | import { createRequire } from "node:module";
+L0009 | import { homedir } from "node:os";
+L0010 | import path from "node:path";
+L0011 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0012 | 
+L0013 | const require = createRequire(import.meta.url);
+L0014 | let playwright;
+L0015 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0016 | 
+L0017 | const root = path.resolve(import.meta.dirname, "..");
+L0018 | const dir = path.join(root, "test/fixtures/real-pages");
+L0019 | const reportOnly = process.argv.includes("--report");
+L0020 | const THRESHOLDS = { questionText: 0.95, section: 0.9, repeats: 1, controls: 0.9 };
+L0021 | 
+L0022 | const server = createServer(async (req, res) => {
+L0023 |   const name = decodeURIComponent(new URL(req.url, "http://localhost").pathname).slice(1);
+L0024 |   if (!/^[\w.-]+\.html$/.test(name)) { res.writeHead(404).end(); return; }
+L0025 |   try { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(await readFile(path.join(dir, name))); } catch { res.writeHead(404).end(); }
+L0026 | });
+L0027 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0028 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0029 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0030 | const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+L0031 | await context.route("**/*", (route) => route.request().url().startsWith(origin) ? route.continue() : route.abort());
+L0032 | const page = await context.newPage();
+L0033 | 
+L0034 | const norm = (v) => String(v ?? "").normalize("NFKC").replace(/[\s*＊:：]/g, "").toLowerCase();
+L0035 | const GENERIC = /^(请输入|请选择|请填写|请选择日期|选择日期|未命名问题|pleaseenter|pleaseselect|select|choose)$/;
+L0036 | const sameSection = (a, b) => { const x = norm(a), y = norm(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
+L0037 | const CONTROL_OK = {
+L0038 |   text: (f) => ["text"].includes(f.kind),
+L0039 |   textarea: (f) => f.kind === "textarea",
+L0040 |   select: (f) => ["select", "custom-select"].includes(f.kind),
+L0041 |   "select-2level": (f) => ["select", "custom-select"].includes(f.kind),
+L0042 |   "select+text": (f) => ["select", "custom-select", "text"].includes(f.kind),
+L0043 |   date: (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
+L0044 |   "date-range": (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
+L0045 |   cascader: (f) => f.kind === "cascader" || /cascader/i.test(f.adapter || ""),
+L0046 |   radio: (f) => f.kind === "radio",
+L0047 |   checkbox: (f) => ["checkboxes", "checkbox"].includes(f.kind),
+L0048 |   "popup-chooser": (f) => !f.supported ? !!f.reason : !!f.adapter
+L0049 | };
+L0050 | let failed = false;
+L0051 | const files = (await readdir(dir)).filter((f) => f.endsWith(".expected.json")).sort();
+L0052 | for (const file of files) {
+L0053 |   const expected = JSON.parse(await readFile(path.join(dir, file), "utf8"));
+L0054 |   await page.goto(`${origin}/${expected.fixture}`);
+L0055 |   const scan = await page.evaluate(pageBridge, { action: "scan" });
+L0056 |   const fields = [...scan.fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+L0057 |   const questions = expected.questions.filter((q) => !["none", "file"].includes(q.control));
+L0058 |   const count = (list, key) => list.reduce((m, x) => m.set(key(x), (m.get(key(x)) || 0) + 1), new Map());
+L0059 |   const expText = count(questions, (q) => norm(q.question));
+L0060 |   const gotText = count(fields, (f) => norm(f.question || f.label));
+L0061 |   let textHit = 0; for (const [k, n] of expText) textHit += Math.min(n, gotText.get(k) || 0);
+L0062 |   let sectionHit = 0; const missed = [];
+L0063 |   const expSection = count(questions, (q) => `${q.section}\u0000${norm(q.question)}`);
+L0064 |   for (const [key, n] of expSection) {
+L0065 |     const [section, q] = key.split("\u0000");
+L0066 |     const got = fields.filter((f) => norm(f.question || f.label) === q && sameSection(f.section || f.group, section)).length;
+L0067 |     sectionHit += Math.min(n, got);
+L0068 |     if (got < n) missed.push(`${section} / ${q}`);
+L0069 |   }
+L0070 |   let repeatTotal = 0, repeatHit = 0;
+L0071 |   for (const [key, n] of expSection) {
+L0072 |     if (n < 2) continue;
+L0073 |     repeatTotal++;
+L0074 |     const [section, q] = key.split("\u0000");
+L0075 |     const groups = new Set(fields.filter((f) => norm(f.question || f.label) === q && sameSection(f.section || f.group, section)).map((f) => f.groupIndex ?? f.groupId));
+L0076 |     if (groups.size >= n) repeatHit++;
+L0077 |   }
+L0078 |   let controlTotal = 0, controlHit = 0; const badControls = [];
+L0079 |   for (const q of questions) {
+L0080 |     const check = CONTROL_OK[q.control];
+L0081 |     if (!check) continue;
+L0082 |     controlTotal++;
+L0083 |     // Control type is scored on the question text alone, so a section miss is not counted twice.
+L0084 |     const sameText = fields.filter((f) => norm(f.question || f.label) === norm(q.question));
+L0085 |     const inSection = sameText.filter((f) => sameSection(f.section || f.group, q.section));
+L0086 |     const candidates = inSection.length ? inSection : sameText;
+L0087 |     const ok = candidates.some((f) => check(f) && (q.control === "popup-chooser" || f.supported));
+L0088 |     if (ok) controlHit++; else badControls.push(`${q.section} / ${q.question} (${q.control})`);
+L0089 |   }
+L0090 |   const generic = fields.filter((f) => GENERIC.test(norm(f.question || f.label))).length;
+L0091 |   const ratio = (a, b) => (b ? a / b : 1);
+L0092 |   const result = { questionText: ratio(textHit, questions.length), section: ratio(sectionHit, questions.length), repeats: ratio(repeatHit, repeatTotal), controls: ratio(controlHit, controlTotal) };
+L0093 |   const pct = (x) => `${Math.round(x * 100)}%`;
+L0094 |   console.log(`\n${expected.fixture}  (${questions.length} 道可填的题, 扫描到 ${fields.length} 个字段, 题目是占位文字的 ${generic} 个)`);
+L0095 |   for (const [k, v] of Object.entries(result)) {
+L0096 |     const pass = v >= THRESHOLDS[k];
+L0097 |     if (!pass) failed = true;
+L0098 |     console.log(`  ${pass ? "PASS" : "FAIL"}  ${k.padEnd(12)} ${pct(v).padStart(4)}  (要求 ≥ ${pct(THRESHOLDS[k])})`);
+L0099 |   }
+L0100 |   if (missed.length) console.log(`  未对上的题（前 10 个）：${missed.slice(0, 10).join("；")}`);
+L0101 |   if (badControls.length) console.log(`  控件类型不对或不可填（前 10 个）：${badControls.slice(0, 10).join("；")}`);
+L0102 | }
+L0103 | await browser.close();
+L0104 | server.close();
+L0105 | if (failed && !reportOnly) { console.error("\n真实页面扫描未达标"); process.exit(1); }
+L0106 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/sanitize-real-page.mjs
+SHA256: 0180363effb947192564fd7c3d5c284bea88db6aac81b5715f20fa0a91268cef
+LINES: 72
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Make a test copy of a saved application page with personal data removed.
+L0002 | // Usage: node scripts/sanitize-real-page.mjs <saved-page.html> <slug> [--scrub "词1,词2"]
+L0003 | // Output: test/fixtures/real-pages/<slug>.html   (scripts, links, values, photos and tokens removed)
+L0004 | // The run fails if anything that looks like a phone number, email, ID number or filled value is left.
+L0005 | import { readFile, writeFile, mkdir } from "node:fs/promises";
+L0006 | import { createRequire } from "node:module";
+L0007 | import { homedir } from "node:os";
+L0008 | import path from "node:path";
+L0009 | 
+L0010 | const require = createRequire(import.meta.url);
+L0011 | let playwright;
+L0012 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0013 | const [input, slug] = process.argv.slice(2);
+L0014 | if (!input || !/^[\w-]+$/.test(slug || "")) { console.error("用法: node scripts/sanitize-real-page.mjs <保存的网页.html> <英文短名>"); process.exit(2); }
+L0015 | const scrubIndex = process.argv.indexOf("--scrub");
+L0016 | const extraWords = scrubIndex > 0 ? String(process.argv[scrubIndex + 1] || "").split(/[,，]/).map((w) => w.trim()).filter(Boolean) : [];
+L0017 | const root = path.resolve(import.meta.dirname, "..");
+L0018 | const outDir = path.join(root, "test/fixtures/real-pages");
+L0019 | const raw = (await readFile(input, "utf8")).replace(/<script\b[\s\S]*?<\/script>/gi, "").replace(/<script\b[^>]*\/>/gi, "");
+L0020 | 
+L0021 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0022 | const context = await browser.newContext();
+L0023 | await context.route("**/*", (route) => route.abort());
+L0024 | const page = await context.newPage();
+L0025 | await page.setContent(raw, { waitUntil: "domcontentloaded" });
+L0026 | const result = await page.evaluate((extra) => {
+L0027 |   const PHONE = /(?<!\d)(1[3-9]\d)\d{8}(?!\d)/g, MAIL = /[\w.+-]+@[\w-]+\.[\w.]+/g, IDNO = /(?<!\d)\d{17}[\dXx](?!\d)/g;
+L0028 |   const TEXT_TYPES = new Set(["text", "", "search", "tel", "email", "number", "date", "month", "url", "password", "hidden"]);
+L0029 |   const scrub = (t) => { let v = t.replace(PHONE, "$100000000").replace(MAIL, "user@example.com").replace(IDNO, "000000000000000000"); for (const w of extra) v = v.split(w).join("※"); return v; };
+L0030 |   const walker = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT); const comments = []; while (walker.nextNode()) comments.push(walker.currentNode); comments.forEach((c) => c.remove());
+L0031 |   document.querySelectorAll("script, noscript, link, base, iframe, object, embed").forEach((n) => n.remove());
+L0032 |   document.querySelectorAll("meta").forEach((m) => { if (!m.hasAttribute("charset")) m.remove(); });
+L0033 |   const meta = document.createElement("meta"); meta.setAttribute("charset", "utf-8"); document.head.prepend(meta);
+L0034 |   let removed = 0;
+L0035 |   for (const i of document.querySelectorAll("input")) {
+L0036 |     if (TEXT_TYPES.has((i.getAttribute("type") || "text").toLowerCase()) && i.hasAttribute("value")) { if (i.getAttribute("value").trim()) removed++; i.removeAttribute("value"); }
+L0037 |     i.removeAttribute("checked");
+L0038 |   }
+L0039 |   document.querySelectorAll("option[selected]").forEach((o) => o.removeAttribute("selected"));
+L0040 |   document.querySelectorAll("textarea").forEach((t) => { if (t.textContent.trim()) removed++; t.textContent = ""; });
+L0041 |   document.querySelectorAll(".ant-select-selection-selected-value, .ant-select-selection-item").forEach((n) => { removed++; n.remove(); });
+L0042 |   document.querySelectorAll(".ant-select-selection__placeholder, .ant-select-selection-placeholder").forEach((n) => n.removeAttribute("style"));
+L0043 |   document.querySelectorAll(".ant-cascader-picker-label").forEach((n) => { if (n.textContent.trim()) removed++; n.textContent = ""; });
+L0044 |   document.querySelectorAll(".ant-cascader-input").forEach((n) => { if (!n.getAttribute("placeholder")) n.setAttribute("placeholder", "请选择"); });
+L0045 |   document.querySelectorAll("[class*='-checked'], .is-checked").forEach((n) => n.classList.remove(...[...n.classList].filter((c) => c.endsWith("-checked") || c === "is-checked")));
+L0046 |   document.querySelectorAll("img").forEach((n) => ["src", "srcset", "data-src"].forEach((a) => n.removeAttribute(a)));
+L0047 |   document.querySelectorAll("a[href]").forEach((n) => n.setAttribute("href", "#"));
+L0048 |   for (const el of document.querySelectorAll("*")) {
+L0049 |     for (const { name, value } of [...el.attributes]) {
+L0050 |       if ((name === "title" || name === "data-value") && el.closest(".ant-select, .ant-cascader-picker")) { el.removeAttribute(name); continue; }
+L0051 |       if (name.startsWith("data-") && /\d{8,}/.test(value)) { el.removeAttribute(name); continue; }
+L0052 |       if (name === "style" && /url\(/.test(value)) { el.setAttribute(name, value.replace(/url\([^)]*\)/g, "none")); continue; }
+L0053 |       const next = scrub(value).replace(/((?:https?:)?\/\/[^"'\s>?]+)\?[^"'\s>)]*/g, "$1"); // drop URL query strings (tokens, ids)
+L0054 |       if (next !== value) el.setAttribute(name, next);
+L0055 |     }
+L0056 |   }
+L0057 |   const texts = document.createTreeWalker(document.body || document, NodeFilter.SHOW_TEXT);
+L0058 |   while (texts.nextNode()) { const n = texts.currentNode; const next = scrub(n.nodeValue); if (next !== n.nodeValue) n.nodeValue = next; }
+L0059 |   const html = "<!doctype html>\n<!-- 已清除个人信息、脚本和外链，仅保留页面结构，用于扫描测试 -->\n" + document.documentElement.outerHTML;
+L0060 |   const left = { phone: (html.replace(/00000000/g, "").match(PHONE) || []).length, email: (html.match(MAIL) || []).filter((m) => m !== "user@example.com").length, id: (html.match(IDNO) || []).filter((m) => !/^0+$/.test(m)).length, words: extra.filter((w) => html.includes(w)).length,
+L0061 |     values: [...document.querySelectorAll("input")].filter((i) => TEXT_TYPES.has((i.getAttribute("type") || "text").toLowerCase()) && i.getAttribute("value")).length };
+L0062 |   return { html, removed, left };
+L0063 | }, extraWords);
+L0064 | await browser.close();
+L0065 | await mkdir(outDir, { recursive: true });
+L0066 | const out = path.join(outDir, `${slug}.html`);
+L0067 | await writeFile(out, result.html, "utf8");
+L0068 | console.log(`已写入 ${path.relative(root, out)}，清除填写值 ${result.removed} 处`);
+L0069 | const leftovers = Object.entries(result.left).filter(([, n]) => n > 0);
+L0070 | if (leftovers.length) { console.error("仍有疑似个人信息，请人工检查：", Object.fromEntries(leftovers)); process.exit(1); }
+L0071 | console.log("检查通过：没有发现手机号、邮箱、证件号或已填写的值。下一步请为它手写 <slug>.expected.json");
+L0072 | 

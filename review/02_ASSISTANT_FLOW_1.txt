@@ -1,0 +1,656 @@
+Application Tracker / ASSISTANT_FLOW
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/src/assistant/background.js
+- application-tracker-extension/src/assistant/dateValue.js
+- application-tracker-extension/src/assistant/optionMatch.js
+- application-tracker-extension/src/assistant/planner.js
+- application-tracker-extension/src/assistant/preview.js
+- application-tracker-extension/src/assistant/reconcile.js
+- application-tracker-extension/src/assistant/session.js
+- application-tracker-extension/src/assistant/store.js
+- application-tracker-extension/src/sidepanel/assistant.css
+- application-tracker-extension/src/sidepanel/assistant.html
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/background.js
+SHA256: 656451807adf8e9e070b988af483cb1d43a2b1bd23dfb5e8ef83a6d3ee458469
+LINES: 30
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { createMutationQueue, MUTATION_MESSAGE } from "../storageMutations.js";
+L0002 | 
+L0003 | // The side panel owns long requests; session storage survives worker restarts.
+L0004 | chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+L0005 | chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+L0006 | let queue = Promise.resolve();
+L0007 | const mutate = createMutationQueue(chrome.storage.local);
+L0008 | chrome.runtime.onMessage.addListener((message, sender, respond) => {
+L0009 |   if (message?.type === MUTATION_MESSAGE) {
+L0010 |     // Extension documents only: a content script runs on a third-party origin.
+L0011 |     if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL("src/"))) return;
+L0012 |     mutate(message.mutation).then((value) => respond({ ok: true, value }), (error) => respond({ ok: false, error: error.message }));
+L0013 |     return true;
+L0014 |   }
+L0015 |   if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL("src/sidepanel/"))) return;
+L0016 |   if (!["assistant-lock", "assistant-release"].includes(message.type)) return;
+L0017 |   queue = queue.catch(() => {}).then(async () => {
+L0018 |     const key = `applicationTracker.assistant.lock.${message.tabId}`;
+L0019 |     const data = await chrome.storage.session.get(key);
+L0020 |     const lock = data[key];
+L0021 |     if (message.type === "assistant-lock") {
+L0022 |       if (lock && lock.owner !== message.owner && lock.expires > Date.now()) return { ok: false };
+L0023 |       await chrome.storage.session.set({ [key]: { owner: message.owner, expires: Date.now() + 90000 } });
+L0024 |     } else if (lock?.owner === message.owner) await chrome.storage.session.remove(key);
+L0025 |     return { ok: true };
+L0026 |   });
+L0027 |   queue.then(respond, () => respond({ ok: false }));
+L0028 |   return true;
+L0029 | });
+L0030 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/dateValue.js
+SHA256: 4eda259ebdb3ec8c3660b61774fd2dd4ba3d58d23fe3b462d1bdc22c8dbac655
+LINES: 64
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Month-only facts retain their precision unless a caller explicitly permits a day.
+L0002 | export function parseDateValue(value, format = "") {
+L0003 |   if (typeof value !== "string") return null;
+L0004 |   const text = value.normalize("NFKC").trim();
+L0005 |   let parts;
+L0006 |   if (/^d/i.test(format)) {
+L0007 |     const match = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(text);
+L0008 |     if (match) parts = [Number(match[3]), Number(match[2]), Number(match[1])];
+L0009 |   }
+L0010 |   if (!parts) {
+L0011 |     const match = /^(\d{4})\s*[-/.年]\s*(\d{1,2})(?:\s*[-/.月]\s*(\d{1,2})\s*日?)?\s*月?$/.exec(text);
+L0012 |     if (!match) return null;
+L0013 |     parts = [Number(match[1]), Number(match[2]), match[3] ? Number(match[3]) : null];
+L0014 |   }
+L0015 |   const [year, month, day] = parts;
+L0016 |   if (year < 1 || month < 1 || month > 12) return null;
+L0017 |   const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+L0018 |   const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+L0019 |   if (day !== null && (day < 1 || day > days)) return null;
+L0020 |   return { year, month, day };
+L0021 | }
+L0022 | 
+L0023 | export function formatDateValue(value, format = "", { allowDefaultDay = false } = {}) {
+L0024 |   const parsed = parseDateValue(value, format);
+L0025 |   if (!parsed) return "";
+L0026 |   const output = format || (parsed.day === null ? "YYYY-MM" : "YYYY-MM-DD");
+L0027 |   if (/[dD]/.test(output) && parsed.day === null && !allowDefaultDay) return "";
+L0028 |   return output.replace(/YYYY|yyyy|MM|DD|dd|M|D|d/g, (part) => {
+L0029 |     if (/y/i.test(part)) return String(parsed.year).padStart(4, "0");
+L0030 |     const number = part.includes("M") ? parsed.month : parsed.day ?? 1;
+L0031 |     return part.length === 2 ? String(number).padStart(2, "0") : String(number);
+L0032 |   });
+L0033 | }
+L0034 | 
+L0035 | export function dateFormatFor(field) {
+L0036 |   if (field.dateFormat) return field.dateFormat;
+L0037 |   if (field.type === "month") return "YYYY-MM";
+L0038 |   if (field.type === "date") return "YYYY-MM-DD";
+L0039 |   const placeholder = field.placeholder || "";
+L0040 |   return placeholder.match(/(?:YYYY|yyyy)[-/.年]MM(?:[-/.月](?:DD|dd)日?|月)?/)?.[0] || "";
+L0041 | }
+L0042 | 
+L0043 | export function validateDateValue(field, value) {
+L0044 |   let values = [value];
+L0045 |   if (field.dateRange) {
+L0046 |     try { values = JSON.parse(value); } catch { return "请填写开始、结束日期组成的数组"; }
+L0047 |     if (!Array.isArray(values) || values.length !== 2) return "请填写完整的开始、结束日期";
+L0048 |   }
+L0049 |   const format = dateFormatFor(field);
+L0050 |   for (const item of values) {
+L0051 |     const parsed = parseDateValue(item, format);
+L0052 |     if (!parsed || (/[dD]/.test(format) && parsed.day === null)) return "需要完整且有效的日期，不能补造未知的日";
+L0053 |     if (format && formatDateValue(item, format) !== item) return `需要 ${format} 格式`;
+L0054 |   }
+L0055 |   if (field.dateRange) {
+L0056 |     const canonical = values.map((item) => {
+L0057 |       const date = parseDateValue(item, format);
+L0058 |       return date.year * 10000 + date.month * 100 + (date.day ?? 1);
+L0059 |     });
+L0060 |     if (canonical[0] > canonical[1]) return "结束日期不能早于开始日期";
+L0061 |   }
+L0062 |   return "";
+L0063 | }
+L0064 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/optionMatch.js
+SHA256: 263e65dd4eddee86692ba9a189d5cec8287d20851476dcd64e2c12d8de89b822
+LINES: 45
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Keep this self-contained function identical to the copy inside pageBridge.
+L0002 | export function optionMatch(options, value, { location = false } = {}) {
+L0003 |   const text = (option) => typeof option === "string" ? option : option?.text ?? option?.label ?? option?.value ?? "";
+L0004 |   const normalize = (input) => {
+L0005 |     let result = typeof input === "string" ? input.normalize("NFKC").toLowerCase().replace(/\s+/g, "") : "";
+L0006 |     if (location) result = result.replace(/(?:(?:壮族|回族|维吾尔)?自治区|特别行政区|省|市|区|县)$/, "");
+L0007 |     return result;
+L0008 |   };
+L0009 |   const expected = normalize(value);
+L0010 |   if (!expected || !Array.isArray(options)) return null;
+L0011 |   const available = options.filter((option) => option != null && !option.disabled && normalize(text(option)));
+L0012 |   const unique = (matches) => matches.length === 1 ? matches[0] : null;
+L0013 |   let matches = available.filter((option) => text(option) === value);
+L0014 |   if (matches.length) return unique(matches);
+L0015 |   matches = available.filter((option) => normalize(text(option)) === expected);
+L0016 |   if (matches.length) return unique(matches);
+L0017 |   const groups = [
+L0018 |     ["男", "Male", "M", "先生"], ["女", "Female", "F", "女士"],
+L0019 |     ["本科", "大学本科", "学士", "Bachelor", "Undergraduate"],
+L0020 |     ["硕士", "硕士研究生", "研究生", "Master", "Postgraduate"],
+L0021 |     ["博士", "博士研究生", "PhD", "Doctor"], ["大专", "专科", "Associate"],
+L0022 |     ["学士学位", "学士", "Bachelor's degree"], ["硕士学位", "硕士", "Master's degree"],
+L0023 |     ["中共党员", "党员", "中国共产党党员"], ["中共预备党员", "预备党员"],
+L0024 |     ["共青团员", "团员"], ["未婚", "单身", "Single"], ["已婚", "Married"],
+L0025 |     ["汉族", "汉"], ["是", "Yes", "有"], ["否", "No", "无", "没有"],
+L0026 |     ["中国", "中国大陆", "中华人民共和国", "China", "CN"],
+L0027 |     ["中国香港", "香港", "Hong Kong", "Hong Kong SAR"], ["全日制", "统招", "Full-time"],
+L0028 |     ["大学英语六级", "英语六级", "CET-6", "CET6"], ["大学英语四级", "英语四级", "CET-4", "CET4"],
+L0029 |     ["雅思", "IELTS"], ["托福", "TOEFL"]
+L0030 |   ].map((group) => group.map(normalize));
+L0031 |   const related = groups.filter((group) => group.includes(expected));
+L0032 |   matches = available.filter((option) => related.some((group) => group.includes(normalize(text(option)))));
+L0033 |   if (matches.length) return unique(matches);
+L0034 |   // A substring cannot turn a categorical answer into a different category or
+L0035 |   // erase negation. Single letters and single Chinese characters are too weak.
+L0036 |   if (expected.length < 2 || related.length) return null;
+L0037 |   const negative = (input) => /不|无|否|未|没有|非/.test(input) || /\b(?:not|no|without|never)\b/i.test(input);
+L0038 |   matches = available.filter((option) => {
+L0039 |     const candidate = normalize(text(option));
+L0040 |     return candidate.length >= 2 && negative(value) === negative(text(option))
+L0041 |       && (candidate.includes(expected) || expected.includes(candidate));
+L0042 |   });
+L0043 |   return unique(matches);
+L0044 | }
+L0045 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/planner.js
+SHA256: 14d48349db51fdd469d63cf7103c965b9a199580452199bcb1d9ee1f9dfad0fe
+LINES: 235
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { buildLocalProfileMemory } from "../aiProfileMemory.js";
+L0002 | import { optionMatch } from "./optionMatch.js";
+L0003 | import { dateFormatFor, formatDateValue, validateDateValue } from "./dateValue.js";
+L0004 | 
+L0005 | export const normalize = (v) => String(v ?? "").normalize("NFKC").replace(/[*＊:：]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+L0006 | export const MEMORY_SCOPE_VERSION = 2;
+L0007 | const privateParameter = (name) => /^(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|auth(?:orization)?|api[_-]?key|key|secret|password|session(?:id)?|session[_-]?id|sid|code|state|nonce)$/i.test(name) || /(?:^|[_-])(?:token|secret|password)$/i.test(name);
+L0008 | const trackingParameter = (name) => /^(?:utm_.+|gclid|fbclid|msclkid)$/i.test(name);
+L0009 | function scopedQuery(query) {
+L0010 |   const params = new URLSearchParams(query);
+L0011 |   for (const name of [...params.keys()]) if (privateParameter(name) || trackingParameter(name)) params.delete(name);
+L0012 |   params.sort();
+L0013 |   return params.size ? `?${params}` : "";
+L0014 | }
+L0015 | export function scopeFor(url) {
+L0016 |   try {
+L0017 |     const parsed = new URL(url);
+L0018 |     if (!/^https?:$/.test(parsed.protocol)) return "";
+L0019 |     const hash = parsed.hash.slice(1);
+L0020 |     let route = "";
+L0021 |     // Preserve SPA routes and business hash parameters; ordinary scroll anchors
+L0022 |     // do not identify an application and may contain opaque access tokens.
+L0023 |     if (/^!?\//.test(hash)) {
+L0024 |       const queryAt = hash.indexOf("?");
+L0025 |       route = "#" + (queryAt < 0 ? hash : hash.slice(0, queryAt) + scopedQuery(hash.slice(queryAt + 1)));
+L0026 |     } else if (hash.includes("=")) {
+L0027 |       const query = scopedQuery(hash.replace(/^\?/, ""));
+L0028 |       if (query) route = "#" + query.slice(1);
+L0029 |     }
+L0030 |     return parsed.origin + parsed.pathname + scopedQuery(parsed.search) + route;
+L0031 |   } catch { return ""; }
+L0032 | }
+L0033 | export function memoryScopeMatches(memory, url) {
+L0034 |   if (memory.scope === "global") return true;
+L0035 |   const scope = scopeFor(url);
+L0036 |   // Older page scopes discarded job IDs. Require a fresh explicit confirmation
+L0037 |   // instead of silently treating an old path-only scope as a verified boundary.
+L0038 |   return memory.scopeVersion === MEMORY_SCOPE_VERSION && !!scope && memory.scope === scope;
+L0039 | }
+L0040 | export const versionOf = (profile) => {
+L0041 |   // Chrome storage and runtime messaging may serialize object keys in different orders.
+L0042 |   const canonical = (value) => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object"
+L0043 |     ? Object.fromEntries(Object.keys(value).sort().filter((key) => value[key] !== undefined).map((key) => [key, canonical(value[key])])) : value;
+L0044 |   const text = JSON.stringify(canonical(profile));
+L0045 |   let hash = 2166136261;
+L0046 |   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
+L0047 |   return `${text.length}:${hash >>> 0}`;
+L0048 | };
+L0049 | export function factsFromProfile(profile, language) {
+L0050 |   // Read only: do not save, normalize, migrate or regenerate the user's stored profile.
+L0051 |   return buildLocalProfileMemory({ profile }).entries.filter((e) => !e.language || e.language === language).map((e) => ({
+L0052 |     id: e.key, label: e.label, value: e.value, category: e.category,
+L0053 |     entityId: e.key.startsWith("education.") ? e.key.split(".").slice(0, 2).join(".") : e.key.startsWith("experience.") ? e.key.split(".").slice(0, 3).join(".") : "self",
+L0054 |     language: e.language, sourceFields: e.sourceFields
+L0055 |   }));
+L0056 | }
+L0057 | const rules = [
+L0058 |   ["contact.email", /^(e-?mail( address)?|电子邮箱|邮箱|电子邮件)$/i],
+L0059 |   ["contact.phone", /^(phone( number)?|mobile( number)?|telephone|手机(号码|号)?|联系电话|电话)$/i],
+L0060 |   ["contact.linkedin", /^(linkedin|linkedin (?:url|profile|profile url)|领英(?:链接|主页)?)$/i], ["contact.github", /^github$/i], ["contact.website", /^(website|portfolio|个人网站|作品集)$/i],
+L0061 |   ["identity.full_name", /^(full name|name|candidate name|applicant name|姓名|中文姓名|英文姓名|英文全名)$/i],
+L0062 |   ["identity.preferred_name", /^(preferred name|english name|英文名)$/i],
+L0063 |   ["university", /^(?:(?:本科|硕士|研究生|毕业|就读|在读)?(?:学校|院校)(?:名称)?|(?:name of (?:the )?)?(?:university|institution|school|college)(?: name)?)$/i],
+L0064 |   ["degree", /^(?:(?:最高|本科|硕士)?(?:学历|学位)|degree(?: type| level)?|education level)$/i], ["major", /^(?:(?:所学|主修)?专业(?:名称)?|主修|major|field of study)$/i],
+L0065 |   ["graduation_date", /^(?:(?:预计|预期)?毕业(?:日期|时间|年月)|(?:expected |anticipated )?(?:graduation|completion) date)$/i], ["start_date", /^(?:入学(?:日期|时间|年月)|开始(?:日期|时间)|start date|enrolment date|enrollment date)$/i],
+L0066 |   ["company", /^(公司|公司名称|实习公司|company|employer|company name)$/i], ["role", /^(职位|岗位|实习职位|role|position|job title)$/i],
+L0067 |   ["description", /^(实习经历|工作内容|职责描述|responsibilities|experience description|work description)$/i],
+L0068 |   ["period", /^(实习时间|工作时间|period|duration)$/i],
+L0069 |   ["common_answer.visaSponsorship", /^(?:是否需要签证担保|签证担保|visa sponsorship)$/i], ["common_answer.rightToWork", /^(?:工作资格|工作许可|right to work|work authorization)$/i],
+L0070 |   ["common_answer.expectedSalary", /^(?:期望薪资|期望薪酬|expected salary|salary expectation)$/i], ["common_answer.earliestStartDate", /^(?:最早到岗日期|到岗时间|earliest start date)$/i],
+L0071 |   ["common_answer.currentLocation", /^(?:现居住地|当前所在地|current location|current address)$/i], ["common_answer.relocation", /^(?:是否接受搬迁|是否接受异地工作|relocation)$/i],
+L0072 |   ["common_answer.languageAbility", /^(?:语言能力|英语水平|language ability|language proficiency)$/i],
+L0073 |   ["common_answer.whyRole", /^(?:为什么申请(?:这个|该|此)?(?:岗位|职位)|why this (?:role|position))\??$/i], ["common_answer.whyCompany", /^(?:为什么选择这家公司|为什么申请(?:这家|该|此)?公司|why this (?:company|firm))\??$/i],
+L0074 |   ["common_answer.selfIntroduction", /^(?:自我介绍|自我评价|introduce yourself|tell us about yourself|self.introduction)$/i],
+L0075 |   ["common_answer.visaSponsorship", /签证|sponsorship|\bvisa\b/i], ["common_answer.rightToWork", /工作资格|工作许可|right to work|authorized to work|work authorization/i],
+L0076 |   ["common_answer.expectedSalary", /期望薪资|薪酬|salary|compensation/i], ["common_answer.earliestStartDate", /到岗|入职|earliest start|notice period|available start/i],
+L0077 |   ["common_answer.currentLocation", /现居|当前所在地|current location|current address/i], ["common_answer.relocation", /搬迁|异地|relocat/i],
+L0078 |   ["common_answer.languageAbility", /语言能力|英语水平|language ability|language proficiency/i],
+L0079 |   ["common_answer.whyRole", /为什么.*岗位|为什么.*职位|why.*role|why.*position/i], ["common_answer.whyCompany", /为什么.*公司|why.*company|why.*firm/i],
+L0080 |   ["common_answer.selfIntroduction", /自我介绍|自我评价|introduce yourself|tell us about yourself|self.introduction/i]
+L0081 | ];
+L0082 | const tentativeRules = [
+L0083 |   ["university", /学校|院校|university|institution|school|college/i],
+L0084 |   ["degree", /学历|学位|\bdegree\b|education level/i], ["major", /专业|主修|\bmajor\b|field of study/i],
+L0085 |   ["graduation_date", /毕业|graduation|completion date/i], ["start_date", /入学|start date|enrolment|enrollment/i]
+L0086 | ];
+L0087 | export function intentFitsQuestion(field, intent) {
+L0088 |   const label = normalize(field.label);
+L0089 |   if (/\.(?:university|degree|major|graduation_date|start_date)$/.test(intent) && /所在地|地址|城市|国家|省份|排名|成绩|绩点|分数|编号|代码|是否|等级|address|location|city|country|province|rank|grade|gpa|score|number|code|whether/i.test(label)) return false;
+L0090 |   if (/父亲|father|母亲|mother|家属|family member|紧急联系人|emergency contact/i.test(label) && !field.entityId?.startsWith("family.")) return false;
+L0091 |   return true;
+L0092 | }
+L0093 | export function interpretField(field, fields = [], bindings = {}) {
+L0094 |   const label = normalize(field.label);
+L0095 |   const context = normalize(`${field.section} ${field.group}`);
+L0096 |   let entityId = "self";
+L0097 |   const subjectText = `${label} ${context}`;
+L0098 |   if (/父亲|father|母亲|mother|家庭|family|紧急联系人|emergency contact/.test(subjectText)) entityId = /父亲|father/.test(subjectText) ? "family.father" : /母亲|mother/.test(subjectText) ? "family.mother" : "family.unknown";
+L0099 |   const direct = rules.find(([, pattern]) => pattern.test(label));
+L0100 |   let intent = direct?.[0] || tentativeRules.find(([, pattern]) => pattern.test(label))?.[0] || "";
+L0101 |   let ruleConfidence = direct?.[1].source.startsWith("^") ? "high" : intent ? "low" : "none";
+L0102 |   if (/民族|ethnicity|出生|birth|身份证|national id|奖惩|处分|disciplin|award|证书|certificat|研究|research/.test(label)) intent = "";
+L0103 |   const education = /学校|教育|学历|本科|硕士|学士|education|bachelor|master|university|college/.test(context) || ["university", "degree", "major", "graduation_date"].includes(intent);
+L0104 |   const experience = /实习|工作经历|internship|work experience|employment/.test(context) || ["company", "role", "description", "period"].includes(intent);
+L0105 |   let visualGroupUnresolved = false;
+L0106 |   if (entityId === "self" && education) {
+L0107 |     const peers = fields.filter((f) => /学校|院校|university|institution|school/i.test(f.label));
+L0108 |     const degreeText = `${label} ${context}`;
+L0109 |     // A partial visual observation establishes only that field's degree level.
+L0110 |     // Do not mix it with default master's facts for unobserved sibling fields.
+L0111 |     const visualPeer = fields.some((f) => f.groupId === field.groupId && f.visualEvidence && /本科|学士|硕士|研究生|undergraduate|bachelor|postgraduate|master/i.test(`${f.label} ${f.section} ${f.group}`));
+L0112 |     visualGroupUnresolved = visualPeer && !/本科|学士|硕士|研究生|undergraduate|bachelor|postgraduate|master/.test(degreeText) && !bindings[field.groupId];
+L0113 |     entityId = /本科|学士|undergraduate|bachelor/.test(degreeText) ? "education.bachelor" : /硕士|研究生|postgraduate|master/.test(degreeText) ? "education.master" : visualGroupUnresolved ? "education.unknown" : new Set(peers.map((f) => f.groupId)).size <= 1 ? "education.master" : "education.unknown";
+L0114 |   } else if (entityId === "self" && experience) entityId = "experience.unknown";
+L0115 |   entityId = bindings[field.groupId] || entityId;
+L0116 |   if (["university", "degree", "major", "graduation_date", "start_date", "company", "role", "description", "period"].includes(intent)) intent = `${entityId}.${intent}`;
+L0117 |   if (intent && entityId.startsWith("family") && !intent.startsWith(`${entityId}.`)) intent = `${entityId}.${intent}`;
+L0118 |   if (!intentFitsQuestion({ ...field, entityId }, intent)) intent = "";
+L0119 |   if (field.contextConflicts?.length && !bindings[field.groupId]) ruleConfidence = "low";
+L0120 |   if (!intent) ruleConfidence = "none";
+L0121 |   return { intent, entityId, bindingExplicit: Boolean(bindings[field.groupId]), visualGroupUnresolved, ruleConfidence, needsSemanticReview: ruleConfidence !== "high", sensitive: /visa|rightToWork|Salary|earliestStartDate/.test(intent) || entityId.startsWith("family") || /证件|身份证|出生|民族|性别|national id|birth|ethnicity|gender/i.test(label), narrative: /whyRole|whyCompany|selfIntroduction|description/.test(intent) || field.kind === "textarea" };
+L0122 | }
+L0123 | export function validateValue(field, value) {
+L0124 |   if (!field.supported) return field.reason || "此字段暂不支持";
+L0125 |   if (typeof value !== "string" || !value.trim()) return "请补充答案";
+L0126 |   if (field.constraints?.maxLength && value.length > field.constraints.maxLength) return "答案超过网页字数限制";
+L0127 |   if (field.kind === "cascader") {
+L0128 |     let path;
+L0129 |     try { path = JSON.parse(value); } catch { return "请填写从上级到下级的选项路径数组"; }
+L0130 |     if (!Array.isArray(path) || !path.length || !path.every((part) => typeof part === "string" && part.trim())) return "请填写完整的级联选项路径";
+L0131 |   }
+L0132 |   if (field.options?.length && field.kind !== "cascader") {
+L0133 |     let values;
+L0134 |     try { values = field.constraints?.multiple ? JSON.parse(value) : [value]; } catch { return "请从选项中选择"; }
+L0135 |     if (!Array.isArray(values) || !values.length || new Set(values).size !== values.length) return "选项格式不正确";
+L0136 |     if (values.some((v) => !optionMatch(field.options, v))) return "未找到唯一匹配选项";
+L0137 |   }
+L0138 |   if (field.kind === "date") return validateDateValue(field, value);
+L0139 |   if (field.type === "date" && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) return "需要完整且有效的年月日";
+L0140 |   if (field.type === "month" && !/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return "需要 YYYY-MM 格式";
+L0141 |   if (field.type === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "邮箱格式不正确";
+L0142 |   if (field.type === "number" && (!Number.isFinite(Number(value)) || (field.constraints.min && Number(value) < Number(field.constraints.min)) || (field.constraints.max && Number(value) > Number(field.constraints.max)))) return "数值不在网页允许范围内";
+L0143 |   return "";
+L0144 | }
+L0145 | export function answerForFact(field, value) {
+L0146 |   let result = value;
+L0147 |   if (field.kind === "date" && !field.dateRange) {
+L0148 |     result = formatDateValue(value, dateFormatFor(field)) || value;
+L0149 |   } else if (field.datePart) {
+L0150 |     const match = String(value).match(/^(\d{4})[-./](\d{1,2})(?:[-./](\d{1,2}))?$/);
+L0151 |     if (!match) return "";
+L0152 |     const part = match[{ year: 1, month: 2, day: 3 }[field.datePart]];
+L0153 |     if (!part) return "";
+L0154 |     result = String(Number(part));
+L0155 |     const matches = field.options.filter((op) => !op.disabled && /^\d+[年月日]?$/.test(op.text) && Number(op.text.replace(/[年月日]/g, "")) === Number(part));
+L0156 |     if (matches.length === 1) result = matches[0].text;
+L0157 |   } else if (field.type === "month" && /^\d{4}[-./]\d{1,2}$/.test(value)) {
+L0158 |     const [year, month] = value.split(/[-./]/); result = `${year}-${month.padStart(2, "0")}`;
+L0159 |   }
+L0160 |   if (field.options?.length && !field.constraints?.multiple && field.kind !== "cascader") {
+L0161 |     const option = optionMatch(field.options, result);
+L0162 |     if (option) result = option.text;
+L0163 |   }
+L0164 |   return result;
+L0165 | }
+L0166 | export function preparePlan(snapshot, facts, memories = [], language = "zh", bindings = {}) {
+L0167 |   return snapshot.fields.map((field) => {
+L0168 |     const meaning = interpretField(field, snapshot.fields, bindings);
+L0169 |     const item = { ...field, ...meaning, answer: "", source: "", factIds: [], selected: false, status: !field.supported ? "unsupported" : field.value ? "filled" : "missing", reason: meaning.visualGroupUnresolved ? "截图仅确认了同组部分题目的学历，请核对此题或指定对应经历" : field.reason || "资料中没有明确答案" };
+L0170 |     if (!field.supported || field.value) return item;
+L0171 |     const matched = facts.filter((f) => !meaning.needsSemanticReview && meaning.intent && (f.id === meaning.intent || f.id === `${meaning.intent}.${language}`) && f.entityId === meaning.entityId);
+L0172 |     if (matched.length === 1) {
+L0173 |       const fact = matched[0];
+L0174 |       item.answer = answerForFact(field, fact.value);
+L0175 |       item.source = `个人信息 · ${fact.label}`;
+L0176 |       item.factIds = [fact.id];
+L0177 |       item.status = meaning.sensitive || meaning.narrative || field.kind === "custom-select" ? "review" : "ready";
+L0178 |       item.reason = meaning.entityId === "education.master" ? "使用硕士资料，请核对教育分组" : "来自现有个人信息";
+L0179 |     } else {
+L0180 |       const matches = memories.filter((m) => m.confirmed && m.language === language && m.entityId === meaning.entityId && normalize(m.question) === normalize(field.label) && memoryScopeMatches(m, snapshot.url));
+L0181 |       if (matches.length === 1) {
+L0182 |         item.answer = matches[0].answer;
+L0183 |         item.source = "已确认问答记忆";
+L0184 |         item.memoryId = matches[0].id;
+L0185 |         item.memoryVersion = matches[0].updatedAt;
+L0186 |         item.needsSemanticReview = false;
+L0187 |         item.status = "review";
+L0188 |         item.reason = "请核对答案是否仍适用于本次申请";
+L0189 |       } else if (matches.length > 1) item.reason = "记忆存在多个答案，请人工选择";
+L0190 |     }
+L0191 |     if (item.answer) {
+L0192 |       const error = validateValue(item, item.answer);
+L0193 |       if (error) { item.status = "review"; item.reason = error; }
+L0194 |       item.selected = item.status === "ready" && !error;
+L0195 |     }
+L0196 |     return item;
+L0197 |   });
+L0198 | }
+L0199 | export function eligibleFacts(item, facts) {
+L0200 |   if (item.entityId.includes("unknown") || item.needsSemanticReview) return [];
+L0201 |   return facts.filter((f) => {
+L0202 |     if (item.intent && f.entityId === item.entityId && (f.id === item.intent || f.id.startsWith(`${item.intent}.`))) return true;
+L0203 |     if (item.narrative && /whyRole|whyCompany|selfIntroduction/.test(item.intent)) return ["education", "experience"].includes(f.category);
+L0204 |     return item.narrative && /description/.test(item.intent) && f.entityId === item.entityId;
+L0205 |   });
+L0206 | }
+L0207 | export function acceptAiItems(raw, plan, facts) {
+L0208 |   const items = Array.isArray(raw?.items) ? raw.items : [];
+L0209 |   const counts = new Map();
+L0210 |   for (const item of items) counts.set(item.fieldId, (counts.get(item.fieldId) || 0) + 1);
+L0211 |   const accepted = [];
+L0212 |   const errors = [];
+L0213 |   for (const proposal of items) {
+L0214 |     const item = plan.find((p) => p.fieldId === proposal.fieldId);
+L0215 |     const reject = (reason) => errors.push({ fieldId: proposal.fieldId, reason });
+L0216 |     if (!item || counts.get(proposal.fieldId) !== 1 || !item.supported || item.value || item.edited) { reject("字段未知、重复、已有内容或已被编辑"); continue; }
+L0217 |     const allowed = eligibleFacts(item, facts);
+L0218 |     if (proposal.entityId !== item.entityId || !Array.isArray(proposal.factIds) || !proposal.factIds.length || proposal.factIds.some((id) => !allowed.some((f) => f.id === id))) { reject("来源不足或主体不匹配"); continue; }
+L0219 |     let answer;
+L0220 |     if (proposal.kind === "fact") {
+L0221 |       if (proposal.factIds.length !== 1) { reject("直接事实必须引用唯一资料"); continue; }
+L0222 |       answer = answerForFact(item, allowed.find((f) => f.id === proposal.factIds[0]).value);
+L0223 |     } else if (proposal.kind === "option") {
+L0224 |       const option = item.options.find((op) => op.id === proposal.optionId && !op.disabled);
+L0225 |       if (!option || item.constraints.multiple) { reject("选项不存在或不是单选题"); continue; }
+L0226 |       answer = option.text;
+L0227 |     } else if (proposal.kind === "draft" && item.narrative) answer = proposal.text;
+L0228 |     else { reject("此字段不允许生成自由文本事实"); continue; }
+L0229 |     const error = validateValue(item, answer);
+L0230 |     if (error) { reject(error); continue; }
+L0231 |     accepted.push({ fieldId: item.fieldId, answer, factIds: proposal.factIds, status: "review", selected: false, source: "AI 草稿 · " + proposal.factIds.map((id) => facts.find((f) => f.id === id).label).join("、"), reason: "请核对后选中填写" });
+L0232 |   }
+L0233 |   return { accepted, errors };
+L0234 | }
+L0235 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/preview.js
+SHA256: 2e0b0f810755baa4f22d99f003314241b888953fddfdbc750f819e186fddf25d
+LINES: 43
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { validateValue } from "./planner.js";
+L0002 | import { sameQuestion } from "./reconcile.js";
+L0003 | 
+L0004 | // This only chooses which existing answers appear in the confirmation batch.
+L0005 | // Fact generation, safety classification and value validation remain upstream.
+L0006 | export function isFillable(item) {
+L0007 |   if (!item?.supported || item.value || typeof item.answer !== "string" || !item.answer.trim()) return false;
+L0008 |   if (item.kind === "custom-select") {
+L0009 |     if (item.optionError || !Array.isArray(item.options) || !item.options.length) return false;
+L0010 |     // Actual inspected options have opaque IDs; free text is not evidence that
+L0011 |     // the website offers an option, even when it matches a profile fact.
+L0012 |     if (item.options.some((option) => typeof option.id !== "string" || !option.id || typeof option.text !== "string")) return false;
+L0013 |   }
+L0014 |   return !validateValue(item, item.answer);
+L0015 | }
+L0016 | 
+L0017 | export function finalizePreview(plan, previous = []) {
+L0018 |   const previousById = new Map(previous.map((item) => [item.fieldId, item]));
+L0019 |   return plan.map((item) => {
+L0020 |     const previousItem = previousById.get(item.fieldId);
+L0021 |     const same = previousItem && sameQuestion(previousItem, item);
+L0022 |     // An explicit current choice wins. Otherwise inherit a prior opt-out only
+L0023 |     // while the document, question, entity and options still identify one item.
+L0024 |     const choice = Object.hasOwn(item, "selectionExplicit") ? item : same ? previousItem : null;
+L0025 |     const selectionExplicit = choice?.selectionExplicit === true;
+L0026 |     const optedOut = selectionExplicit && choice.selected === false;
+L0027 |     return { ...item, selectionExplicit, selected: isFillable(item) && !optedOut };
+L0028 |   });
+L0029 | }
+L0030 | 
+L0031 | export function previewStats(plan) {
+L0032 |   return plan.reduce((stats, item) => {
+L0033 |     const eligible = isFillable(item);
+L0034 |     const selected = eligible && item.selected === true;
+L0035 |     if (eligible) stats.eligible++;
+L0036 |     if (selected) stats.selected++;
+L0037 |     if (selected && item.status !== "ready") stats.review++;
+L0038 |     if (item.value) stats.filled++;
+L0039 |     else if (!eligible) stats.missing++;
+L0040 |     return stats;
+L0041 |   }, { eligible: 0, selected: 0, review: 0, missing: 0, filled: 0 });
+L0042 | }
+L0043 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/reconcile.js
+SHA256: 29ee9612f67f584d82a9e25cbd98c90ff3c06b9be3845621341031a227b6c46f
+LINES: 35
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Preserve drafts only when both the browser document and the question still agree.
+L0002 | export function sameQuestion(left, right) {
+L0003 |   const identity = (item) => JSON.stringify([
+L0004 |     item.documentId, item.fieldId, item.label, item.kind, item.type,
+L0005 |     item.groupId, item.group, item.section, item.entityId, item.intent,
+L0006 |     item.constraints, (item.options || []).map(({ text, disabled }) => [text, !!disabled])
+L0007 |   ]);
+L0008 |   return identity(left) === identity(right);
+L0009 | }
+L0010 | 
+L0011 | export function reconcilePlan(previous, next) {
+L0012 |   const byId = new Map(previous.map((item) => [item.fieldId, item]));
+L0013 |   return next.map((item) => {
+L0014 |     const old = byId.get(item.fieldId);
+L0015 |     if (item.value || !item.supported) return { ...item, selected: false };
+L0016 |     if (old && sameQuestion(old, item)) {
+L0017 |       return { ...item, answer: old.answer, source: old.source, factIds: old.factIds,
+L0018 |         edited: old.edited, selected: false,
+L0019 |         status: old.answer ? old.status === "ready" && !old.edited ? "ready" : "review" : item.status,
+L0020 |         reason: old.answer ? "已保留原答案，预览后统一确认填写" : item.reason };
+L0021 |     }
+L0022 |     return { ...item, selected: false, status: item.answer ? "review" : item.status,
+L0023 |       reason: item.visualGroupUnresolved ? item.reason : old ? "题目或选项已变化，请重新核对" : "新出现的问题，请核对后选中" };
+L0024 |   });
+L0025 | }
+L0026 | 
+L0027 | export function entityLabel(entity = "self") {
+L0028 |   const labels = { self: "本人", "education.master": "硕士教育", "education.bachelor": "本科教育",
+L0029 |     "education.unknown": "教育经历（待指定）", "experience.unknown": "实习经历（待指定）",
+L0030 |     "family.father": "父亲", "family.mother": "母亲", "family.unknown": "家庭成员（待指定）" };
+L0031 |   if (labels[entity]) return labels[entity];
+L0032 |   const match = /^experience\.[^.]+\.(\d+)$/.exec(entity);
+L0033 |   return match ? `实习经历 ${Number(match[1]) + 1}` : "其他资料主体";
+L0034 | }
+L0035 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/session.js
+SHA256: 29aa8c42082285f9ee0bb95ea32055e930b474e02b42c4d00c1335f3be0f70fc
+LINES: 63
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { pageBridge } from "./pageBridge.js";
+L0002 | 
+L0003 | export async function scanPage(tabId) {
+L0004 |   const tab = await chrome.tabs.get(tabId);
+L0005 |   if (!/^https?:\/\//.test(tab.url || "")) throw new Error("请先打开普通网站的申请页面");
+L0006 |   let frames;
+L0007 |   let enumerationFailed = false;
+L0008 |   try { frames = await chrome.webNavigation.getAllFrames({ tabId }); } catch { enumerationFailed = true; }
+L0009 |   frames = frames?.length ? frames : [{ frameId: 0, url: tab.url }];
+L0010 |   const results = await Promise.allSettled(frames.map(async (frame) => {
+L0011 |     const [result] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frame.frameId] }, func: pageBridge, args: [{ action: "scan" }] });
+L0012 |     if (!result?.result || !result.documentId) throw new Error("未取得文档标识，请更新 Chrome");
+L0013 |     return { ...result.result, frameId: frame.frameId, documentId: result.documentId };
+L0014 |   }));
+L0015 |   const scanned = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+L0016 |   const main = scanned.find((r) => r.frameId === 0);
+L0017 |   if (!main) throw new Error("无法读取目标页面，请在该页面重新点击插件后重试");
+L0018 |   const failedFrames = frames.flatMap((frame, index) => {
+L0019 |     if (results[index].status !== "rejected") return [];
+L0020 |     let origin = "";
+L0021 |     try { const url = new URL(frame.url); if (/^https?:$/.test(url.protocol)) origin = url.origin; } catch { /* Non-web frames cannot request a host permission. */ }
+L0022 |     return [{ frameId: frame.frameId, origin, reason: "此页面区域无法读取，请检查访问权限或刷新网页" }];
+L0023 |   });
+L0024 |   const snapshot = { id: crypto.randomUUID(), tabId, url: tab.url, title: tab.title || main.title, frames: scanned, failedFrames, pageType: main.pageType, jobText: scanned.map((r) => r.jobText).filter(Boolean).join("\n"), fields: [], coverage: { scanned: scanned.length, total: frames.length, failed: failedFrames.length, unknown: enumerationFailed } };
+L0025 |   snapshot.fields = scanned.flatMap((frame) => frame.fields.map((field) => ({ ...field, localFieldId: field.fieldId, fieldId: `${frame.documentId}:${field.fieldId}`, groupId: `${frame.documentId}:${field.groupId}`, frameId: frame.frameId, documentId: frame.documentId })));
+L0026 |   if (scanned.some((r) => r.pageType === "application")) snapshot.pageType = "application";
+L0027 |   else if (scanned.some((r) => r.pageType === "form") && snapshot.pageType !== "login") snapshot.pageType = "form";
+L0028 |   return snapshot;
+L0029 | }
+L0030 | export async function checkTarget(snapshot) {
+L0031 |   const tab = await chrome.tabs.get(snapshot.tabId);
+L0032 |   if (tab.url !== snapshot.url) throw new Error("目标页面已跳转，请重新识别");
+L0033 |   const main = snapshot.frames.find((f) => f.frameId === 0);
+L0034 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [main.documentId] }, func: pageBridge, args: [{ action: "ping" }] });
+L0035 |   if (result?.result?.token !== main.token || result?.result?.scanId !== main.scanId) throw new Error("页面快照已过期，请重新识别");
+L0036 |   return tab;
+L0037 | }
+L0038 | export async function fieldAction(snapshot, item, action, extra = {}) {
+L0039 |   await checkTarget(snapshot);
+L0040 |   const frame = snapshot.frames.find((f) => f.documentId === item.documentId);
+L0041 |   if (!frame) throw new Error("无法找到原字段所在页面");
+L0042 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [frame.documentId] }, func: pageBridge, args: [{ action, token: frame.token, scanId: frame.scanId, url: frame.url, fieldId: item.localFieldId, ...extra }] });
+L0043 |   if (!result?.result) throw new Error("页面没有返回操作结果");
+L0044 |   return result.result;
+L0045 | }
+L0046 | export async function inspectOptions(snapshot, item, extra = {}) {
+L0047 |   const result = await fieldAction(snapshot, item, "inspect-options", extra);
+L0048 |   if (result.status !== "inspected") return result;
+L0049 |   const field = { ...result.field, localFieldId: item.localFieldId, fieldId: item.fieldId,
+L0050 |     groupId: `${item.documentId}:${result.field.groupId}`, frameId: item.frameId, documentId: item.documentId };
+L0051 |   const index = snapshot.fields.findIndex((candidate) => candidate.fieldId === item.fieldId);
+L0052 |   if (index !== -1) snapshot.fields[index] = field;
+L0053 |   return { ...result, field };
+L0054 | }
+L0055 | export async function pageChanges(snapshot) {
+L0056 |   const results = await Promise.allSettled(snapshot.frames.map(async (frame) => {
+L0057 |     const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [frame.documentId] }, func: pageBridge, args: [{ action: "changes", token: frame.token, scanId: frame.scanId, url: frame.url }] });
+L0058 |     return { added: result.result.added, changed: result.result.changed.map((id) => `${frame.documentId}:${id}`) };
+L0059 |   }));
+L0060 |   if (results.some((r) => r.status === "rejected")) throw new Error("部分页面已变化或无法访问，请重新识别");
+L0061 |   return { added: results.reduce((n, r) => n + r.value.added, 0), changed: results.flatMap((r) => r.value.changed) };
+L0062 | }
+L0063 | 
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/store.js
+SHA256: c9a59987fb447eb1a3234dc191c78ca738ade9c1e7844b20de35417496d56237
+LINES: 24
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { requestStorageMutation } from "../storageClient.js";
+L0002 | import { MEMORY_KEY } from "../storageKeys.js";
+L0003 | 
+L0004 | export { MEMORY_KEY };
+L0005 | const keyFor = (windowId) => `applicationTracker.assistant.session.${windowId}`;
+L0006 | export async function getMemories() {
+L0007 |   const data = await chrome.storage.local.get(MEMORY_KEY);
+L0008 |   if (Array.isArray(data[MEMORY_KEY])) return data[MEMORY_KEY];
+L0009 |   return requestStorageMutation({ operation: "memory.ensure" });
+L0010 | }
+L0011 | export async function saveMemory(draft, expected) {
+L0012 |   return requestStorageMutation({ operation: "memory.save", draft, expected });
+L0013 | }
+L0014 | export async function deleteMemory(id) {
+L0015 |   return requestStorageMutation({ operation: "memory.delete", id });
+L0016 | }
+L0017 | export async function saveSession(windowId, session) {
+L0018 |   await chrome.storage.session.set({ [keyFor(windowId)]: session });
+L0019 | }
+L0020 | export async function loadSession(windowId) {
+L0021 |   const data = await chrome.storage.session.get(keyFor(windowId));
+L0022 |   return data[keyFor(windowId)] || null;
+L0023 | }
+L0024 | 
+
+========================================================================
+FILE: application-tracker-extension/src/sidepanel/assistant.css
+SHA256: 11e7fba0b4ddfc6400ce6d8334ebdb264318b5ce04b6091269879015ffb7588c
+LINES: 5
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | *{box-sizing:border-box}body{margin:0;background:#f5f6f2;color:#23392f;font:14px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}button,input,textarea,select{font:inherit}button,a,select{touch-action:manipulation}button{cursor:pointer;border:1px solid #cad5cd;border-radius:9px;padding:8px 12px;background:#fff;color:#29473b}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid #98be72;outline-offset:2px}.primary{background:#245b48;border-color:#245b48;color:#fff;font-weight:650}.masthead{padding:22px 20px 16px;display:flex;gap:10px;align-items:center;justify-content:space-between;background:#e8eee4;border-bottom:1px solid #d5dfcf}.eyebrow{font-size:10px;letter-spacing:1.8px;color:#52765e}h1{font-size:24px;margin:3px 0 0;font-weight:650}h2{font-size:16px;margin:0 0 6px}h3{font-size:14px;margin:0}p{margin:6px 0}main{padding:18px 16px 165px;max-width:760px;margin:auto}.target,.controls{margin-bottom:16px}.target p{word-break:break-all;font-size:12px;color:#687769}.text-button{padding:0;background:transparent;border:0;text-decoration:underline}.controls>label{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.controls>.primary{width:100%;padding:12px}.hint{font-size:12px;color:#697569}.links{display:flex;gap:18px;font-size:12px;margin-top:12px}a{color:#245b48}.badge{font-size:11px;padding:3px 8px;border-radius:15px;background:#fff;white-space:nowrap}.notice{padding:10px 12px;background:#edf0e8;border-left:3px solid #759d62;border-radius:3px;font-size:13px;overflow-wrap:anywhere}#overview{margin:18px 0}select{max-width:100%;padding:5px 8px;border:1px solid #ccd6cc;border-radius:6px;background:white;color:inherit}.group{margin:20px 0}.group-header{padding-bottom:8px;border-bottom:1px solid #dce3d6;margin-bottom:10px}.group-header select{width:100%;margin-top:8px;font-size:12px}.question{background:#fff;border:1px solid #dce2d7;border-radius:12px;padding:13px;margin-bottom:10px}.question-head{display:flex;align-items:flex-start;gap:9px}.question-head input{margin-top:5px;accent-color:#245b48}.question-head label{flex:1;font-weight:600;overflow-wrap:anywhere}.question-head button{padding:2px 5px;font-size:11px;flex:none}.status{display:inline-block;font-size:11px;margin:8px 0;color:#54705c}.status.review{color:#8f6523}.status.missing,.status.unsupported{color:#8b6259}.answer{width:100%;resize:vertical;padding:9px;border:1px solid #d3ddd0;border-radius:7px;min-height:40px;background:#fbfcf9;color:#23392f}.source{font-size:11px;color:#71806e;margin-top:7px;overflow-wrap:anywhere}.result-row{border-bottom:1px solid #dce2d7;padding:9px 0;font-size:12px}.result-row button{margin-top:6px;font-size:12px}details{margin:16px 0}summary{cursor:pointer;font-size:12px;color:#42664e}.memory-preview{padding:12px;border:1px solid #dce2d7;border-radius:9px;margin:10px 0;background:white}.memory-preview textarea{width:100%;margin:8px 0}.memory-preview select{font-size:12px}footer{position:fixed;bottom:0;left:0;right:0;padding:14px 16px;background:#f5f6f2f5;border-top:1px solid #d8e0d2;backdrop-filter:blur(10px);display:flex;flex-wrap:wrap;gap:8px}footer .primary{flex:1}footer p{width:100%;margin:0}#questions:empty:after{content:"准备好后，这里会按网页分区展示问题与答案。";display:block;padding:32px 18px;color:#82907d;text-align:center;border:1px dashed #cdd8c5;border-radius:12px;margin:22px 0}[hidden]{display:none!important}@media(max-width:330px){.masthead{padding:16px 12px}.links{gap:10px}main{padding-left:10px;padding-right:10px}.badge{max-width:100px;white-space:normal}footer{padding:10px}}
+L0002 | 
+L0003 | .refresh-actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.group-header{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.group-header h2{flex:1;margin:0}.group-header>button{font-size:12px;padding:3px 8px}.group-header>select{flex-basis:100%}input.answer{min-height:40px}.group-header{margin:24px 0 10px}
+L0004 | .preview-tools{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}.preview-tools .text-button{font-size:12px}.question.needs-review{border-left:3px solid #c7a25b}.binding{width:100%;margin:0}.binding summary{font-size:12px}.binding select{width:100%}#summary{font-weight:650}#saveResults{margin:8px 0}
+L0005 | 
+
+========================================================================
+FILE: application-tracker-extension/src/sidepanel/assistant.html
+SHA256: 15d96851886f8611dc771cac1ed70701e2c58c58caea76c5454e918a16af11ac
+LINES: 28
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN">
+L0003 | <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>申请助手</title><link rel="stylesheet" href="./assistant.css"></head>
+L0004 | <body>
+L0005 |   <header class="masthead"><div><span class="eyebrow">APPLICATION TRACKER</span><h1>申请助手</h1></div><span id="connection" class="badge">等待连接</span></header>
+L0006 |   <main>
+L0007 |     <section class="target"><h2 id="targetTitle">在申请页面打开助手</h2><p id="targetUrl"></p><button id="useCurrent" class="text-button">改为当前页面</button><p id="tabNotice" class="notice" hidden></p></section>
+L0008 |     <section class="controls">
+L0009 |       <label>申请语言 <select id="language"><option value="zh">中文</option><option value="en">English</option></select></label>
+L0010 |       <button id="prepare" class="primary">识别并预览</button>
+L0011 |       <p class="hint">① 自动准备答案　② 预览后一次确认填写<br>有有效答案的项目默认选中，无需逐项勾选。</p>
+L0012 |       <div class="links"><a href="../profile/profile.html" target="_blank">个人信息</a><a href="../memory/memory.html" target="_blank">问答记忆</a><a href="../ai/ai.html" target="_blank">AI 设置</a></div>
+L0013 |     </section>
+L0014 |     <p id="message" class="notice" role="status" aria-live="polite">先预览，再点击底部“确认并填写”。助手不会自动提交申请。</p>
+L0015 |     <p id="pageTypeNotice" class="notice" hidden></p>
+L0016 |     <section id="framePermissions" class="notice" aria-label="内嵌表单访问权限" hidden></section>
+L0017 |     <section id="overview" hidden><p id="coverage" class="hint"></p><p id="summary"></p><p id="reviewSummary" class="hint"></p><div class="preview-tools"><label>查看 <select id="filter"><option value="all">全部预览</option><option value="attention">只看需处理</option><option value="ready">已有明确答案</option><option value="review">需要核对</option><option value="missing">缺少资料</option><option value="filled">已填写</option><option value="unsupported">暂不支持</option></select></label><button id="selectAll" class="text-button">全选可填项</button><button id="clearSelection" class="text-button">取消全选</button></div><div class="refresh-actions"><button id="refresh">更新预览，保留修改</button><button id="nextMissing">查看必填缺口</button></div></section>
+L0018 |     <details id="aiDetails" hidden><summary>本次 AI 发送范围</summary><p id="aiDisclosure" class="hint"></p></details>
+L0019 |     <p id="visionStatus" class="notice" hidden></p>
+L0020 |     <section id="questions" aria-label="填写预览"></section>
+L0021 |     <section id="results" hidden><h2>本次填写结果</h2><p id="resultSummary"></p><button id="saveResults">批量保存本次答案</button><div id="resultList"></div></section>
+L0022 |     <details id="learning"><summary>学习网页已填写的答案</summary><p class="hint">读取后默认选中可学习的答案，核对后一次确认保存。</p><button id="learn">读取已填写答案</button></details>
+L0023 |     <section id="learnPreview" hidden><h2>核对并保存答案</h2><p class="hint">已默认选中以下答案，可取消不需要的项目。默认仅适用于当前岗位链接。</p><div id="learnList"></div><button id="saveLearned">确认保存选中的答案</button></section>
+L0024 |   </main>
+L0025 |   <footer><button id="fill" class="primary" disabled>确认并填写</button><button id="cancel" hidden>停止</button><button id="undo" disabled>撤销本次填写</button><p class="hint">确认后逐项填入并核验；最终提交由你在网站完成。</p></footer>
+L0026 |   <script type="module" src="./assistant.js"></script>
+L0027 | </body></html>
+L0028 | 

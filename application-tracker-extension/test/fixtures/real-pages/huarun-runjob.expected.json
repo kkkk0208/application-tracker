@@ -1,0 +1,246 @@
+{
+ "fixture": "huarun-runjob.html",
+ "host": "runjob.crc.com.cn",
+ "note": "人工核对的标准答案。control=none 表示该题当时处于只显示状态（需先点添加/编辑），file 为上传，二者不计入得分。question 已去掉星号和冒号。",
+ "questionCount": 34,
+ "questions": [
+  {
+   "question": "姓名",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "性别",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "出生日期",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "国家",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "毕业院校",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "学历",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "电话",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select+text"
+  },
+  {
+   "question": "邮箱",
+   "section": "基础信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "期望职位",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "期望行业",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": false,
+   "control": "popup-chooser"
+  },
+  {
+   "question": "期望月薪",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "期望到岗时间",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "国家/地区",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "学校名称",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "时间",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "学历",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "专业",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "学位",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "国家/地区",
+   "section": "教育经历",
+   "occurrence": 2,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "学校名称",
+   "section": "教育经历",
+   "occurrence": 2,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "时间",
+   "section": "教育经历",
+   "occurrence": 2,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "学历",
+   "section": "教育经历",
+   "occurrence": 2,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "专业",
+   "section": "教育经历",
+   "occurrence": 2,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "学位",
+   "section": "教育经历",
+   "occurrence": 2,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "时间",
+   "section": "社会实践/实习经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "实践内容",
+   "section": "社会实践/实习经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "名称",
+   "section": "校园经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "时间",
+   "section": "校园经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "说明",
+   "section": "校园经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "语种",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "听说能力",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "读写能力",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "专业资格证书名称",
+   "section": "专业技能",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "获得时间",
+   "section": "专业技能",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  }
+ ]
+}

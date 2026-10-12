@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Application Tracker",
+  "description": "Local job application tracker with form autofill helpers.",
+  "version": "0.4.0",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "sidePanel",
+    "webNavigation"
+  ],
+  "background": {
+    "service_worker": "src/assistant/background.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/assistant.html"
+  },
+  "host_permissions": [
+    "https://*.ctgoodjobs.hk/*",
+    "https://*.jobsdb.com/*",
+    "https://*.mokahr.com/*",
+    "https://job.swsmu.com/*",
+    "https://api.openai.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "action": {
+    "default_title": "Application Tracker",
+    "default_popup": "src/popup/popup.html"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y"
+      },
+      "description": "Open application tracker"
+    }
+  },
+  "options_page": "src/records/records.html"
+}

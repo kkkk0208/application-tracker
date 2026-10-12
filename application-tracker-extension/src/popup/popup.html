@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>记录投递</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <h1>记录投递</h1>
+        <a href="../records/records.html" target="_blank">查看全部</a>
+      </header>
+
+      <nav class="tabs" aria-label="弹窗切换">
+        <button class="tab-button active" type="button" data-tab="record">记录投递</button>
+        <button class="tab-button" type="button" data-tab="applicationInfo">申请信息</button>
+      </nav>
+
+      <section id="recordPanel" class="tab-panel">
+        <p id="tabWarning" class="warning" hidden>无法读取当前标签页，请手动填写链接和标题。</p>
+        <form id="applicationForm" novalidate>
+          <label>公司 <small data-job-source="company" hidden></small><input name="company" required /></label>
+          <label>岗位 <small data-job-source="role" hidden></small><input name="role" required /></label>
+          <label id="recentJobBox" hidden>用最近识别的岗位 <select id="recentJob"></select></label>
+          <label>Base 地 <small data-job-source="base" hidden></small><input name="base" /></label>
+          <label>Candidate portal link <input name="portalLink" type="url" required /></label>
+          <label>网页标题 <input name="pageTitle" /></label>
+          <label>投递来源 <select name="source" required></select></label>
+          <label>投递日期 <input name="appliedDate" type="date" required /></label>
+          <label>当前进度 <select name="status" required></select></label>
+          <label>下次跟进 / 截止日期 <input name="nextActionDate" type="date" /></label>
+          <label>JD 原文或要点 <textarea name="jdText" rows="4"></textarea></label>
+          <label>备注 <textarea name="notes" rows="3"></textarea></label>
+
+          <div id="formErrors" class="errors" hidden></div>
+
+          <div class="form-actions">
+            <button type="submit">保存记录</button>
+            <button id="clearDraft" type="button">清空草稿</button>
+            <span id="saveMessage" class="message" hidden></span>
+          </div>
+        </form>
+      </section>
+
+      <section id="applicationInfoPanel" class="tab-panel" hidden>
+        <div class="application-info-actions">
+          <button id="autofillButton" type="button">打开申请助手</button>
+          <div class="language-tabs" aria-label="申请语言切换">
+            <button class="language-tab active" type="button" data-language-tab="zh">中文申请</button>
+            <button class="language-tab" type="button" data-language-tab="en">English Application</button>
+          </div>
+          <a href="../profile/profile.html" target="_blank">编辑个人信息</a>
+          <a href="../memory/memory.html" target="_blank">记忆库</a>
+          <a href="../ai/ai.html" target="_blank">AI 设置</a>
+          <span id="autofillMessage" class="message" hidden></span>
+        </div>
+        <div id="applicationInfoList" class="application-info-list"></div>
+      </section>
+    </main>
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>
+

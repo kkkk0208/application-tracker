@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>个人信息</title>
+    <link rel="stylesheet" href="./profile.css" />
+  </head>
+  <body>
+    <main class="profile-shell">
+      <header class="page-header">
+        <div>
+          <h1>个人信息</h1>
+          <p>这些信息只保存在本机浏览器里，用于手动填入或复制到申请表。</p>
+        </div>
+        <a href="../records/records.html">返回投递记录</a>
+      </header>
+
+      <form id="profileForm" novalidate>
+        <nav class="profile-tabs" aria-label="个人信息语言切换">
+          <button class="profile-tab active" type="button" data-profile-tab="zh">中文信息</button>
+          <button class="profile-tab" type="button" data-profile-tab="en">English Info</button>
+        </nav>
+
+        <section class="profile-panel" data-profile-panel="zh">
+          <section class="form-section">
+            <h2>基础信息</h2>
+            <div class="field-grid">
+              <label>中文姓名 <input name="fullNameZh" /></label>
+              <label>电话 <input name="phone" autocomplete="tel" /></label>
+              <label>邮箱 <input name="email" type="email" autocomplete="email" /></label>
+              <label>LinkedIn <input name="linkedin" type="url" /></label>
+              <label>GitHub <input name="github" type="url" /></label>
+              <label>个人网站 <input name="website" type="url" /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h2>硕士教育</h2>
+            <div class="field-grid">
+              <label>中文学校 <input name="masterUniversityZh" /></label>
+              <label>中文学历 <input name="masterDegreeZh" placeholder="硕士" /></label>
+              <label>中文专业 <input name="masterMajorZh" /></label>
+              <label>入学时间 <input name="masterStartDate" placeholder="2025-09" /></label>
+              <label>毕业时间 <input name="masterGraduationDate" placeholder="2026-06" /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h2>本科教育</h2>
+            <div class="field-grid">
+              <label>中文学校 <input name="bachelorUniversityZh" /></label>
+              <label>中文学历 <input name="bachelorDegreeZh" placeholder="本科" /></label>
+              <label>中文专业 <input name="bachelorMajorZh" /></label>
+              <label>入学时间 <input name="bachelorStartDate" placeholder="2021-09" /></label>
+              <label>毕业时间 <input name="bachelorGraduationDate" placeholder="2025-06" /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-title-row">
+              <h2>实习经历</h2>
+              <button class="secondary-button" type="button" data-action="add-internship">+ 添加实习</button>
+            </div>
+            <div id="zhInternshipList" class="internship-list" data-internship-list="zh"></div>
+          </section>
+
+          <section class="form-section">
+            <h2>常见申请问题</h2>
+            <div class="field-grid">
+              <label>是否需要签证赞助 <input data-common-answer="visaSponsorship" data-common-language="zh" placeholder="例如：不需要" /></label>
+              <label>工作资格 <input data-common-answer="rightToWork" data-common-language="zh" placeholder="例如：拥有香港工作资格" /></label>
+              <label>期望薪资 <input data-common-answer="expectedSalary" data-common-language="zh" placeholder="例如：面议" /></label>
+              <label>最早到岗时间 <input data-common-answer="earliestStartDate" data-common-language="zh" placeholder="例如：2026年8月" /></label>
+              <label>当前所在地 <input data-common-answer="currentLocation" data-common-language="zh" placeholder="例如：香港" /></label>
+              <label>是否愿意搬迁 <input data-common-answer="relocation" data-common-language="zh" placeholder="例如：愿意" /></label>
+              <label>语言能力 <input data-common-answer="languageAbility" data-common-language="zh" placeholder="例如：普通话、英语、粤语" /></label>
+              <label>为什么选择这个岗位 <textarea data-common-answer="whyRole" data-common-language="zh"></textarea></label>
+              <label>为什么选择这家公司 <textarea data-common-answer="whyCompany" data-common-language="zh"></textarea></label>
+              <label>自我介绍 <textarea data-common-answer="selfIntroduction" data-common-language="zh"></textarea></label>
+            </div>
+          </section>
+        </section>
+
+        <section class="profile-panel" data-profile-panel="en" hidden>
+          <section class="form-section">
+            <h2>Basic Info</h2>
+            <div class="field-grid">
+              <label>Full name <input name="fullName" autocomplete="name" /></label>
+              <label>Preferred name <input name="englishName" /></label>
+              <label>Phone <input name="phoneMirror" autocomplete="tel" /></label>
+              <label>Email <input name="emailMirror" type="email" autocomplete="email" /></label>
+              <label>LinkedIn <input name="linkedinMirror" type="url" /></label>
+              <label>GitHub <input name="githubMirror" type="url" /></label>
+              <label>Website <input name="websiteMirror" type="url" /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h2>Master Education</h2>
+            <div class="field-grid">
+              <label>University <input name="masterUniversity" /></label>
+              <label>Degree <input name="masterDegree" placeholder="Master" /></label>
+              <label>Major <input name="masterMajor" /></label>
+              <label>Start date <input name="masterStartDateMirror" placeholder="2025-09" /></label>
+              <label>Graduation date <input name="masterGraduationDateMirror" placeholder="2026-06" /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h2>Bachelor Education</h2>
+            <div class="field-grid">
+              <label>University <input name="bachelorUniversity" /></label>
+              <label>Degree <input name="bachelorDegree" placeholder="Bachelor" /></label>
+              <label>Major <input name="bachelorMajor" /></label>
+              <label>Start date <input name="bachelorStartDateMirror" placeholder="2021-09" /></label>
+              <label>Graduation date <input name="bachelorGraduationDateMirror" placeholder="2025-06" /></label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="section-title-row">
+              <h2>Internship Experience</h2>
+              <button class="secondary-button" type="button" data-action="add-internship">+ Add Internship</button>
+            </div>
+            <div id="enInternshipList" class="internship-list" data-internship-list="en"></div>
+          </section>
+
+          <section class="form-section">
+            <h2>Common Application Questions</h2>
+            <div class="field-grid">
+              <label>Visa Sponsorship <input data-common-answer="visaSponsorship" data-common-language="en" placeholder="e.g. No" /></label>
+              <label>Right to Work <input data-common-answer="rightToWork" data-common-language="en" placeholder="e.g. Authorized to work in Hong Kong" /></label>
+              <label>Expected Salary <input data-common-answer="expectedSalary" data-common-language="en" placeholder="e.g. Negotiable" /></label>
+              <label>Earliest Start Date <input data-common-answer="earliestStartDate" data-common-language="en" placeholder="e.g. August 2026" /></label>
+              <label>Current Location <input data-common-answer="currentLocation" data-common-language="en" placeholder="e.g. Hong Kong" /></label>
+              <label>Relocation <input data-common-answer="relocation" data-common-language="en" placeholder="e.g. Yes" /></label>
+              <label>Language Ability <input data-common-answer="languageAbility" data-common-language="en" placeholder="e.g. Mandarin, English, Cantonese" /></label>
+              <label>Why This Role <textarea data-common-answer="whyRole" data-common-language="en"></textarea></label>
+              <label>Why This Company <textarea data-common-answer="whyCompany" data-common-language="en"></textarea></label>
+              <label>Self Introduction <textarea data-common-answer="selfIntroduction" data-common-language="en"></textarea></label>
+            </div>
+          </section>
+        </section>
+
+        <div class="actions">
+          <button type="submit">保存个人信息</button>
+          <a href="../memory/memory.html">备份与恢复资料</a>
+          <span id="message" class="message" hidden></span>
+        </div>
+        <p>保存后申请助手会自动读取个人资料，无需另行生成 AI 信息库。</p>
+      </form>
+    </main>
+    <script type="module" src="./profile.js"></script>
+  </body>
+</html>

@@ -1,0 +1,4 @@
+.npm-cache/
+.tmp-xlsx/
+*.tgz
+node_modules/

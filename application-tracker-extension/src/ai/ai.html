@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI 设置</title>
+    <link rel="stylesheet" href="./ai.css" />
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="page-header">
+        <div>
+          <h1>AI 设置</h1>
+          <p>AI 默认关闭。开启后，在申请助手准备或更新问题时按需调用，用于题意复核和答案建议；最终提交由你完成。</p>
+        </div>
+        <a href="../records/records.html">返回投递记录</a>
+      </header>
+
+      <form id="aiSettingsForm" class="settings-card" novalidate>
+        <label class="toggle-row">
+          <span>
+            <strong>启用 AI 建议答案</strong>
+            <small>关闭时不会产生任何 AI 调用。</small>
+          </span>
+          <input name="enabled" type="checkbox" />
+        </label>
+
+        <label class="toggle-row">
+          <span>
+            <strong>截图辅助识别</strong>
+            <small>开启 AI 后，遇到难以识别的题目时，自动发送当前申请页可见区域的截图辅助识别。输入控件和内嵌页面会先遮盖，其他可见文字或图片可能仍含个人信息。截图不保存到本地记录。</small>
+          </span>
+          <input name="visionEnabled" type="checkbox" />
+        </label>
+        <p>截图辅助需要支持图片输入的模型。保持申请页为当前标签页，并从该页面点击插件打开助手；截图失败时仍可使用文字识别。</p>
+
+        <label>
+          OpenAI API Key
+          <input name="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+        </label>
+
+        <label>
+          模型
+          <input name="model" placeholder="gpt-5.5" />
+        </label>
+
+        <div class="actions">
+          <button type="submit">保存设置</button>
+          <span id="message" class="message" hidden></span>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="./ai.js"></script>
+  </body>
+</html>

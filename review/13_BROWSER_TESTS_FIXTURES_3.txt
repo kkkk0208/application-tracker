@@ -1,0 +1,842 @@
+Application Tracker / BROWSER_TESTS_FIXTURES
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/scripts/ui-tests.mjs
+- application-tracker-extension/scripts/vision-browser-tests.mjs
+- application-tracker-extension/test/fixtures/components/README.md
+- application-tracker-extension/test/fixtures/components/antd-fixture.js
+- application-tracker-extension/test/fixtures/components/antd3.html
+- application-tracker-extension/test/fixtures/components/antd5.html
+- application-tracker-extension/test/fixtures/components/element.html
+- application-tracker-extension/test/fixtures/components/fixture.css
+- application-tracker-extension/test/fixtures/components/my97.html
+- application-tracker-extension/test/fixtures/optionMatchCases.js
+
+========================================================================
+FILE: application-tracker-extension/scripts/ui-tests.mjs
+SHA256: edc28d70d115e2ba972016af9c26160d75aa694645f68a1a7cc1697b56ed175e
+LINES: 459
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // UI integration uses real Chrome DOMs and an explicit Chrome API test adapter.
+L0002 | // This does not substitute for loading the unpacked extension in a real side panel.
+L0003 | import assert from "node:assert/strict";
+L0004 | import { createServer } from "node:http";
+L0005 | import { readFile, mkdir } from "node:fs/promises";
+L0006 | import { createRequire } from "node:module";
+L0007 | import { homedir } from "node:os";
+L0008 | import path from "node:path";
+L0009 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0010 | import { createMutationQueue, MUTATION_MESSAGE } from "../src/storageMutations.js";
+L0011 | const require = createRequire(import.meta.url);
+L0012 | let playwright;
+L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0014 | const root = path.resolve(import.meta.dirname, "..");
+L0015 | const fixture = '<!doctype html><html><head><meta charset="utf-8"><title>示例公司 · 分析师申请</title></head><body><form><section><h2>基本信息</h2><label>姓名<input id="name" required></label><label>邮箱<input id="email" type="email"></label></section><section><h2>硕士教育</h2><label>学校名称<input id="school"></label></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label><label>奖惩情况<textarea id="awards"></textarea></label></section></form><iframe src="/child"></iframe></body></html>';
+L0016 | const server = createServer(async (req, res) => {
+L0017 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0018 |   if (req.url === "/apply") return res.end(fixture);
+L0019 |   if (req.url === "/child") return res.end('<label>个人网站<input id="website"></label>');
+L0020 |   const file = path.resolve(root, "." + new URL(req.url, "http://localhost").pathname);
+L0021 |   if (!file.startsWith(root + path.sep)) return res.writeHead(403).end();
+L0022 |   try { if (file.endsWith(".js")) res.setHeader("Content-Type", "text/javascript"); if (file.endsWith(".css")) res.setHeader("Content-Type", "text/css"); res.end(await readFile(file)); } catch { res.writeHead(404).end(); }
+L0023 | });
+L0024 | await new Promise((r) => server.listen(0, "127.0.0.1", r));
+L0025 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0026 | const browser = await playwright.chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+L0027 | try {
+L0028 |   const target = await browser.newPage(); await target.goto(origin + "/apply");
+L0029 |   const captureClient = await target.context().newCDPSession(target);
+L0030 |   const panel = await browser.newPage({ viewport: { width: 420, height: 1000 } });
+L0031 |   const profile = { fullNameZh: "示例申请人", email: "profile@example.com", masterUniversityZh: "示例大学", website: "https://portfolio.example.com", commonAnswers: { selfIntroduction: { zh: "这是一段待核对的自我介绍。", en: "" } } };
+L0032 |   const originalProfile = structuredClone(profile);
+L0033 |   const storage = { local: { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false }, "applicationTracker.questionMemory": [{ id: "legacy-one", question: "其他技能", answer: "SQL", language: "zh", pageUrl: "https://example.com/apply" }] }, session: { "applicationTracker.assistant.target.1": 1 } };
+L0034 |   const readStorage = (name, keys) => structuredClone(Object.fromEntries((keys == null ? Object.keys(storage[name]) : Array.isArray(keys) ? keys : [keys]).filter((key) => key in storage[name]).map((key) => [key, storage[name][key]])));
+L0035 |   const writeStorage = async (name, data) => {
+L0036 |     const changes = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, { oldValue: storage[name][key], newValue: value }]));
+L0037 |     Object.assign(storage[name], structuredClone(data));
+L0038 |     await panel.evaluate(({ changes, area }) => window.__storageEvent?.emit(changes, area), { changes, area: name });
+L0039 |   };
+L0040 |   const mutate = createMutationQueue({ get: async (keys) => readStorage("local", keys), set: (data) => writeStorage("local", data) });
+L0041 |   let lockGate;
+L0042 |   let memoryGate;
+L0043 |   let activeTabId = 1;
+L0044 |   let captureCalls = 0;
+L0045 |   let childPermissionDenied = false;
+L0046 |   let allowChildPermission = false;
+L0047 |   const permissionRequests = [];
+L0048 |   await panel.exposeBinding("testApi", async (source, method, args) => {
+L0049 |     if (method === "tabs.get") return { id: 1, windowId: 1, active: activeTabId === 1, url: target.url(), title: await target.title() };
+L0050 |     if (method === "tabs.query") return [{ id: activeTabId, windowId: 1, active: true, url: activeTabId === 1 ? target.url() : "https://unrelated.example", title: activeTabId === 1 ? await target.title() : "Other tab" }];
+L0051 |     // Native captureVisibleTab does not inject screenshot styles into the page.
+L0052 |     if (method === "tabs.capture") { captureCalls++; return `data:image/png;base64,${(await captureClient.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true })).data}`; }
+L0053 |     if (method === "tabs.update") return {};
+L0054 |     if (method === "frames") return target.frames().map((frame, index) => ({ frameId: index, url: childPermissionDenied && index === 1 ? "https://embedded.example/form?private=token" : frame.url() }));
+L0055 |     if (method === "permissions.request") {
+L0056 |       permissionRequests.push(args);
+L0057 |       if (allowChildPermission) childPermissionDenied = false;
+L0058 |       return allowChildPermission;
+L0059 |     }
+L0060 |     if (method === "script") {
+L0061 |       const { target: route, request } = args;
+L0062 |       const index = route.frameIds?.[0] ?? (route.documentIds?.[0] === "doc1" ? 1 : 0);
+L0063 |       if (index === 1 && childPermissionDenied) throw new Error("Cannot access this frame without host permission");
+L0064 |       const frame = target.frames()[index];
+L0065 |       return [{ frameId: index, documentId: `doc${index}`, result: await frame.evaluate(pageBridge, request) }];
+L0066 |     }
+L0067 |     if (method === "get") return readStorage(args.area, args.keys);
+L0068 |     if (method === "set") return writeStorage(args.area, args.data);
+L0069 |     if (method === "remove") { delete storage[args.area][args.key]; return; }
+L0070 |     if (method === "message") {
+L0071 |       if (args.type === "assistant-lock" && lockGate) {
+L0072 |         const gate = lockGate; lockGate = null; gate.entered(); await gate.wait;
+L0073 |       }
+L0074 |       if (args.type === MUTATION_MESSAGE && args.mutation.operation === "memory.save" && memoryGate) {
+L0075 |         const gate = memoryGate; memoryGate = null; gate.entered(); await gate.wait;
+L0076 |       }
+L0077 |       if (args.type !== MUTATION_MESSAGE) return { ok: true };
+L0078 |       try { return { ok: true, value: await mutate(args.mutation) }; } catch (error) { return { ok: false, error: error.message }; }
+L0079 |     }
+L0080 |     throw new Error(`Unexpected test API ${method}`);
+L0081 |   });
+L0082 |   await panel.addInitScript(() => {
+L0083 |     const event = () => { const listeners = new Set(); return { addListener: (listener) => listeners.add(listener), removeListener: (listener) => listeners.delete(listener), emit: (...args) => listeners.forEach((listener) => listener(...args)) }; };
+L0084 |     window.__storageEvent = event();
+L0085 |     const area = (name) => ({ get: (keys) => testApi("get", { area: name, keys }), set: (data) => testApi("set", { area: name, data }), remove: (key) => testApi("remove", { area: name, key }) });
+L0086 |     window.chrome = { permissions: { request: (request) => testApi("permissions.request", { request, userGesture: navigator.userActivation.isActive }) }, storage: { local: area("local"), session: area("session"), onChanged: window.__storageEvent }, windows: { getCurrent: async () => ({ id: 1 }), get: async () => ({ id: 1, focused: true }), onFocusChanged: event() }, tabs: { get: (id) => testApi("tabs.get", id), query: (query) => testApi("tabs.query", query), captureVisibleTab: (id, options) => testApi("tabs.capture", { id, options }), update: (id, props) => testApi("tabs.update", { id, props }), onActivated: event(), onUpdated: event(), onRemoved: event() }, webNavigation: { getAllFrames: () => testApi("frames") }, scripting: { executeScript: (args) => testApi("script", { target: args.target, request: args.args[0] }) }, runtime: { sendMessage: (message) => testApi("message", message) } };
+L0087 |   });
+L0088 |   const errors = []; panel.on("pageerror", (e) => errors.push(e.message));
+L0089 |   await panel.goto(origin + "/src/sidepanel/assistant.html");
+L0090 |   await panel.locator("#prepare").click();
+L0091 |   await panel.locator("#questions .question").first().waitFor();
+L0092 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0093 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0094 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
+L0095 |   assert.match(await panel.locator("#fill").textContent(), /确认并填写\s*5\s*项/);
+L0096 |   console.log("PASS UI merges main and child frame questions through the API adapter");
+L0097 |   assert.equal(await panel.locator("#filter").inputValue(), "all");
+L0098 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0099 |   for (const id of ["name", "email", "school", "intro", "awards"]) assert.equal(await target.locator(`#${id}`).inputValue(), "");
+L0100 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0101 |   await panel.locator("#clearSelection").click();
+L0102 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 0);
+L0103 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0104 |   await panel.locator("#selectAll").click();
+L0105 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0106 |   await panel.locator("#filter").selectOption("attention");
+L0107 |   assert.equal(await panel.locator(".question").count(), 2);
+L0108 |   assert.equal(await panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^自我介绍/ }) }).count(), 1);
+L0109 |   assert.equal(await panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^奖惩情况/ }) }).locator("[data-selected]").isChecked(), false);
+L0110 |   await panel.locator("#filter").selectOption("all");
+L0111 |   assert.match(await panel.locator("#fill").textContent(), /确认并填写\s*5\s*项/);
+L0112 |   for (const id of ["name", "email", "school", "intro", "awards"]) assert.equal(await target.locator(`#${id}`).inputValue(), "");
+L0113 |   console.log("PASS UI previews all valid answers without writing the target and supports select-all, clearing and attention filtering");
+L0114 |   let releaseLock;
+L0115 |   const lockEntered = new Promise((resolve) => { lockGate = { entered: resolve, wait: new Promise((release) => { releaseLock = release; }) }; });
+L0116 |   await panel.locator("#fill").click();
+L0117 |   await lockEntered;
+L0118 |   await panel.locator("#cancel").click();
+L0119 |   releaseLock();
+L0120 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0121 |   assert.equal(await target.locator("#name").inputValue(), "");
+L0122 |   assert.equal(await target.locator("#school").inputValue(), "");
+L0123 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0124 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0125 |   assert.equal(await panel.locator("#resultList .result-row").count(), 0);
+L0126 |   console.log("PASS UI cancel while acquiring a delayed lock prevents all subsequent writes");
+L0127 |   await target.locator("#email").fill("user-change@example.com");
+L0128 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0129 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
+L0130 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
+L0131 |   assert.equal(await target.locator("#intro").inputValue(), profile.commonAnswers.selfIntroduction.zh);
+L0132 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0133 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
+L0134 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
+L0135 |   assert.deepEqual(storage.local["applicationTracker.profile"], originalProfile);
+L0136 |   assert.equal(storage.local["applicationTracker.assistant.memories.v2"].length, 1);
+L0137 |   assert.equal(storage.local["applicationTracker.assistant.memories.v2"][0].confirmed, false);
+L0138 |   console.log("PASS UI fill preserves manual edits, profile bytes and unconfirmed memories");
+L0139 |   await panel.locator("#undo").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0140 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
+L0141 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0142 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0143 |   console.log("PASS UI undo restores only assistant-written fields");
+L0144 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0145 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0146 |   await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
+L0147 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0148 |   await panel.setViewportSize({ width: 320, height: 900 }); assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0149 |   console.log("PASS UI fits 320px and 420px widths without horizontal overflow");
+L0150 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor(); assert.equal(await panel.locator("#questions .question").count(), 6);
+L0151 |   console.log("PASS UI session restores on reload");
+L0152 |   await target.reload(); await panel.waitForFunction(() => document.getElementById("fill").disabled);
+L0153 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
+L0154 |   console.log("PASS UI detects navigation and disables stale plans");
+L0155 | 
+L0156 |   // Drive the full preparation pipeline with a delayed custom control and a local AI stub.
+L0157 |   // No external API request or real personal data is used.
+L0158 |   await target.goto(origin + "/apply");
+L0159 |   await target.evaluate(() => {
+L0160 |     document.body.innerHTML = `<form><section><h2>硕士教育</h2><label>学校所在地<input id="school-location"></label><div role="combobox" aria-label="学位" aria-controls="degree-menu" aria-expanded="false" tabindex="0" style="padding:16px"><span class="selected-value"></span></div><ul role="listbox" id="degree-menu" hidden></ul></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label></section></form>`;
+L0161 |     const control = document.querySelector('[role="combobox"]');
+L0162 |     const menu = document.getElementById("degree-menu");
+L0163 |     const close = () => { menu.hidden = true; control.setAttribute("aria-expanded", "false"); };
+L0164 |     control.addEventListener("click", () => {
+L0165 |       if (control.getAttribute("aria-expanded") === "true") return close();
+L0166 |       menu.hidden = false; menu.innerHTML = ""; control.setAttribute("aria-expanded", "true");
+L0167 |       setTimeout(() => { menu.innerHTML = `<li role="option">Bachelor's degree</li><li role="option">Master's degree</li>`; }, 500);
+L0168 |     });
+L0169 |     control.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+L0170 |     menu.addEventListener("click", (event) => {
+L0171 |       if (!event.target.matches('[role="option"]')) return;
+L0172 |       control.querySelector(".selected-value").textContent = event.target.textContent; close();
+L0173 |     });
+L0174 |   });
+L0175 |   await writeStorage("local", { "applicationTracker.profile": { ...profile, masterDegreeZh: "硕士" }, "applicationTracker.aiSettings": { enabled: true, apiKey: "fixture-key", model: "fixture-model" } });
+L0176 |   const sentBatches = [];
+L0177 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0178 |     const payload = route.request().postDataJSON();
+L0179 |     const batch = JSON.parse(payload.input[1].content);
+L0180 |     sentBatches.push(batch);
+L0181 |     const output = payload.text.format.name === "application_question_mapping"
+L0182 |       ? { mappings: batch.fields.map((field) => ({ fieldId: field.fieldId, entityId: field.entityId, intent: null })) }
+L0183 |       : { items: batch.fields.flatMap((field) => {
+L0184 |         if (field.label === "学位") return [{ fieldId: field.fieldId, entityId: field.entityId, kind: "option", factIds: [batch.facts.find((fact) => fact.id.includes(".degree.")).id], optionId: field.options.find((option) => option.text === "Master's degree").id, text: null }];
+L0185 |         if (field.label === "自我介绍") return [{ fieldId: field.fieldId, entityId: field.entityId, kind: "draft", factIds: [batch.facts.find((fact) => fact.id.includes("selfIntroduction") || fact.id.startsWith("education.")).id], optionId: null, text: "根据已确认资料准备的 AI 自我介绍草稿。" }];
+L0186 |         return [];
+L0187 |       }) };
+L0188 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0189 |   });
+L0190 |   await panel.locator("#prepare").click();
+L0191 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0192 |   const degree = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^学位/ }) });
+L0193 |   const location = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^学校所在地/ }) });
+L0194 |   const intro = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^自我介绍/ }) });
+L0195 |   assert.equal(await location.locator("[data-answer]").inputValue(), "");
+L0196 |   assert.equal(await location.locator("[data-selected]").isChecked(), false);
+L0197 |   assert.equal(await degree.locator("[data-answer]").inputValue(), "Master's degree");
+L0198 |   assert.equal(await degree.locator("[data-selected]").isChecked(), true);
+L0199 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0200 |   assert.equal(await intro.locator("[data-answer]").inputValue(), "根据已确认资料准备的 AI 自我介绍草稿。");
+L0201 |   assert.match(await intro.locator(".source").first().textContent(), /AI 草稿/);
+L0202 |   assert.equal(await target.locator('[role="combobox"] .selected-value').textContent(), "");
+L0203 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0204 |   assert.equal(await target.locator("#school-location").inputValue(), "");
+L0205 |   assert.equal(await target.locator("#degree-menu").isVisible(), false);
+L0206 |   assert.ok(sentBatches.some((batch) => batch.fields.some((field) => field.label === "学位" && field.options?.length === 2)));
+L0207 |   assert.match(await panel.locator("#fill").textContent(), /确认并填写\s*2\s*项/);
+L0208 |   // No per-question checking: the only write action is this explicit batch confirmation.
+L0209 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0210 |   assert.equal(await target.locator('[role="combobox"] .selected-value').textContent(), "Master's degree");
+L0211 |   assert.equal(await target.locator("#intro").inputValue(), "根据已确认资料准备的 AI 自我介绍草稿。");
+L0212 |   assert.equal(await target.locator("#school-location").inputValue(), "");
+L0213 |   await panel.locator("#saveResults").click();
+L0214 |   assert.equal(await panel.locator("[data-learn]").count(), 2);
+L0215 |   assert.equal(await panel.locator("[data-learn-check]:checked").count(), 2);
+L0216 |   assert.equal(storage.local["applicationTracker.assistant.memories.v2"].length, 1);
+L0217 |   console.log("PASS UI previews delayed real options and validated AI prose, then fills both with one confirmation and previews all result memories");
+L0218 | 
+L0219 |   await panel.locator("#undo").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0220 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0221 |   // This custom control has no clear option; reset the synthetic fixture as a
+L0222 |   // user's manual clear before testing a fresh preview, not as an undo guarantee.
+L0223 |   await target.locator('[role="combobox"] .selected-value').evaluate((node) => { node.textContent = ""; });
+L0224 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0225 |   await panel.locator("#clearSelection").click();
+L0226 |   await intro.locator("[data-answer]").fill("人工核对的草稿");
+L0227 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0228 |   await target.locator("form").evaluate((form) => form.insertAdjacentHTML("beforeend", '<section><h2>基本信息</h2><label>邮箱<input type="email" required></label></section>'));
+L0229 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0230 |   assert.equal(await intro.locator("[data-answer]").inputValue(), "人工核对的草稿");
+L0231 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0232 |   assert.equal(await degree.locator("[data-selected]").isChecked(), false);
+L0233 |   const email = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^邮箱/ }) });
+L0234 |   assert.equal(await email.locator("[data-selected]").isChecked(), true);
+L0235 |   assert.equal(await panel.locator('[data-selected]:checked').count(), 2);
+L0236 |   assert.equal(await panel.locator(".question").count(), 4);
+L0237 |   assert.equal(await target.locator('input[type="email"]').inputValue(), "");
+L0238 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0239 |   console.log("PASS UI refresh preserves edited drafts and manual exclusions while new valid answers stay in preview until confirmation");
+L0240 | 
+L0241 |   await panel.locator("#language").selectOption("en");
+L0242 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0243 |   assert.notEqual(await intro.locator("[data-answer]").inputValue(), "人工核对的草稿");
+L0244 |   assert.equal(await intro.locator("[data-selected]").isChecked(), false);
+L0245 |   assert.equal(await email.locator("[data-selected]").isChecked(), true);
+L0246 |   assert.equal(await panel.locator('[data-selected]:checked').count(), 1);
+L0247 |   assert.equal(await target.locator('input[type="email"]').inputValue(), "");
+L0248 |   console.log("PASS UI changing language discards old-language drafts while selecting valid new-language answers for preview");
+L0249 | 
+L0250 |   await panel.locator("#language").selectOption("zh");
+L0251 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0252 |   await intro.locator("[data-answer]").fill("第一版回答");
+L0253 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0254 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0255 |   assert.equal(await target.locator("#intro").inputValue(), "第一版回答");
+L0256 |   await target.locator("#intro").fill("");
+L0257 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0258 |   await intro.locator("[data-answer]").fill("第二版回答");
+L0259 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0260 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0261 |   assert.equal(await target.locator("#intro").inputValue(), "第二版回答");
+L0262 |   const introResults = panel.locator(".result-row").filter({ has: panel.locator('strong', { hasText: /^自我介绍$/ }) }).filter({ has: panel.locator("[data-save-answer]") });
+L0263 |   assert.equal(await introResults.count(), 2);
+L0264 |   await introResults.last().locator("[data-save-answer]").click();
+L0265 |   assert.equal(await panel.locator("[data-learn-answer]").inputValue(), "第二版回答");
+L0266 |   // A subsequent language change must not relabel a previously opened answer preview.
+L0267 |   await panel.locator("#language").selectOption("en");
+L0268 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0269 |   await panel.locator("[data-learn-check]").check();
+L0270 |   await panel.locator("#saveLearned").click();
+L0271 |   await panel.waitForFunction(() => document.getElementById("learnPreview").hidden);
+L0272 |   const learned = storage.local["applicationTracker.assistant.memories.v2"].find((item) => item.answer === "第二版回答");
+L0273 |   assert.ok(learned); assert.equal(learned.language, "zh");
+L0274 |   assert.equal(learned.question, "自我介绍");
+L0275 |   console.log("PASS UI saves the chosen fill operation and preserves its original language across refreshes");
+L0276 | 
+L0277 |   await panel.locator("#learning").evaluate((details) => { details.open = true; });
+L0278 |   await panel.locator("#learn").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0279 |   assert.equal(await panel.locator("[data-learn]").count(), 3);
+L0280 |   const expectedMemories = await panel.locator("[data-learn]").evaluateAll((nodes) => nodes.map((node) => ({ question: node.querySelector("label").textContent.trim(), answer: node.querySelector("[data-learn-answer]").value })));
+L0281 |   assert.equal(await panel.locator("[data-learn-check]:checked").count(), 3);
+L0282 |   let releaseMemory;
+L0283 |   const memoryEntered = new Promise((resolve) => { memoryGate = { entered: resolve, wait: new Promise((release) => { releaseMemory = release; }) }; });
+L0284 |   await panel.locator("#saveLearned").click();
+L0285 |   await memoryEntered;
+L0286 |   assert.equal(await panel.locator("#saveLearned").isDisabled(), true);
+L0287 |   assert.equal(await panel.locator("#learn").isDisabled(), true);
+L0288 |   assert.equal(await panel.locator("#language").isDisabled(), true);
+L0289 |   assert.equal(await panel.locator("[data-learn-answer]:disabled").count(), 3);
+L0290 |   // Even a queued duplicate click cannot start a second mutable batch.
+L0291 |   await panel.locator("#saveLearned").dispatchEvent("click");
+L0292 |   releaseMemory();
+L0293 |   await panel.waitForFunction(() => document.getElementById("learnPreview").hidden && !document.getElementById("prepare").disabled);
+L0294 |   for (const expected of expectedMemories) {
+L0295 |     assert.ok(storage.local["applicationTracker.assistant.memories.v2"].some((item) => expected.question.endsWith(item.question) && item.answer === expected.answer && item.language === "en"));
+L0296 |   }
+L0297 |   console.log("PASS UI freezes multi-answer memory saves and locks the preview until the batch completes");
+L0298 | 
+L0299 |   await writeStorage("local", { "applicationTracker.assistant.memories.v2": [] });
+L0300 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0301 |   assert.match(await panel.locator("#message").textContent(), /问答记忆已更新/);
+L0302 |   console.log("PASS UI memory changes invalidate prepared answers");
+L0303 |   // Render labels only into pixels, so the DOM cannot supply their meaning.
+L0304 |   const visionFixture = async () => {
+L0305 |     await target.goto(origin + "/apply");
+L0306 |     await target.evaluate(() => {
+L0307 |       document.body.innerHTML = '<form><section><h2>申请信息</h2><canvas id="visual-label" width="420" height="90"></canvas><div><input id="image-field"></div></section><section><h2>联系信息</h2><label>邮箱<input id="email" type="email"></label><label>密码<input id="password" type="password" value="synthetic-password-secret"></label></section></form>';
+L0308 |       const canvas = document.getElementById("visual-label");
+L0309 |       const ctx = canvas.getContext("2d"); ctx.font = "22px sans-serif";
+L0310 |       ctx.fillText("本科教育", 10, 30); ctx.fillText("学校名称", 10, 75);
+L0311 |     });
+L0312 |   };
+L0313 |   const visualSettings = { enabled: true, visionEnabled: true, apiKey: "fixture-key", model: "fixture-model" };
+L0314 |   const visualProfile = { ...profile, bachelorUniversityZh: "截图测试本科大学", masterUniversityZh: "另一所硕士大学" };
+L0315 |   await panel.unroute("https://api.openai.com/v1/responses");
+L0316 |   const visualRequests = [];
+L0317 |   let rejectVisual = false;
+L0318 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0319 |     const payload = route.request().postDataJSON();
+L0320 |     const isVisual = payload.text.format.name === "application_visual_observations";
+L0321 |     const batch = JSON.parse(isVisual ? payload.input[1].content[0].text : payload.input[1].content);
+L0322 |     if (isVisual) {
+L0323 |       visualRequests.push(payload);
+L0324 |       if (rejectVisual) return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: { message: "Image input unsupported by fixture model" } }) });
+L0325 |     }
+L0326 |     const output = isVisual
+L0327 |       ? { observations: batch.fields.filter((field) => field.label === "未命名问题").map((field) => ({ fieldId: field.fieldId, marker: field.marker, label: "学校名称", section: "本科教育", confidence: 0.98 })) }
+L0328 |       : payload.text.format.name === "application_question_mapping"
+L0329 |         ? { mappings: batch.fields.map((field) => ({ fieldId: field.fieldId, entityId: field.entityId, intent: null })) }
+L0330 |         : { items: [] };
+L0331 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0332 |   });
+L0333 |   await visionFixture();
+L0334 |   await writeStorage("local", { "applicationTracker.profile": visualProfile, "applicationTracker.aiSettings": visualSettings });
+L0335 |   await panel.locator("#language").selectOption("zh");
+L0336 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0337 |   assert.equal(captureCalls, 1);
+L0338 |   assert.equal(visualRequests.length, 1, await panel.locator("#visionStatus").textContent());
+L0339 |   const imagePayload = visualRequests[0];
+L0340 |   assert.equal(imagePayload.store, false);
+L0341 |   assert.equal(imagePayload.model, "fixture-model");
+L0342 |   assert.equal(imagePayload.input[1].content[1].type, "input_image");
+L0343 |   assert.match(imagePayload.input[1].content[1].image_url, /^data:image\/png;base64,/);
+L0344 |   assert.equal(imagePayload.input[1].content[1].detail, "high");
+L0345 |   assert.ok(!/synthetic-password-secret|截图测试本科大学|profile@example.com/.test(imagePayload.input[1].content[0].text));
+L0346 |   const imageSchool = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^学校名称$/ }) });
+L0347 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
+L0348 |   assert.equal(await imageSchool.locator("[data-selected]").isChecked(), true);
+L0349 |   assert.match(await imageSchool.locator(".status").textContent(), /重点核对/);
+L0350 |   assert.match(await panel.locator("#visionStatus").textContent(), /辅助识别 1 项/);
+L0351 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0352 |   assert.equal(await target.locator("#email").inputValue(), "");
+L0353 |   assert.ok(!JSON.stringify(storage).includes("data:image/"));
+L0354 |   await panel.screenshot({ path: path.join(artifacts, "assistant-visual-preview.png"), fullPage: true });
+L0355 |   await imageSchool.locator("[data-answer]").fill("人工核对的本科院校");
+L0356 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0357 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "人工核对的本科院校");
+L0358 |   assert.equal(await imageSchool.locator("[data-selected]").isChecked(), true);
+L0359 |   assert.match(await imageSchool.textContent(), /截图辅助/);
+L0360 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0361 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0362 |   console.log("PASS UI refreshing a visually identified question preserves its manual draft without asking vision to rewrite it");
+L0363 | 
+L0364 |   await panel.locator(".binding").evaluate((details) => { details.open = true; });
+L0365 |   await panel.locator("[data-binding]").selectOption("education.bachelor");
+L0366 |   await panel.waitForFunction(() => document.querySelector('[aria-label="学校名称的答案"]').value === "截图测试本科大学");
+L0367 |   await panel.locator("#refresh").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0368 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
+L0369 |   assert.equal(await panel.locator("[data-binding]").inputValue(), "education.bachelor");
+L0370 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0371 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0372 |   console.log("PASS UI a manual education binding survives a fresh DOM scan of a visually labelled field");
+L0373 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0374 |   assert.equal(await target.locator("#image-field").inputValue(), "截图测试本科大学");
+L0375 |   assert.equal(await target.locator("#email").inputValue(), profile.email);
+L0376 |   assert.equal(await target.locator("#password").inputValue(), "synthetic-password-secret");
+L0377 |   assert.ok(!JSON.stringify(storage).includes("data:image/"));
+L0378 |   console.log("PASS UI screenshot observations resolve a canvas-only label to bachelor facts, preview first and fill once without persisting images");
+L0379 | 
+L0380 |   await visionFixture();
+L0381 |   await writeStorage("local", { "applicationTracker.aiSettings": { ...visualSettings, visionEnabled: false } });
+L0382 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0383 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0384 |   assert.equal(await panel.locator("#visionStatus").isVisible(), false);
+L0385 |   assert.equal(await panel.getByRole("textbox", { name: "未命名问题的答案", exact: true }).inputValue(), "");
+L0386 |   assert.equal(await panel.getByRole("textbox", { name: "邮箱的答案", exact: true }).inputValue(), profile.email);
+L0387 |   console.log("PASS UI vision opt-out sends no screenshot and preserves ordinary text preparation");
+L0388 | 
+L0389 |   await writeStorage("local", { "applicationTracker.aiSettings": visualSettings });
+L0390 |   activeTabId = 2;
+L0391 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0392 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0393 |   assert.match(await panel.locator("#visionStatus").textContent(), /继续使用文字识别/);
+L0394 |   assert.equal(await panel.getByRole("textbox", { name: "邮箱的答案", exact: true }).inputValue(), profile.email);
+L0395 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0396 |   activeTabId = 1;
+L0397 |   console.log("PASS UI an unrelated active tab prevents capture and falls back to the bound form's text preview");
+L0398 | 
+L0399 |   rejectVisual = true;
+L0400 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0401 |   assert.equal(captureCalls, 2); assert.equal(visualRequests.length, 2);
+L0402 |   assert.match(await panel.locator("#visionStatus").textContent(), /继续使用文字识别.*400/);
+L0403 |   assert.equal(await panel.getByRole("textbox", { name: "邮箱的答案", exact: true }).inputValue(), profile.email);
+L0404 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0405 |   assert.ok(!JSON.stringify(storage).includes("data:image/"));
+L0406 |   console.log("PASS UI an image API failure preserves the ordinary preview without writing or persisting a screenshot");
+L0407 | 
+L0408 |   rejectVisual = false;
+L0409 |   await visionFixture();
+L0410 |   await target.locator("section").first().evaluate((section) => section.insertAdjacentHTML("beforeend", '<label>专业<input id="major"></label>'));
+L0411 |   await writeStorage("local", { "applicationTracker.profile": { ...visualProfile, bachelorMajorZh: "本科专业", masterMajorZh: "硕士专业" } });
+L0412 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0413 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
+L0414 |   const unresolvedMajor = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^专业$/ }) });
+L0415 |   assert.equal(await unresolvedMajor.locator("[data-answer]").inputValue(), "");
+L0416 |   assert.equal(await unresolvedMajor.locator("[data-selected]").isChecked(), false);
+L0417 |   assert.match(await unresolvedMajor.textContent(), /截图仅确认/);
+L0418 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0419 |   assert.equal(await target.locator("#major").inputValue(), "");
+L0420 |   console.log("PASS UI a partial visual response cannot silently pair bachelor school with a master's major");
+L0421 |   await writeStorage("local", { "applicationTracker.aiSettings": { enabled: false } });
+L0422 |   await target.goto(origin + "/apply");
+L0423 |   childPermissionDenied = true;
+L0424 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0425 |   assert.match(await panel.locator("#coverage").textContent(), /1\/2/);
+L0426 |   assert.equal(permissionRequests.length, 0, "Scanning must not request permissions automatically");
+L0427 |   const permissionButton = panel.getByRole("button", { name: "允许读取内嵌表单（embedded.example）", exact: true });
+L0428 |   await permissionButton.click();
+L0429 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("尚未允许"));
+L0430 |   assert.deepEqual(permissionRequests[0], { request: { origins: ["https://embedded.example/*"] }, userGesture: true });
+L0431 |   assert.equal(await panel.locator("#questions .question").count(), 5);
+L0432 |   allowChildPermission = true;
+L0433 |   await permissionButton.click();
+L0434 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("2/2"));
+L0435 |   assert.equal(await panel.locator("#framePermissions").isVisible(), false);
+L0436 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0437 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0438 |   console.log("PASS UI requests only the failed iframe origin during a user click, preserves denied preview and rescans after grant");
+L0439 | 
+L0440 |   await target.setContent('<!doctype html><title>其他页面</title><label>邮箱<input id="uncertain-email"></label>');
+L0441 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0442 |   assert.match(await panel.locator("#pageTypeNotice").textContent(), /尚未确定页面类型/);
+L0443 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 1);
+L0444 |   assert.equal(await target.locator("#uncertain-email").inputValue(), "");
+L0445 |   await target.setContent('<!doctype html><title>岗位详情</title><div class="job-description">工作职责：负责日常财务分析和报表编制。</div><label>邮箱<input id="job-email"></label>');
+L0446 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0447 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 1);
+L0448 |   assert.equal(await target.locator("#job-email").inputValue(), "");
+L0449 |   console.log("PASS UI keeps detected controls available on unknown or job-like pages and writes nothing before confirmation");
+L0450 | 
+L0451 |   await target.setContent('<!doctype html><title>信息表</title><input id="placeholder-question" placeholder="您的补充说明"><input id="unknown-question">');
+L0452 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0453 |   assert.equal(await panel.locator("[data-label-warning]").count(), 2);
+L0454 |   assert.ok((await panel.locator("[data-label-warning]").allTextContents()).every((text) => text === "题目未识别"));
+L0455 |   console.log("PASS UI marks placeholder-only and unlabeled questions for review");
+L0456 |   assert.deepEqual(errors, []);
+L0457 |   console.log("UI integration cases passed: 24 (Chrome API adapter and local AI stub; not live-model validation)");
+L0458 | } finally { await browser.close(); await new Promise((r) => server.close(r)); }
+L0459 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/vision-browser-tests.mjs
+SHA256: 148892a5f2ce7191344951036a6d3937b81f8155d443966395704130431f3433
+LINES: 156
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { readFile } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0008 | 
+L0009 | // Only isolated synthetic pages are captured. Images remain in memory and no
+L0010 | // external AI service or existing user browser profile is used by this suite.
+L0011 | const require = createRequire(import.meta.url);
+L0012 | let playwright;
+L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0014 | const root = path.resolve(import.meta.dirname, "..");
+L0015 | const server = createServer(async (req, res) => {
+L0016 |   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+L0017 |   if (pathname === "/fixture") { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end('<!doctype html><html><head><title>Visual application fixture</title></head><body></body></html>'); return; }
+L0018 |   const file = path.resolve(root, "." + pathname);
+L0019 |   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+L0020 |   try { res.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript" : "text/html; charset=utf-8"); res.end(await readFile(file)); } catch { res.writeHead(404).end(); }
+L0021 | });
+L0022 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0023 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0024 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0025 | const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, deviceScaleFactor: 1 });
+L0026 | const errors = [];
+L0027 | page.on("pageerror", (error) => errors.push(error.message));
+L0028 | let passed = 0;
+L0029 | const gray = [232, 236, 233, 255];
+L0030 | async function fixture() {
+L0031 |   await page.goto(origin + "/fixture");
+L0032 |   await page.evaluate(() => {
+L0033 |     document.body.innerHTML = `<style>
+L0034 |       body { margin:0; background:#fff; min-height:1600px; font-family:sans-serif }
+L0035 |       h2 { position:absolute; left:40px; top:12px }
+L0036 |       .form-item { position:absolute; width:300px; height:70px }
+L0037 |       label { display:block; height:25px }
+L0038 |       input, textarea { box-sizing:border-box; appearance:none; border:0; width:240px; height:40px; background:#e00000; color:#fff }
+L0039 |       #ordinary-box { left:40px; top:80px } #secret-box { left:40px; top:180px }
+L0040 |       #filled-box { left:40px; top:280px } #hidden-box { display:none }
+L0041 |       #shadow { position:absolute; left:40px; top:380px }
+L0042 |       #frame { position:absolute; left:400px; top:100px; width:250px; height:180px; border:0 }
+L0043 |       #offscreen-box { left:40px; top:1300px } #covered-box { left:700px; top:100px }
+L0044 |       #cover { position:absolute; left:690px; top:80px; width:290px; height:120px; background:#fafafa; z-index:2 }
+L0045 |       #readonly-answer { position:absolute; left:400px; top:350px; width:240px; height:40px; background:#e00000 }
+L0046 |     </style><h2>申请信息</h2>
+L0047 |     <div id="ordinary-box" class="form-item"><label for="ordinary">学校名称</label><input id="ordinary"></div>
+L0048 |     <div id="secret-box" class="form-item"><label for="secret">密码</label><input id="secret" type="password" value="SYNTHETIC_PASSWORD_ONLY"></div>
+L0049 |     <div id="filled-box" class="form-item"><label for="filled">邮箱</label><input id="filled" value="synthetic@example.test"></div>
+L0050 |     <div id="hidden-box" class="form-item"><input id="hidden"></div>
+L0051 |     <div id="offscreen-box" class="form-item"><label for="offscreen">其他说明</label><input id="offscreen"></div>
+L0052 |     <div id="covered-box" class="form-item"><label for="covered">被挡住的字段</label><input id="covered"></div><div id="cover"></div>
+L0053 |     <div id="shadow"></div>
+L0054 |     <iframe id="frame" srcdoc="<style>body { margin:0; background:#e00000 }</style>PRIVATE_FRAME_TEST_ONLY"></iframe>
+L0055 |     <div id="readonly-answer" data-answer>PRIVATE_READONLY_TEST_ONLY</div>`;
+L0056 |     document.getElementById("shadow").attachShadow({ mode: "open" }).innerHTML = '<style>.form-item { width:300px; height:70px }input { display:block; width:240px; height:40px; border:0; background:#e00000 }</style><div class="form-item"><label>私人字段<input value="PRIVATE_SHADOW_TEST_ONLY"></label></div>';
+L0057 |   });
+L0058 |   await page.locator("#frame").waitFor();
+L0059 |   await page.waitForFunction(() => document.getElementById("frame").contentDocument?.readyState === "complete");
+L0060 |   return page.evaluate(pageBridge, { action: "scan" });
+L0061 | }
+L0062 | const layoutFor = (scan, extra = {}) => page.evaluate(pageBridge, { action: "visual-layout", token: scan.token, scanId: scan.scanId, url: scan.url, ...extra });
+L0063 | const marked = (layout) => layout.fields.map((field, index) => ({ fieldId: `doc:${field.localFieldId}`, marker: `V${index + 1}`, rect: field.rect }));
+L0064 | const imageSamples = (imageUrl, coordinates) => page.evaluate(async ({ imageUrl, coordinates }) => {
+L0065 |   const bitmap = await createImageBitmap(await (await fetch(imageUrl)).blob());
+L0066 |   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+L0067 |   const ctx = canvas.getContext("2d"); ctx.drawImage(bitmap, 0, 0);
+L0068 |   const samples = coordinates.map(([x, y]) => [...ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data]);
+L0069 |   const result = { width: bitmap.width, height: bitmap.height, samples };
+L0070 |   bitmap.close(); canvas.width = 1; canvas.height = 1;
+L0071 |   return result;
+L0072 | }, { imageUrl, coordinates });
+L0073 | const render = (rawImageUrl, layout) => page.evaluate(async ({ rawImageUrl, layout, fields }) => (await import("/src/assistant/visualCapture.js")).renderVisualCapture(rawImageUrl, layout, fields), { rawImageUrl, layout, fields: marked(layout) });
+L0074 | async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`); }
+L0075 | 
+L0076 | try {
+L0077 |   await check("visual geometry contains no field text or values and excludes filled, offscreen, covered and iframe fields", async () => {
+L0078 |     const scan = await fixture();
+L0079 |     const layout = await layoutFor(scan);
+L0080 |     const ids = new Set(layout.fields.map((field) => field.localFieldId));
+L0081 |     assert.equal(ids.has(scan.fields.find((field) => field.identity.id === "ordinary").fieldId), true);
+L0082 |     for (const id of ["secret", "filled", "offscreen", "covered"]) assert.equal(ids.has(scan.fields.find((field) => field.identity.id === id).fieldId), false, id);
+L0083 |     assert.equal(layout.fields.length, 1);
+L0084 |     assert.ok(layout.redactions.length >= 7);
+L0085 |     assert.doesNotMatch(JSON.stringify(layout), /SYNTHETIC|PRIVATE|synthetic@|学校|密码|iframe|input/);
+L0086 |   });
+L0087 |   await check("real Chrome pixels redact inputs, filled containers, iframe, open shadow controls and answer blocks before marking", async () => {
+L0088 |     const scan = await fixture();
+L0089 |     const layout = await layoutFor(scan);
+L0090 |     const raw = `data:image/png;base64,${(await page.screenshot({ type: "png" })).toString("base64")}`;
+L0091 |     const points = [[200, 135], [200, 235], [200, 335], [600, 240], [200, 415], [600, 370]];
+L0092 |     const original = await imageSamples(raw, points);
+L0093 |     assert.ok(original.samples.every((pixel) => JSON.stringify(pixel) !== JSON.stringify(gray)));
+L0094 |     const result = await render(raw, layout);
+L0095 |     assert.equal(result.scale, 1);
+L0096 |     const processed = await imageSamples(result.imageUrl, points);
+L0097 |     assert.ok(processed.samples.every((pixel) => JSON.stringify(pixel) === JSON.stringify(gray)), JSON.stringify(processed.samples));
+L0098 |     assert.notEqual(result.imageUrl, raw);
+L0099 |     const marker = await imageSamples(result.imageUrl, [[41, 107], [900, 500]]);
+L0100 |     assert.deepEqual(marker.samples, [[22, 93, 216, 255], [255, 255, 255, 255]]);
+L0101 |     assert.equal(await page.locator("#secret").inputValue(), "SYNTHETIC_PASSWORD_ONLY");
+L0102 |     assert.equal(await page.locator("#ordinary").inputValue(), "");
+L0103 |   });
+L0104 |   await check("large real screenshots scale to 1600 pixels while retaining redaction", async () => {
+L0105 |     await page.setViewportSize({ width: 2560, height: 1440 });
+L0106 |     const scan = await fixture();
+L0107 |     const layout = await layoutFor(scan);
+L0108 |     const raw = `data:image/png;base64,${(await page.screenshot({ type: "png" })).toString("base64")}`;
+L0109 |     const result = await render(raw, layout);
+L0110 |     assert.equal(result.scale, 0.625);
+L0111 |     const processed = await imageSamples(result.imageUrl, [[600 * result.scale, 240 * result.scale]]);
+L0112 |     assert.equal(processed.width, 1600); assert.equal(processed.height, 900);
+L0113 |     assert.deepEqual(processed.samples[0], gray);
+L0114 |     await page.setViewportSize({ width: 1000, height: 700 });
+L0115 |   });
+L0116 |   await check("transient geometry changes stay invalid after the original position returns", async () => {
+L0117 |     const scan = await fixture();
+L0118 |     const watchId = crypto.randomUUID();
+L0119 |     await layoutFor(scan, { startWatch: watchId });
+L0120 |     await page.locator("#ordinary").evaluate((el) => { el.style.transform = "translateX(10px)"; el.style.transform = ""; });
+L0121 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0122 |     assert.deepEqual(await layoutFor(scan, { releaseWatch: watchId }), { released: true });
+L0123 |     const second = crypto.randomUUID();
+L0124 |     assert.equal((await layoutFor(scan, { startWatch: second })).changed, false);
+L0125 |     await layoutFor(scan, { releaseWatch: second });
+L0126 |   });
+L0127 |   await check("transient aria label changes invalidate screenshots even without geometry changes", async () => {
+L0128 |     const scan = await fixture();
+L0129 |     const watchId = crypto.randomUUID();
+L0130 |     await layoutFor(scan, { startWatch: watchId });
+L0131 |     await page.locator("#ordinary").evaluate((el) => { el.setAttribute("aria-label", "父亲学校"); el.removeAttribute("aria-label"); });
+L0132 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0133 |     await layoutFor(scan, { releaseWatch: watchId });
+L0134 |   });
+L0135 |   await check("scrolling away and back invalidates a capture even with matching final coordinates", async () => {
+L0136 |     const scan = await fixture();
+L0137 |     const watchId = crypto.randomUUID();
+L0138 |     await layoutFor(scan, { startWatch: watchId });
+L0139 |     await page.evaluate(async () => { scrollTo(0, 200); await new Promise(requestAnimationFrame); scrollTo(0, 0); await new Promise(requestAnimationFrame); });
+L0140 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0141 |     await layoutFor(scan, { releaseWatch: watchId });
+L0142 |   });
+L0143 |   await check("a fresh scan releases the previous capture watch and cannot reuse its old snapshot", async () => {
+L0144 |     const scan = await fixture();
+L0145 |     const watchId = crypto.randomUUID();
+L0146 |     await layoutFor(scan, { startWatch: watchId });
+L0147 |     const fresh = await page.evaluate(pageBridge, { action: "scan" });
+L0148 |     await assert.rejects(layoutFor(scan, { watchId }), /页面已变化/);
+L0149 |     const next = crypto.randomUUID();
+L0150 |     assert.equal((await layoutFor(fresh, { startWatch: next })).changed, false);
+L0151 |     await layoutFor(fresh, { releaseWatch: next });
+L0152 |   });
+L0153 |   assert.deepEqual(errors, []);
+L0154 |   console.log(`Vision browser cases passed: ${passed}`);
+L0155 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+L0156 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/README.md
+SHA256: 7032ca9a388671fb2bbcfaffeccc9070c41db9d397b1832382a50d68c55aacea
+LINES: 10
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | # 离线组件验收页
+L0002 | 
+L0003 | 这些页面直接运行本地依赖的真实 Ant Design 3、Ant Design 5 和 Element UI 2 组件。所有示例选项和数据都是虚构的，测试服务器只允许本地请求。
+L0004 | 
+L0005 | 安装开发依赖后执行 `npm.cmd run test:components`。组件测试也包含在 `test:browser` 中。使用 `BROWSER_EXECUTABLE` 可以指定 Chromium 浏览器路径。
+L0006 | 
+L0007 | 每个真实组件页面包含普通下拉、搜索下拉、三级级联、日期、月份、日期范围、单选、多选。测试同时核对页面读数和框架持有的值，避免只改 DOM 的假成功。My97 页面仅模拟输入接口及 `dateFmt`，不宣称覆盖 My97 弹出日历。
+L0008 | 
+L0009 | 依赖由 `package-lock.json` 固定，页面只读取 `/node_modules/` 下的 UMD 脚本与样式，不使用 CDN。
+L0010 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd-fixture.js
+SHA256: a5d958fed9b8f9f042b5d856052dc2159891965f292a2b5cb40c3cbbeb3ad041
+LINES: 30
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | (function () {
+L0002 |   const h = React.createElement;
+L0003 |   const { Select, Cascader, DatePicker, Radio, Checkbox, Form } = antd;
+L0004 |   const isV3 = window.fixtureLibrary === "antd3";
+L0005 |   const locationOptions = [{ value: "广东省", label: "广东省", children: [
+L0006 |     { value: "深圳市", label: "深圳市", children: [{ value: "南山区", label: "南山区" }, { value: "福田区", label: "福田区" }] },
+L0007 |     { value: "广州市", label: "广州市", children: [{ value: "天河区", label: "天河区" }] }
+L0008 |   ] }];
+L0009 |   function App() {
+L0010 |     const [values, setValues] = React.useState({ degree: undefined, school: undefined, location: [], date: null, month: null, range: [], gender: undefined, languages: [] });
+L0011 |     const update = (key) => (value) => setValues((old) => ({ ...old, [key]: value }));
+L0012 |     window.fixtureValues = { ...values, date: values.date?.format("YYYY-MM-DD") || "", month: values.month?.format("YYYY-MM") || "", range: (values.range || []).map((value) => value.format("YYYY-MM-DD")) };
+L0013 |     const field = (id, label, component) => h("div", { className: "fixture-field", "data-fixture-field": id, key: id }, h(Form.Item, { label }, component));
+L0014 |     const select = (id, options, showSearch = false) => h(Select, { id, style: { width: 300 }, value: values[id], onChange: update(id), allowClear: true, showSearch, optionFilterProp: "children", placeholder: "请选择" }, options.map((value) => h(Select.Option, { key: value, value }, value)));
+L0015 |     const monthProps = { id: "month", value: values.month, onChange: update("month"), format: "YYYY-MM", placeholder: "YYYY-MM", allowClear: true, inputReadOnly: true };
+L0016 |     return h("section", null, h("h1", null, `${isV3 ? "Ant Design 3" : "Ant Design 5"} 真实组件`), h(Form, { layout: "vertical" }, [
+L0017 |       field("degree", "学历", select("degree", ["本科", "硕士", "博士"])),
+L0018 |       field("school", "学校", select("school", ["示例大学", "星海大学", "远山学院"], true)),
+L0019 |       field("location", "所在地", h(Cascader, { id: "location", options: locationOptions, value: values.location, onChange: update("location"), allowClear: true, placeholder: "请选择地区", style: { width: 300 } })),
+L0020 |       field("date", "日期", h(DatePicker, { id: "date", value: values.date, onChange: update("date"), format: "YYYY-MM-DD", placeholder: "YYYY-MM-DD", allowClear: true, inputReadOnly: true })),
+L0021 |       field("month", "月份", isV3 ? h(DatePicker.MonthPicker, monthProps) : h(DatePicker, { ...monthProps, picker: "month" })),
+L0022 |       field("range", "任职时间", h(DatePicker.RangePicker, { value: values.range, onChange: update("range"), format: "YYYY-MM-DD", placeholder: ["开始日期", "结束日期"], allowClear: true, inputReadOnly: true })),
+L0023 |       field("gender", "性别", h(Radio.Group, { value: values.gender, onChange: (event) => update("gender")(event.target.value) }, ["男", "女"].map((value) => h(Radio, { key: value, value }, value)))),
+L0024 |       field("languages", "语言", h(Checkbox.Group, { value: values.languages, onChange: update("languages"), options: ["中文", "英语"] }))
+L0025 |     ]));
+L0026 |   }
+L0027 |   ReactDOM.render(h(App), document.getElementById("root"));
+L0028 |   window.fixtureReady = true;
+L0029 | })();
+L0030 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd3.html
+SHA256: de1920e9fcae6df20fc2f76ee474b63453b436bfb8a667b20e4ccc188dfc6eb0
+LINES: 12
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Ant Design 3 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/antd3/dist/antd.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root"></main>
+L0006 | <script src="/node_modules/react/umd/react.development.js"></script>
+L0007 | <script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+L0008 | <script src="/node_modules/moment/min/moment.min.js"></script>
+L0009 | <script src="/node_modules/antd3/dist/antd.js"></script>
+L0010 | <script>window.fixtureLibrary = "antd3";</script>
+L0011 | <script src="/test/fixtures/components/antd-fixture.js"></script></body></html>
+L0012 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd5.html
+SHA256: 7fd10ccd3acc5efabc2b98565503b23677944d9477bd8ed40526cc9e3562d453
+LINES: 12
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Ant Design 5 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/antd5/dist/reset.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root"></main>
+L0006 | <script src="/node_modules/react/umd/react.development.js"></script>
+L0007 | <script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+L0008 | <script src="/node_modules/dayjs/dayjs.min.js"></script>
+L0009 | <script src="/node_modules/antd5/dist/antd.js"></script>
+L0010 | <script>window.fixtureLibrary = "antd5";</script>
+L0011 | <script src="/test/fixtures/components/antd-fixture.js"></script></body></html>
+L0012 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/element.html
+SHA256: 4f1c3d1efb845c1ac9c899fca67c05f87784c32a96a61994dab650d821fdd85c
+LINES: 30
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Element UI 2 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/element-ui/lib/theme-chalk/index.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root">
+L0006 | <h1>Element UI 2 真实组件</h1>
+L0007 | <el-form label-position="top">
+L0008 |   <div data-fixture-field="degree"><el-form-item label="学历"><el-select v-model="values.degree" clearable placeholder="请选择"><el-option v-for="item in degrees" :key="item" :label="item" :value="item"></el-option></el-select></el-form-item></div>
+L0009 |   <div data-fixture-field="school"><el-form-item label="学校"><el-select v-model="values.school" clearable filterable placeholder="请选择"><el-option v-for="item in schools" :key="item" :label="item" :value="item"></el-option></el-select></el-form-item></div>
+L0010 |   <div data-fixture-field="location"><el-form-item label="所在地"><el-cascader v-model="values.location" :options="locations" clearable></el-cascader></el-form-item></div>
+L0011 |   <div data-fixture-field="date"><el-form-item label="日期"><el-date-picker v-model="values.date" type="date" value-format="yyyy-MM-dd" format="yyyy-MM-dd" placeholder="YYYY-MM-DD" clearable></el-date-picker></el-form-item></div>
+L0012 |   <div data-fixture-field="month"><el-form-item label="月份"><el-date-picker v-model="values.month" type="month" value-format="yyyy-MM" format="yyyy-MM" placeholder="YYYY-MM" clearable></el-date-picker></el-form-item></div>
+L0013 |   <div data-fixture-field="range"><el-form-item label="任职时间"><el-date-picker v-model="values.range" type="daterange" value-format="yyyy-MM-dd" format="yyyy-MM-dd" start-placeholder="开始日期" end-placeholder="结束日期" clearable></el-date-picker></el-form-item></div>
+L0014 |   <div data-fixture-field="gender"><el-form-item label="性别"><el-radio-group v-model="values.gender"><el-radio label="男">男</el-radio><el-radio label="女">女</el-radio></el-radio-group></el-form-item></div>
+L0015 |   <div data-fixture-field="languages"><el-form-item label="语言"><el-checkbox-group v-model="values.languages"><el-checkbox label="中文">中文</el-checkbox><el-checkbox label="英语">英语</el-checkbox></el-checkbox-group></el-form-item></div>
+L0016 | </el-form>
+L0017 | </main>
+L0018 | <script src="/node_modules/vue/dist/vue.js"></script>
+L0019 | <script src="/node_modules/element-ui/lib/index.js"></script>
+L0020 | <script>
+L0021 | window.fixtureLibrary = "element";
+L0022 | window.fixtureApp = new Vue({ el: "#root", data: {
+L0023 |   values: { degree: "", school: "", location: [], date: "", month: "", range: [], gender: "", languages: [] },
+L0024 |   degrees: ["本科", "硕士", "博士"], schools: ["示例大学", "星海大学", "远山学院"],
+L0025 |   locations: [{ value: "广东省", label: "广东省", children: [{ value: "深圳市", label: "深圳市", children: [{ value: "南山区", label: "南山区" }, { value: "福田区", label: "福田区" }] }, { value: "广州市", label: "广州市", children: [{ value: "天河区", label: "天河区" }] }] }]
+L0026 | } });
+L0027 | Object.defineProperty(window, "fixtureValues", { get() { return JSON.parse(JSON.stringify(window.fixtureApp.values)); } });
+L0028 | window.fixtureReady = true;
+L0029 | </script></body></html>
+L0030 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/fixture.css
+SHA256: cbb4990e0a07417fdad78eeb7206bea7f032a219b2e0b4455eeb5ebf9ab027f5
+LINES: 8
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | body { margin: 24px; font-family: Arial, sans-serif; }
+L0002 | main { width: 720px; }
+L0003 | h1 { font-size: 22px; }
+L0004 | .fixture-field { margin: 14px 0; }
+L0005 | .fixture-field > label { display: block; margin-bottom: 8px; }
+L0006 | .ant-form-item { margin-bottom: 18px; }
+L0007 | .el-form-item { margin-bottom: 18px; }
+L0008 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/my97.html
+SHA256: abd5b9ae4774fd2caebc0e823569099fc32bf6d7b49e144b6d2dd1878dbecedd
+LINES: 13
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>My97 格式输入验收</title>
+L0003 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head><body><main>
+L0004 | <h1>My97 输入接口模拟</h1>
+L0005 | <div class="fixture-field" data-fixture-field="date"><label>日期<input id="date" class="Wdate" onclick="WdatePicker({dateFmt:'yyyy-MM-dd'})" placeholder="YYYY-MM-DD"></label></div>
+L0006 | <div class="fixture-field" data-fixture-field="month"><label>月份<input id="month" class="Wdate" onclick="WdatePicker({dateFmt:'yyyy-MM'})" placeholder="YYYY-MM"></label></div>
+L0007 | <div class="fixture-field" data-fixture-field="chineseMonth"><label>中文月份<input id="chineseMonth" class="Wdate" onclick="WdatePicker({dateFmt:'yyyy年MM月'})" placeholder="YYYY年MM月"></label></div>
+L0008 | </main><script>
+L0009 | window.WdatePicker = function (options) { window.lastPickerFormat = options.dateFmt; };
+L0010 | Object.defineProperty(window, "fixtureValues", { get() { return Object.fromEntries(Array.from(document.querySelectorAll("input"), (input) => [input.id, input.value])); } });
+L0011 | window.fixtureReady = true;
+L0012 | </script></body></html>
+L0013 | 
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/optionMatchCases.js
+SHA256: b185b21e546bd2a39715e830b0235d980430f5a6632647510a3c742b5104e573
+LINES: 28
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | export const OPTION_MATCH_CASES = [
+L0002 |   { name: "exact text wins over a containing candidate", options: ["某某大学", "某某大学研究院"], value: "某某大学", expectedIndex: 0 },
+L0003 |   { name: "case width and whitespace normalize", options: [" ＡＢＣ　University "], value: "abc university", expectedIndex: 0 },
+L0004 |   { name: "duplicate exact options are ambiguous", options: ["深圳", "深圳"], value: "深圳", expectedIndex: -1 },
+L0005 |   { name: "duplicate normalized options are ambiguous", options: ["SHENZHEN", "Shenzhen"], value: "shenzhen", expectedIndex: -1 },
+L0006 |   { name: "master synonym", options: ["本科", "硕士", "博士"], value: "硕士研究生", expectedIndex: 1 },
+L0007 |   { name: "political synonym", options: ["群众", "团员", "党员"], value: "共青团员", expectedIndex: 1 },
+L0008 |   { name: "male English synonym", options: ["Female", "Male"], value: "男", expectedIndex: 1 },
+L0009 |   { name: "education level is not interchangeable", options: ["博士研究生"], value: "研究生", expectedIndex: -1 },
+L0010 |   { name: "degree synonym", options: ["Master's degree"], value: "硕士学位", expectedIndex: 0 },
+L0011 |   { name: "political groups remain separate", options: ["无党派人士"], value: "群众", expectedIndex: -1 },
+L0012 |   { name: "proficiency levels remain separate", options: ["精通", "一般"], value: "熟练", expectedIndex: -1 },
+L0013 |   { name: "multiple synonyms are ambiguous", options: ["Male", "先生"], value: "男", expectedIndex: -1 },
+L0014 |   { name: "unique containing university", options: ["某某大学（深圳校区）", "其他大学"], value: "某某大学", expectedIndex: 0 },
+L0015 |   { name: "multiple containing campuses are ambiguous", options: ["某某大学深圳校区", "某某大学北京校区"], value: "某某大学", expectedIndex: -1 },
+L0016 |   { name: "contains does not erase Chinese negation", options: ["不需要签证"], value: "需要签证", expectedIndex: -1 },
+L0017 |   { name: "contains does not erase English negation", options: ["No sponsorship required"], value: "sponsorship required", expectedIndex: -1 },
+L0018 |   { name: "single characters do not match substrings", options: ["不是"], value: "是", expectedIndex: -1 },
+L0019 |   { name: "province suffix", options: ["广东省"], value: "广东", context: { location: true }, expectedIndex: 0 },
+L0020 |   { name: "autonomous region suffix", options: ["广西壮族自治区"], value: "广西", context: { location: true }, expectedIndex: 0 },
+L0021 |   { name: "special administrative region suffix", options: ["香港特别行政区"], value: "香港", context: { location: true }, expectedIndex: 0 },
+L0022 |   { name: "location names are ambiguous after suffix removal", options: ["吉林省", "吉林市"], value: "吉林", context: { location: true }, expectedIndex: -1 },
+L0023 |   { name: "disabled option is ignored", options: [{ id: "a", text: "硕士", disabled: true }, { id: "b", text: "Master" }], value: "硕士", expectedIndex: 1 },
+L0024 |   { name: "option object is preserved", options: [{ id: "a", label: "大学英语六级", value: "6" }], value: "CET6", expectedIndex: 0 },
+L0025 |   { name: "empty answer is never a match", options: ["", "请选择"], value: "", expectedIndex: -1 },
+L0026 |   { name: "unknown answer is never invented", options: ["北京", "深圳"], value: "上海", expectedIndex: -1 }
+L0027 | ];
+L0028 | 

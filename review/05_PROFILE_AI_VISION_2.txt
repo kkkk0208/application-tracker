@@ -1,0 +1,1218 @@
+Application Tracker / PROFILE_AI_VISION
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/src/assistant/visualCapture.js
+- application-tracker-extension/src/profile.js
+- application-tracker-extension/src/profile/profile.css
+- application-tracker-extension/src/profile/profile.html
+- application-tracker-extension/src/profile/profile.js
+- application-tracker-extension/src/questionMemory.js
+
+========================================================================
+FILE: application-tracker-extension/src/assistant/visualCapture.js
+SHA256: 8b719082f450e8b9e2084dd59baaab2bf024cf64594e79e26cba692524a7eb6c
+LINES: 156
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { pageBridge } from "./pageBridge.js";
+L0002 | import { checkTarget } from "./session.js";
+L0003 | 
+L0004 | const MAX_SIDE = 1600;
+L0005 | const fail = (code, message) => Object.assign(new Error(message), { code });
+L0006 | const abortCheck = (signal) => { if (signal?.aborted) throw fail("VISUAL_CANCELLED", "已取消截图识别"); };
+L0007 | const finite = (value) => typeof value === "number" && Number.isFinite(value);
+L0008 | const rectValid = (rect) => rect && [rect.x, rect.y, rect.width, rect.height].every(finite) && rect.width > 0 && rect.height > 0;
+L0009 | function validateLayout(layout) {
+L0010 |   const v = layout?.viewport;
+L0011 |   if (!v || ![v.width, v.height, v.scrollX, v.scrollY, v.devicePixelRatio, v.visualScale, v.visualOffsetX, v.visualOffsetY].every(finite) || v.width < 1 || v.height < 1 || v.width > 20000 || v.height > 20000 || !Array.isArray(layout.fields) || !Array.isArray(layout.redactions) || layout.fields.length > 30 || layout.redactions.length > 5000) throw fail("VISUAL_LAYOUT", "未能安全读取页面布局，请继续使用网页文字识别");
+L0012 |   if (Math.abs(v.visualScale - 1) > 0.001 || Math.abs(v.visualOffsetX) > 0.01 || Math.abs(v.visualOffsetY) > 0.01) throw fail("VISUAL_ZOOM", "请先恢复页面的触控缩放，再进行截图识别");
+L0013 |   if (layout.changed) throw fail("VISUAL_LAYOUT_CHANGED", "截图期间页面滚动或布局发生变化，请重新识别");
+L0014 |   for (const field of layout.fields) if (typeof field.localFieldId !== "string" || !field.localFieldId || !rectValid(field.rect)) throw fail("VISUAL_LAYOUT", "页面字段位置不完整，请重新识别");
+L0015 |   for (const rect of layout.redactions) if (!rectValid(rect)) throw fail("VISUAL_LAYOUT", "页面遮盖区域不完整，请重新识别");
+L0016 |   return layout;
+L0017 | }
+L0018 | const layoutSignature = (layout) => JSON.stringify([layout.viewport, layout.fields, layout.redactions]);
+L0019 | 
+L0020 | async function readLayout(snapshot, main, signal, watch) {
+L0021 |   abortCheck(signal);
+L0022 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [main.documentId] }, func: pageBridge, args: [{ action: "visual-layout", token: main.token, scanId: main.scanId, url: main.url, ...watch }] });
+L0023 |   abortCheck(signal);
+L0024 |   if (result?.documentId && result.documentId !== main.documentId) throw fail("VISUAL_STALE", "截图期间页面已变化，请重新识别");
+L0025 |   return validateLayout(result?.result);
+L0026 | }
+L0027 | 
+L0028 | async function dataUrlFor(blob) {
+L0029 |   const bytes = new Uint8Array(await blob.arrayBuffer());
+L0030 |   const chunks = [];
+L0031 |   for (let index = 0; index < bytes.length; index += 32768) chunks.push(String.fromCharCode(...bytes.subarray(index, index + 32768)));
+L0032 |   return `data:image/png;base64,${btoa(chunks.join(""))}`;
+L0033 | }
+L0034 | 
+L0035 | // Layout and field rectangles use viewport-relative CSS pixels. Returned scale
+L0036 | // converts CSS coordinates to output image pixels. Raw pixels never leave this
+L0037 | // function or enter storage; masking happens before the image is downscaled.
+L0038 | export async function renderVisualCapture(rawImageUrl, layout, fields, { signal } = {}) {
+L0039 |   abortCheck(signal); validateLayout(layout);
+L0040 |   if (typeof rawImageUrl !== "string" || !/^data:image\/png;base64,[A-Za-z0-9+/=\r\n]+$/.test(rawImageUrl)) throw fail("VISUAL_IMAGE", "浏览器未返回可用的截图");
+L0041 |   let bitmap;
+L0042 |   let source;
+L0043 |   let output;
+L0044 |   try {
+L0045 |     const response = await fetch(rawImageUrl, { signal });
+L0046 |     bitmap = await createImageBitmap(await response.blob());
+L0047 |     abortCheck(signal);
+L0048 |     const { width, height } = layout.viewport;
+L0049 |     const sx = bitmap.width / width, sy = bitmap.height / height;
+L0050 |     if (!finite(sx) || !finite(sy) || sx <= 0 || sy <= 0 || Math.abs(bitmap.width - width * sy) > 2 || Math.abs(bitmap.height - height * sx) > 2) throw fail("VISUAL_SIZE", "截图尺寸与当前页面不一致，请重新识别");
+L0051 |     source = new OffscreenCanvas(bitmap.width, bitmap.height);
+L0052 |     const ctx = source.getContext("2d", { alpha: false });
+L0053 |     if (!ctx) throw fail("VISUAL_CANVAS", "当前浏览器无法处理截图，请继续使用网页文字识别");
+L0054 |     ctx.drawImage(bitmap, 0, 0);
+L0055 |     ctx.fillStyle = "#e8ece9";
+L0056 |     for (const rect of layout.redactions) {
+L0057 |       const left = Math.max(0, Math.floor((rect.x - 4) * sx)), top = Math.max(0, Math.floor((rect.y - 4) * sy));
+L0058 |       const right = Math.min(bitmap.width, Math.ceil((rect.x + rect.width + 4) * sx)), bottom = Math.min(bitmap.height, Math.ceil((rect.y + rect.height + 4) * sy));
+L0059 |       ctx.fillRect(left, top, right - left, bottom - top);
+L0060 |     }
+L0061 |     abortCheck(signal);
+L0062 |     const ratio = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+L0063 |     const outputWidth = Math.max(1, Math.round(bitmap.width * ratio)), outputHeight = Math.max(1, Math.round(bitmap.height * ratio));
+L0064 |     output = new OffscreenCanvas(outputWidth, outputHeight);
+L0065 |     const out = output.getContext("2d", { alpha: false });
+L0066 |     if (!out) throw fail("VISUAL_CANVAS", "当前浏览器无法处理截图，请继续使用网页文字识别");
+L0067 |     out.drawImage(source, 0, 0, outputWidth, outputHeight);
+L0068 |     const scaleX = outputWidth / width, scaleY = outputHeight / height;
+L0069 |     out.strokeStyle = "#165dd8"; out.lineWidth = 2;
+L0070 |     out.font = "bold 13px sans-serif"; out.textBaseline = "top";
+L0071 |     for (const field of fields) {
+L0072 |       if (!rectValid(field.rect) || !/^V(?:[1-9]|[12]\d|30)$/.test(field.marker)) throw fail("VISUAL_MARKER", "截图字段编号无效，请重新识别");
+L0073 |       const x = field.rect.x * scaleX, y = field.rect.y * scaleY;
+L0074 |       out.strokeRect(x + 1, y + 1, Math.max(1, field.rect.width * scaleX - 2), Math.max(1, field.rect.height * scaleY - 2));
+L0075 |       const tagWidth = out.measureText(field.marker).width + 8;
+L0076 |       out.fillStyle = "#165dd8"; out.fillRect(x, y, tagWidth, 19);
+L0077 |       out.fillStyle = "#fff"; out.fillText(field.marker, x + 4, y + 3);
+L0078 |     }
+L0079 |     const blob = await output.convertToBlob({ type: "image/png" });
+L0080 |     abortCheck(signal);
+L0081 |     const imageUrl = await dataUrlFor(blob);
+L0082 |     abortCheck(signal);
+L0083 |     return { imageUrl, scale: scaleX };
+L0084 |   } catch (error) {
+L0085 |     abortCheck(signal);
+L0086 |     if (error?.code?.startsWith("VISUAL_")) throw error;
+L0087 |     throw fail("VISUAL_IMAGE", "截图处理失败，请继续使用网页文字识别或稍后重试");
+L0088 |   } finally {
+L0089 |     bitmap?.close?.();
+L0090 |     if (source) { source.width = 1; source.height = 1; }
+L0091 |     if (output) { output.width = 1; output.height = 1; }
+L0092 |   }
+L0093 | }
+L0094 | 
+L0095 | export async function captureVisualContext(snapshot, { signal } = {}) {
+L0096 |   abortCheck(signal);
+L0097 |   const main = snapshot?.frames?.find((frame) => frame.frameId === 0);
+L0098 |   if (!main?.documentId || !snapshot?.tabId || !/^https?:\/\//.test(snapshot.url || "")) throw fail("VISUAL_TARGET", "请先识别当前申请网站，再使用截图识别");
+L0099 |   const firstTab = await chrome.tabs.get(snapshot.tabId);
+L0100 |   abortCheck(signal);
+L0101 |   const windowId = firstTab.windowId;
+L0102 |   let invalidated = false;
+L0103 |   const changed = (info) => { if (info.windowId === windowId && info.tabId !== snapshot.tabId) invalidated = true; };
+L0104 |   const updated = (tabId, info) => { if (tabId === snapshot.tabId && (info.url || info.status === "loading")) invalidated = true; };
+L0105 |   const focused = (id) => { if (id !== windowId) invalidated = true; };
+L0106 |   const guard = () => { abortCheck(signal); if (invalidated) throw fail("VISUAL_STALE", "截图期间切换了页面，请回到原申请页重新识别"); };
+L0107 |   const assertActive = async () => {
+L0108 |     guard();
+L0109 |     const active = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+L0110 |     guard();
+L0111 |     if (active.length !== 1 || active[0].id !== snapshot.tabId || active[0].windowId !== windowId || active[0].url !== snapshot.url || active[0].pendingUrl) throw fail("VISUAL_INACTIVE", "请先切回助手绑定的申请页面，再使用截图识别");
+L0112 |     try { await checkTarget(snapshot); } catch { throw fail("VISUAL_STALE", "目标页面或文档已变化，请重新识别"); }
+L0113 |     guard();
+L0114 |   };
+L0115 |   let rawImageUrl;
+L0116 |   const watchId = crypto.randomUUID();
+L0117 |   let watchStarted = false;
+L0118 |   chrome.tabs.onActivated.addListener(changed);
+L0119 |   chrome.tabs.onUpdated.addListener(updated);
+L0120 |   chrome.windows?.onFocusChanged?.addListener(focused);
+L0121 |   try {
+L0122 |     await assertActive();
+L0123 |     watchStarted = true;
+L0124 |     const before = await readLayout(snapshot, main, signal, { startWatch: watchId });
+L0125 |     const mainFields = new Map((snapshot.fields || []).filter((field) => field.frameId === 0 && field.documentId === main.documentId && field.supported && !field.value).map((field) => [field.localFieldId, field]));
+L0126 |     const fields = before.fields.filter((field) => mainFields.has(field.localFieldId)).slice(0, 30).map((field, index) => ({ fieldId: mainFields.get(field.localFieldId).fieldId, marker: `V${index + 1}`, rect: { ...field.rect } }));
+L0127 |     if (!fields.length) throw fail("VISUAL_EMPTY", "当前视口没有可截图识别的空白字段，可继续使用网页文字识别");
+L0128 |     await assertActive();
+L0129 |     try { rawImageUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" }); }
+L0130 |     catch (error) {
+L0131 |       guard();
+L0132 |       if (/activeTab|permission|<all_urls>|not allowed|cannot access/i.test(error?.message || "")) throw fail("VISUAL_PERMISSION", "当前页面没有截图权限，请在此申请页重新点击扩展图标；也可继续使用网页文字识别");
+L0133 |       throw fail("VISUAL_CAPTURE", "无法截取当前页面，请继续使用网页文字识别或稍后重试");
+L0134 |     }
+L0135 |     await assertActive();
+L0136 |     const after = await readLayout(snapshot, main, signal, { watchId });
+L0137 |     if (layoutSignature(before) !== layoutSignature(after)) throw fail("VISUAL_LAYOUT_CHANGED", "截图期间页面滚动或布局发生变化，请重新识别");
+L0138 |     const rendered = await renderVisualCapture(rawImageUrl, before, fields, { signal });
+L0139 |     rawImageUrl = undefined;
+L0140 |     await assertActive();
+L0141 |     const finalLayout = await readLayout(snapshot, main, signal, { watchId });
+L0142 |     if (layoutSignature(before) !== layoutSignature(finalLayout)) throw fail("VISUAL_LAYOUT_CHANGED", "截图期间页面滚动或布局发生变化，请重新识别");
+L0143 |     guard();
+L0144 |     return { imageUrl: rendered.imageUrl, fields, viewport: { width: before.viewport.width, height: before.viewport.height, scrollX: before.viewport.scrollX, scrollY: before.viewport.scrollY, scale: rendered.scale }, capturedAt: new Date().toISOString(), maskedCount: before.redactions.length };
+L0145 |   } finally {
+L0146 |     rawImageUrl = undefined;
+L0147 |     if (watchStarted) {
+L0148 |       try { await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [main.documentId] }, func: pageBridge, args: [{ action: "visual-layout", token: main.token, scanId: main.scanId, url: main.url, releaseWatch: watchId }] }); } catch { /* Navigation destroys the old document; a 5s expiry also releases abandoned watches. */ }
+L0149 |     }
+L0150 |     chrome.tabs.onActivated.removeListener(changed);
+L0151 |     chrome.tabs.onUpdated.removeListener(updated);
+L0152 |     chrome.windows?.onFocusChanged?.removeListener(focused);
+L0153 |     guard();
+L0154 |   }
+L0155 | }
+L0156 | 
+
+========================================================================
+FILE: application-tracker-extension/src/profile.js
+SHA256: 8529ba7bc4d40cdb8381442323aed016d5e9ab256db6565ff17bc91f93775f60
+LINES: 140
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | export const COMMON_ANSWER_FIELDS = [
+L0002 |   "visaSponsorship",
+L0003 |   "rightToWork",
+L0004 |   "expectedSalary",
+L0005 |   "earliestStartDate",
+L0006 |   "currentLocation",
+L0007 |   "relocation",
+L0008 |   "languageAbility",
+L0009 |   "whyRole",
+L0010 |   "whyCompany",
+L0011 |   "selfIntroduction"
+L0012 | ];
+L0013 | 
+L0014 | export const PROFILE_FIELDS = [
+L0015 |   "fullName",
+L0016 |   "fullNameZh",
+L0017 |   "englishName",
+L0018 |   "phone",
+L0019 |   "email",
+L0020 |   "masterUniversity",
+L0021 |   "masterUniversityZh",
+L0022 |   "masterDegree",
+L0023 |   "masterDegreeZh",
+L0024 |   "masterMajor",
+L0025 |   "masterMajorZh",
+L0026 |   "masterStartDate",
+L0027 |   "masterGraduationDate",
+L0028 |   "bachelorUniversity",
+L0029 |   "bachelorUniversityZh",
+L0030 |   "bachelorDegree",
+L0031 |   "bachelorDegreeZh",
+L0032 |   "bachelorMajor",
+L0033 |   "bachelorMajorZh",
+L0034 |   "bachelorStartDate",
+L0035 |   "bachelorGraduationDate",
+L0036 |   "internships",
+L0037 |   "commonAnswers",
+L0038 |   "linkedin",
+L0039 |   "github",
+L0040 |   "website"
+L0041 | ];
+L0042 | 
+L0043 | export function emptyCommonAnswers() {
+L0044 |   return Object.fromEntries(COMMON_ANSWER_FIELDS.map((field) => [field, { zh: "", en: "" }]));
+L0045 | }
+L0046 | 
+L0047 | export function emptyProfile() {
+L0048 |   return Object.fromEntries(PROFILE_FIELDS.map((field) => {
+L0049 |     if (field === "internships") return [field, []];
+L0050 |     if (field === "commonAnswers") return [field, emptyCommonAnswers()];
+L0051 |     return [field, ""];
+L0052 |   }));
+L0053 | }
+L0054 | 
+L0055 | export function normalizeProfile(profile = {}) {
+L0056 |   const normalized = emptyProfile();
+L0057 |   for (const field of PROFILE_FIELDS) {
+L0058 |     if (field === "internships") {
+L0059 |       normalized[field] = normalizeInternships(profile[field]);
+L0060 |     } else if (field === "commonAnswers") {
+L0061 |       normalized[field] = normalizeCommonAnswers(profile[field]);
+L0062 |     } else {
+L0063 |       normalized[field] = stringValue(profile[field]);
+L0064 |     }
+L0065 |   }
+L0066 | 
+L0067 |   normalized.masterUniversity ||= stringValue(profile.university);
+L0068 |   normalized.masterDegree ||= stringValue(profile.degree);
+L0069 |   normalized.masterMajor ||= stringValue(profile.major);
+L0070 |   normalized.masterGraduationDate ||= stringValue(profile.graduationDate);
+L0071 | 
+L0072 |   return normalized;
+L0073 | }
+L0074 | 
+L0075 | export function profileHasUsableFields(profile) {
+L0076 |   return Object.values(normalizeProfile(profile)).some(hasUsableValue);
+L0077 | }
+L0078 | 
+L0079 | function hasUsableValue(value) {
+L0080 |   if (Array.isArray(value)) return value.length > 0;
+L0081 |   if (value && typeof value === "object") {
+L0082 |     return Object.values(value).some(hasUsableValue);
+L0083 |   }
+L0084 |   return Boolean(value);
+L0085 | }
+L0086 | 
+L0087 | function stringValue(value) {
+L0088 |   return value == null ? "" : String(value).trim();
+L0089 | }
+L0090 | 
+L0091 | function normalizeCommonAnswers(value) {
+L0092 |   const normalized = emptyCommonAnswers();
+L0093 |   if (!value || typeof value !== "object") return normalized;
+L0094 | 
+L0095 |   for (const field of COMMON_ANSWER_FIELDS) {
+L0096 |     const entry = value[field];
+L0097 |     if (entry && typeof entry === "object") {
+L0098 |       normalized[field] = {
+L0099 |         zh: stringValue(entry.zh),
+L0100 |         en: stringValue(entry.en)
+L0101 |       };
+L0102 |     } else {
+L0103 |       normalized[field] = {
+L0104 |         zh: stringValue(entry),
+L0105 |         en: ""
+L0106 |       };
+L0107 |     }
+L0108 |   }
+L0109 | 
+L0110 |   return normalized;
+L0111 | }
+L0112 | 
+L0113 | function normalizeInternships(value) {
+L0114 |   if (typeof value === "string") {
+L0115 |     return normalizeInternships([parseLegacyInternship(value)]);
+L0116 |   }
+L0117 |   if (!Array.isArray(value)) return [];
+L0118 |   return value
+L0119 |     .map((item) => ({
+L0120 |       company: stringValue(item?.company),
+L0121 |       companyZh: stringValue(item?.companyZh),
+L0122 |       role: stringValue(item?.role),
+L0123 |       roleZh: stringValue(item?.roleZh),
+L0124 |       period: stringValue(item?.period),
+L0125 |       description: stringValue(item?.description),
+L0126 |       descriptionZh: stringValue(item?.descriptionZh)
+L0127 |     }))
+L0128 |     .filter((item) => Object.values(item).some(Boolean));
+L0129 | }
+L0130 | 
+L0131 | function parseLegacyInternship(value) {
+L0132 |   const [company = "", role = "", period = "", ...descriptionParts] = String(value).split("|");
+L0133 |   return {
+L0134 |     company,
+L0135 |     role,
+L0136 |     period,
+L0137 |     description: descriptionParts.join("|")
+L0138 |   };
+L0139 | }
+L0140 | 
+
+========================================================================
+FILE: application-tracker-extension/src/profile/profile.css
+SHA256: 15e3c25d31ceb8900baadd912e6735dd062a6b20e3cbe4affedfe49644661ffc
+LINES: 298
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | * {
+L0002 |   box-sizing: border-box;
+L0003 | }
+L0004 | 
+L0005 | body {
+L0006 |   margin: 0;
+L0007 |   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+L0008 |   color: #202124;
+L0009 |   background: #f8fafc;
+L0010 | }
+L0011 | 
+L0012 | [hidden] {
+L0013 |   display: none !important;
+L0014 | }
+L0015 | 
+L0016 | .profile-shell {
+L0017 |   max-width: 920px;
+L0018 |   margin: 0 auto;
+L0019 |   padding: 24px;
+L0020 | }
+L0021 | 
+L0022 | .page-header {
+L0023 |   display: flex;
+L0024 |   align-items: flex-start;
+L0025 |   justify-content: space-between;
+L0026 |   gap: 16px;
+L0027 |   margin-bottom: 18px;
+L0028 | }
+L0029 | 
+L0030 | h1,
+L0031 | h2,
+L0032 | p {
+L0033 |   margin: 0;
+L0034 | }
+L0035 | 
+L0036 | h1 {
+L0037 |   font-size: 24px;
+L0038 | }
+L0039 | 
+L0040 | h2 {
+L0041 |   font-size: 17px;
+L0042 | }
+L0043 | 
+L0044 | p {
+L0045 |   margin-top: 6px;
+L0046 |   color: #475569;
+L0047 |   font-size: 14px;
+L0048 | }
+L0049 | 
+L0050 | a {
+L0051 |   color: #1a73e8;
+L0052 |   font-weight: 700;
+L0053 |   text-decoration: none;
+L0054 | }
+L0055 | 
+L0056 | form {
+L0057 |   display: grid;
+L0058 |   gap: 14px;
+L0059 | }
+L0060 | 
+L0061 | .profile-tabs {
+L0062 |   display: inline-flex;
+L0063 |   gap: 4px;
+L0064 |   width: fit-content;
+L0065 |   border: 1px solid #cbd5e1;
+L0066 |   border-radius: 8px;
+L0067 |   padding: 4px;
+L0068 |   background: white;
+L0069 | }
+L0070 | 
+L0071 | .profile-tab {
+L0072 |   border: 0;
+L0073 |   border-radius: 6px;
+L0074 |   padding: 8px 12px;
+L0075 |   color: #475569;
+L0076 |   background: transparent;
+L0077 | }
+L0078 | 
+L0079 | .profile-tab.active {
+L0080 |   color: white;
+L0081 |   background: #166534;
+L0082 | }
+L0083 | 
+L0084 | .profile-panel {
+L0085 |   display: grid;
+L0086 |   gap: 14px;
+L0087 | }
+L0088 | 
+L0089 | .form-section {
+L0090 |   border: 1px solid #e2e8f0;
+L0091 |   border-radius: 8px;
+L0092 |   padding: 16px;
+L0093 |   background: white;
+L0094 | }
+L0095 | 
+L0096 | .field-grid {
+L0097 |   display: grid;
+L0098 |   grid-template-columns: repeat(2, minmax(0, 1fr));
+L0099 |   gap: 12px;
+L0100 |   margin-top: 12px;
+L0101 | }
+L0102 | 
+L0103 | label {
+L0104 |   display: grid;
+L0105 |   gap: 5px;
+L0106 |   font-size: 13px;
+L0107 |   font-weight: 700;
+L0108 | }
+L0109 | 
+L0110 | input {
+L0111 |   width: 100%;
+L0112 |   border: 1px solid #cbd5e1;
+L0113 |   border-radius: 6px;
+L0114 |   padding: 9px;
+L0115 |   font: inherit;
+L0116 |   background: white;
+L0117 | }
+L0118 | 
+L0119 | textarea {
+L0120 |   width: 100%;
+L0121 |   min-height: 88px;
+L0122 |   border: 1px solid #cbd5e1;
+L0123 |   border-radius: 6px;
+L0124 |   padding: 9px;
+L0125 |   font: inherit;
+L0126 |   resize: vertical;
+L0127 |   background: white;
+L0128 | }
+L0129 | 
+L0130 | .section-title-row,
+L0131 | .internship-header {
+L0132 |   display: flex;
+L0133 |   align-items: center;
+L0134 |   justify-content: space-between;
+L0135 |   gap: 12px;
+L0136 | }
+L0137 | 
+L0138 | .internship-list {
+L0139 |   display: grid;
+L0140 |   gap: 12px;
+L0141 |   margin-top: 12px;
+L0142 | }
+L0143 | 
+L0144 | .internship-card {
+L0145 |   display: grid;
+L0146 |   gap: 12px;
+L0147 |   border: 1px solid #e2e8f0;
+L0148 |   border-radius: 8px;
+L0149 |   padding: 12px;
+L0150 |   background: #f8fafc;
+L0151 | }
+L0152 | 
+L0153 | .internship-card h3 {
+L0154 |   margin: 0;
+L0155 |   font-size: 15px;
+L0156 | }
+L0157 | 
+L0158 | .internship-card h4 {
+L0159 |   margin: 0 0 10px;
+L0160 |   font-size: 14px;
+L0161 | }
+L0162 | 
+L0163 | .internship-language-grid {
+L0164 |   display: grid;
+L0165 |   grid-template-columns: repeat(2, minmax(0, 1fr));
+L0166 |   gap: 12px;
+L0167 | }
+L0168 | 
+L0169 | .actions {
+L0170 |   display: flex;
+L0171 |   align-items: center;
+L0172 |   gap: 12px;
+L0173 | }
+L0174 | 
+L0175 | button {
+L0176 |   border: 0;
+L0177 |   border-radius: 6px;
+L0178 |   padding: 10px 14px;
+L0179 |   font: inherit;
+L0180 |   font-weight: 800;
+L0181 |   color: white;
+L0182 |   background: #166534;
+L0183 |   cursor: pointer;
+L0184 | }
+L0185 | 
+L0186 | .secondary-button,
+L0187 | .remove-internship-button {
+L0188 |   border: 1px solid #cbd5e1;
+L0189 |   color: #111827;
+L0190 |   background: white;
+L0191 | }
+L0192 | 
+L0193 | .remove-internship-button {
+L0194 |   padding: 7px 10px;
+L0195 | }
+L0196 | 
+L0197 | .message {
+L0198 |   border-radius: 6px;
+L0199 |   padding: 8px 10px;
+L0200 |   color: #14532d;
+L0201 |   font-size: 13px;
+L0202 |   font-weight: 700;
+L0203 |   background: #dcfce7;
+L0204 | }
+L0205 | 
+L0206 | .profile-memory-preview {
+L0207 |   display: grid;
+L0208 |   gap: 12px;
+L0209 |   border: 1px solid #bbf7d0;
+L0210 |   border-radius: 8px;
+L0211 |   padding: 16px;
+L0212 |   background: #f0fdf4;
+L0213 | }
+L0214 | 
+L0215 | .profile-memory-preview header {
+L0216 |   display: flex;
+L0217 |   align-items: flex-start;
+L0218 |   justify-content: space-between;
+L0219 |   gap: 12px;
+L0220 | }
+L0221 | 
+L0222 | .profile-memory-preview header span {
+L0223 |   color: #166534;
+L0224 |   font-size: 12px;
+L0225 |   font-weight: 800;
+L0226 |   white-space: nowrap;
+L0227 | }
+L0228 | 
+L0229 | .profile-memory-grid {
+L0230 |   display: grid;
+L0231 |   grid-template-columns: repeat(2, minmax(0, 1fr));
+L0232 |   gap: 10px;
+L0233 | }
+L0234 | 
+L0235 | .profile-memory-grid article {
+L0236 |   display: grid;
+L0237 |   gap: 4px;
+L0238 |   border: 1px solid #dcfce7;
+L0239 |   border-radius: 8px;
+L0240 |   padding: 10px;
+L0241 |   background: white;
+L0242 | }
+L0243 | 
+L0244 | .profile-memory-grid strong {
+L0245 |   font-size: 13px;
+L0246 | }
+L0247 | 
+L0248 | .profile-memory-grid small {
+L0249 |   color: #64748b;
+L0250 |   font-size: 11px;
+L0251 | }
+L0252 | 
+L0253 | .profile-memory-grid p {
+L0254 |   overflow-wrap: anywhere;
+L0255 | }
+L0256 | 
+L0257 | .profile-memory-debug {
+L0258 |   display: grid;
+L0259 |   gap: 8px;
+L0260 |   border: 1px solid #fde68a;
+L0261 |   border-radius: 8px;
+L0262 |   padding: 12px;
+L0263 |   background: #fffbeb;
+L0264 | }
+L0265 | 
+L0266 | .profile-memory-debug h3 {
+L0267 |   margin: 0;
+L0268 |   font-size: 14px;
+L0269 | }
+L0270 | 
+L0271 | .profile-memory-debug pre {
+L0272 |   max-height: 220px;
+L0273 |   margin: 0;
+L0274 |   overflow: auto;
+L0275 |   white-space: pre-wrap;
+L0276 |   overflow-wrap: anywhere;
+L0277 |   color: #334155;
+L0278 |   font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+L0279 | }
+L0280 | 
+L0281 | @media (max-width: 720px) {
+L0282 |   .page-header {
+L0283 |     display: grid;
+L0284 |   }
+L0285 | 
+L0286 |   .field-grid {
+L0287 |     grid-template-columns: 1fr;
+L0288 |   }
+L0289 | 
+L0290 |   .internship-language-grid {
+L0291 |     grid-template-columns: 1fr;
+L0292 |   }
+L0293 | 
+L0294 |   .profile-memory-grid {
+L0295 |     grid-template-columns: 1fr;
+L0296 |   }
+L0297 | }
+L0298 | 
+
+========================================================================
+FILE: application-tracker-extension/src/profile/profile.html
+SHA256: 9f822d47b594726e1d2151a40f84c56a1afb994c14d5835964f58752d19bbbfa
+LINES: 157
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN">
+L0003 |   <head>
+L0004 |     <meta charset="utf-8" />
+L0005 |     <meta name="viewport" content="width=device-width, initial-scale=1" />
+L0006 |     <title>个人信息</title>
+L0007 |     <link rel="stylesheet" href="./profile.css" />
+L0008 |   </head>
+L0009 |   <body>
+L0010 |     <main class="profile-shell">
+L0011 |       <header class="page-header">
+L0012 |         <div>
+L0013 |           <h1>个人信息</h1>
+L0014 |           <p>这些信息只保存在本机浏览器里，用于手动填入或复制到申请表。</p>
+L0015 |         </div>
+L0016 |         <a href="../records/records.html">返回投递记录</a>
+L0017 |       </header>
+L0018 | 
+L0019 |       <form id="profileForm" novalidate>
+L0020 |         <nav class="profile-tabs" aria-label="个人信息语言切换">
+L0021 |           <button class="profile-tab active" type="button" data-profile-tab="zh">中文信息</button>
+L0022 |           <button class="profile-tab" type="button" data-profile-tab="en">English Info</button>
+L0023 |         </nav>
+L0024 | 
+L0025 |         <section class="profile-panel" data-profile-panel="zh">
+L0026 |           <section class="form-section">
+L0027 |             <h2>基础信息</h2>
+L0028 |             <div class="field-grid">
+L0029 |               <label>中文姓名 <input name="fullNameZh" /></label>
+L0030 |               <label>电话 <input name="phone" autocomplete="tel" /></label>
+L0031 |               <label>邮箱 <input name="email" type="email" autocomplete="email" /></label>
+L0032 |               <label>LinkedIn <input name="linkedin" type="url" /></label>
+L0033 |               <label>GitHub <input name="github" type="url" /></label>
+L0034 |               <label>个人网站 <input name="website" type="url" /></label>
+L0035 |             </div>
+L0036 |           </section>
+L0037 | 
+L0038 |           <section class="form-section">
+L0039 |             <h2>硕士教育</h2>
+L0040 |             <div class="field-grid">
+L0041 |               <label>中文学校 <input name="masterUniversityZh" /></label>
+L0042 |               <label>中文学历 <input name="masterDegreeZh" placeholder="硕士" /></label>
+L0043 |               <label>中文专业 <input name="masterMajorZh" /></label>
+L0044 |               <label>入学时间 <input name="masterStartDate" placeholder="2025-09" /></label>
+L0045 |               <label>毕业时间 <input name="masterGraduationDate" placeholder="2026-06" /></label>
+L0046 |             </div>
+L0047 |           </section>
+L0048 | 
+L0049 |           <section class="form-section">
+L0050 |             <h2>本科教育</h2>
+L0051 |             <div class="field-grid">
+L0052 |               <label>中文学校 <input name="bachelorUniversityZh" /></label>
+L0053 |               <label>中文学历 <input name="bachelorDegreeZh" placeholder="本科" /></label>
+L0054 |               <label>中文专业 <input name="bachelorMajorZh" /></label>
+L0055 |               <label>入学时间 <input name="bachelorStartDate" placeholder="2021-09" /></label>
+L0056 |               <label>毕业时间 <input name="bachelorGraduationDate" placeholder="2025-06" /></label>
+L0057 |             </div>
+L0058 |           </section>
+L0059 | 
+L0060 |           <section class="form-section">
+L0061 |             <div class="section-title-row">
+L0062 |               <h2>实习经历</h2>
+L0063 |               <button class="secondary-button" type="button" data-action="add-internship">+ 添加实习</button>
+L0064 |             </div>
+L0065 |             <div id="zhInternshipList" class="internship-list" data-internship-list="zh"></div>
+L0066 |           </section>
+L0067 | 
+L0068 |           <section class="form-section">
+L0069 |             <h2>常见申请问题</h2>
+L0070 |             <div class="field-grid">
+L0071 |               <label>是否需要签证赞助 <input data-common-answer="visaSponsorship" data-common-language="zh" placeholder="例如：不需要" /></label>
+L0072 |               <label>工作资格 <input data-common-answer="rightToWork" data-common-language="zh" placeholder="例如：拥有香港工作资格" /></label>
+L0073 |               <label>期望薪资 <input data-common-answer="expectedSalary" data-common-language="zh" placeholder="例如：面议" /></label>
+L0074 |               <label>最早到岗时间 <input data-common-answer="earliestStartDate" data-common-language="zh" placeholder="例如：2026年8月" /></label>
+L0075 |               <label>当前所在地 <input data-common-answer="currentLocation" data-common-language="zh" placeholder="例如：香港" /></label>
+L0076 |               <label>是否愿意搬迁 <input data-common-answer="relocation" data-common-language="zh" placeholder="例如：愿意" /></label>
+L0077 |               <label>语言能力 <input data-common-answer="languageAbility" data-common-language="zh" placeholder="例如：普通话、英语、粤语" /></label>
+L0078 |               <label>为什么选择这个岗位 <textarea data-common-answer="whyRole" data-common-language="zh"></textarea></label>
+L0079 |               <label>为什么选择这家公司 <textarea data-common-answer="whyCompany" data-common-language="zh"></textarea></label>
+L0080 |               <label>自我介绍 <textarea data-common-answer="selfIntroduction" data-common-language="zh"></textarea></label>
+L0081 |             </div>
+L0082 |           </section>
+L0083 |         </section>
+L0084 | 
+L0085 |         <section class="profile-panel" data-profile-panel="en" hidden>
+L0086 |           <section class="form-section">
+L0087 |             <h2>Basic Info</h2>
+L0088 |             <div class="field-grid">
+L0089 |               <label>Full name <input name="fullName" autocomplete="name" /></label>
+L0090 |               <label>Preferred name <input name="englishName" /></label>
+L0091 |               <label>Phone <input name="phoneMirror" autocomplete="tel" /></label>
+L0092 |               <label>Email <input name="emailMirror" type="email" autocomplete="email" /></label>
+L0093 |               <label>LinkedIn <input name="linkedinMirror" type="url" /></label>
+L0094 |               <label>GitHub <input name="githubMirror" type="url" /></label>
+L0095 |               <label>Website <input name="websiteMirror" type="url" /></label>
+L0096 |             </div>
+L0097 |           </section>
+L0098 | 
+L0099 |           <section class="form-section">
+L0100 |             <h2>Master Education</h2>
+L0101 |             <div class="field-grid">
+L0102 |               <label>University <input name="masterUniversity" /></label>
+L0103 |               <label>Degree <input name="masterDegree" placeholder="Master" /></label>
+L0104 |               <label>Major <input name="masterMajor" /></label>
+L0105 |               <label>Start date <input name="masterStartDateMirror" placeholder="2025-09" /></label>
+L0106 |               <label>Graduation date <input name="masterGraduationDateMirror" placeholder="2026-06" /></label>
+L0107 |             </div>
+L0108 |           </section>
+L0109 | 
+L0110 |           <section class="form-section">
+L0111 |             <h2>Bachelor Education</h2>
+L0112 |             <div class="field-grid">
+L0113 |               <label>University <input name="bachelorUniversity" /></label>
+L0114 |               <label>Degree <input name="bachelorDegree" placeholder="Bachelor" /></label>
+L0115 |               <label>Major <input name="bachelorMajor" /></label>
+L0116 |               <label>Start date <input name="bachelorStartDateMirror" placeholder="2021-09" /></label>
+L0117 |               <label>Graduation date <input name="bachelorGraduationDateMirror" placeholder="2025-06" /></label>
+L0118 |             </div>
+L0119 |           </section>
+L0120 | 
+L0121 |           <section class="form-section">
+L0122 |             <div class="section-title-row">
+L0123 |               <h2>Internship Experience</h2>
+L0124 |               <button class="secondary-button" type="button" data-action="add-internship">+ Add Internship</button>
+L0125 |             </div>
+L0126 |             <div id="enInternshipList" class="internship-list" data-internship-list="en"></div>
+L0127 |           </section>
+L0128 | 
+L0129 |           <section class="form-section">
+L0130 |             <h2>Common Application Questions</h2>
+L0131 |             <div class="field-grid">
+L0132 |               <label>Visa Sponsorship <input data-common-answer="visaSponsorship" data-common-language="en" placeholder="e.g. No" /></label>
+L0133 |               <label>Right to Work <input data-common-answer="rightToWork" data-common-language="en" placeholder="e.g. Authorized to work in Hong Kong" /></label>
+L0134 |               <label>Expected Salary <input data-common-answer="expectedSalary" data-common-language="en" placeholder="e.g. Negotiable" /></label>
+L0135 |               <label>Earliest Start Date <input data-common-answer="earliestStartDate" data-common-language="en" placeholder="e.g. August 2026" /></label>
+L0136 |               <label>Current Location <input data-common-answer="currentLocation" data-common-language="en" placeholder="e.g. Hong Kong" /></label>
+L0137 |               <label>Relocation <input data-common-answer="relocation" data-common-language="en" placeholder="e.g. Yes" /></label>
+L0138 |               <label>Language Ability <input data-common-answer="languageAbility" data-common-language="en" placeholder="e.g. Mandarin, English, Cantonese" /></label>
+L0139 |               <label>Why This Role <textarea data-common-answer="whyRole" data-common-language="en"></textarea></label>
+L0140 |               <label>Why This Company <textarea data-common-answer="whyCompany" data-common-language="en"></textarea></label>
+L0141 |               <label>Self Introduction <textarea data-common-answer="selfIntroduction" data-common-language="en"></textarea></label>
+L0142 |             </div>
+L0143 |           </section>
+L0144 |         </section>
+L0145 | 
+L0146 |         <div class="actions">
+L0147 |           <button type="submit">保存个人信息</button>
+L0148 |           <a href="../memory/memory.html">备份与恢复资料</a>
+L0149 |           <span id="message" class="message" hidden></span>
+L0150 |         </div>
+L0151 |         <p>保存后申请助手会自动读取个人资料，无需另行生成 AI 信息库。</p>
+L0152 |       </form>
+L0153 |     </main>
+L0154 |     <script type="module" src="./profile.js"></script>
+L0155 |   </body>
+L0156 | </html>
+L0157 | 
+
+========================================================================
+FILE: application-tracker-extension/src/profile/profile.js
+SHA256: 9dc576a90b0e97d5070e2ff1da076a95369f01614e92fa0e16a9be05fb14d0d0
+LINES: 282
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import { getProfile, saveProfile } from "../storage.js";
+L0002 | 
+L0003 | const form = document.querySelector("#profileForm");
+L0004 | const message = document.querySelector("#message");
+L0005 | const internshipLists = {
+L0006 |   zh: document.querySelector("#zhInternshipList"),
+L0007 |   en: document.querySelector("#enInternshipList")
+L0008 | };
+L0009 | 
+L0010 | init();
+L0011 | 
+L0012 | async function init() {
+L0013 |   setFormValues(await getProfile());
+L0014 |   form.addEventListener("submit", handleSubmit);
+L0015 |   form.addEventListener("click", handleFormClick);
+L0016 |   form.addEventListener("input", handleFormInput);
+L0017 |   bindMirrorInputs();
+L0018 |   document.querySelectorAll(".profile-tab").forEach((button) => {
+L0019 |     button.addEventListener("click", () => switchProfileTab(button.dataset.profileTab));
+L0020 |   });
+L0021 | }
+L0022 | 
+L0023 | async function handleSubmit(event) {
+L0024 |   event.preventDefault();
+L0025 |   try {
+L0026 |     await saveProfile(getFormValues());
+L0027 |     message.textContent = "已保存，申请助手会自动使用最新资料";
+L0028 |   } catch (error) { message.textContent = `保存失败：${error.message}`; }
+L0029 |   message.hidden = false;
+L0030 | }
+L0031 | 
+L0032 | function handleFormClick(event) {
+L0033 |   const addButton = event.target.closest("button[data-action='add-internship']");
+L0034 |   if (addButton) {
+L0035 |     addInternshipPair();
+L0036 |     return;
+L0037 |   }
+L0038 | 
+L0039 |   const removeButton = event.target.closest("button[data-action='remove-internship']");
+L0040 |   if (removeButton) {
+L0041 |     const card = removeButton.closest(".internship-card");
+L0042 |     removeInternshipPair(Number(card?.dataset.internshipIndex || 0));
+L0043 |   }
+L0044 | }
+L0045 | 
+L0046 | function handleFormInput(event) {
+L0047 |   const input = event.target.closest("[data-internship-field='period']");
+L0048 |   if (!input) return;
+L0049 | 
+L0050 |   const card = input.closest(".internship-card");
+L0051 |   const language = card?.dataset.internshipLanguage;
+L0052 |   const index = card?.dataset.internshipIndex;
+L0053 |   const otherLanguage = language === "zh" ? "en" : "zh";
+L0054 |   const otherInput = internshipLists[otherLanguage]?.querySelector(
+L0055 |     `.internship-card[data-internship-index="${index}"] [data-internship-field="period"]`
+L0056 |   );
+L0057 |   if (otherInput && otherInput.value !== input.value) otherInput.value = input.value;
+L0058 | }
+L0059 | 
+L0060 | function switchProfileTab(tab) {
+L0061 |   document.querySelectorAll(".profile-tab").forEach((button) => {
+L0062 |     button.classList.toggle("active", button.dataset.profileTab === tab);
+L0063 |   });
+L0064 |   document.querySelectorAll("[data-profile-panel]").forEach((panel) => {
+L0065 |     panel.hidden = panel.dataset.profilePanel !== tab;
+L0066 |   });
+L0067 | }
+L0068 | 
+L0069 | function setFormValues(values) {
+L0070 |   for (const [key, value] of Object.entries(values)) {
+L0071 |     if (form.elements[key]) {
+L0072 |       form.elements[key].value = value;
+L0073 |     }
+L0074 |   }
+L0075 | 
+L0076 |   setMirrorValues(values);
+L0077 |   setCommonAnswerValues(values.commonAnswers || {});
+L0078 |   renderInternships(Array.isArray(values.internships) ? values.internships : []);
+L0079 | }
+L0080 | 
+L0081 | function setMirrorValues(values) {
+L0082 |   const mirrors = {
+L0083 |     phoneMirror: values.phone,
+L0084 |     emailMirror: values.email,
+L0085 |     linkedinMirror: values.linkedin,
+L0086 |     githubMirror: values.github,
+L0087 |     websiteMirror: values.website,
+L0088 |     masterStartDateMirror: values.masterStartDate,
+L0089 |     masterGraduationDateMirror: values.masterGraduationDate,
+L0090 |     bachelorStartDateMirror: values.bachelorStartDate,
+L0091 |     bachelorGraduationDateMirror: values.bachelorGraduationDate
+L0092 |   };
+L0093 |   for (const [key, value] of Object.entries(mirrors)) {
+L0094 |     if (form.elements[key]) form.elements[key].value = value || "";
+L0095 |   }
+L0096 | }
+L0097 | 
+L0098 | function setCommonAnswerValues(commonAnswers) {
+L0099 |   commonAnswerInputs().forEach((input) => {
+L0100 |     const field = input.dataset.commonAnswer;
+L0101 |     const language = input.dataset.commonLanguage;
+L0102 |     input.value = commonAnswers[field]?.[language] || "";
+L0103 |   });
+L0104 | }
+L0105 | 
+L0106 | function bindMirrorInputs() {
+L0107 |   [
+L0108 |     ["phone", "phoneMirror"],
+L0109 |     ["email", "emailMirror"],
+L0110 |     ["linkedin", "linkedinMirror"],
+L0111 |     ["github", "githubMirror"],
+L0112 |     ["website", "websiteMirror"],
+L0113 |     ["masterStartDate", "masterStartDateMirror"],
+L0114 |     ["masterGraduationDate", "masterGraduationDateMirror"],
+L0115 |     ["bachelorStartDate", "bachelorStartDateMirror"],
+L0116 |     ["bachelorGraduationDate", "bachelorGraduationDateMirror"]
+L0117 |   ].forEach(([leftName, rightName]) => {
+L0118 |     const left = form.elements[leftName];
+L0119 |     const right = form.elements[rightName];
+L0120 |     if (!left || !right) return;
+L0121 |     left.addEventListener("input", () => {
+L0122 |       right.value = left.value;
+L0123 |     });
+L0124 |     right.addEventListener("input", () => {
+L0125 |       left.value = right.value;
+L0126 |     });
+L0127 |   });
+L0128 | }
+L0129 | 
+L0130 | function getFormValues() {
+L0131 |   return {
+L0132 |     fullName: form.elements.fullName.value,
+L0133 |     fullNameZh: form.elements.fullNameZh.value,
+L0134 |     englishName: form.elements.englishName.value,
+L0135 |     phone: valueFrom("phoneMirror", "phone"),
+L0136 |     email: valueFrom("emailMirror", "email"),
+L0137 |     masterUniversity: form.elements.masterUniversity.value,
+L0138 |     masterUniversityZh: form.elements.masterUniversityZh.value,
+L0139 |     masterDegree: form.elements.masterDegree.value,
+L0140 |     masterDegreeZh: form.elements.masterDegreeZh.value,
+L0141 |     masterMajor: form.elements.masterMajor.value,
+L0142 |     masterMajorZh: form.elements.masterMajorZh.value,
+L0143 |     masterStartDate: valueFrom("masterStartDateMirror", "masterStartDate"),
+L0144 |     masterGraduationDate: valueFrom("masterGraduationDateMirror", "masterGraduationDate"),
+L0145 |     bachelorUniversity: form.elements.bachelorUniversity.value,
+L0146 |     bachelorUniversityZh: form.elements.bachelorUniversityZh.value,
+L0147 |     bachelorDegree: form.elements.bachelorDegree.value,
+L0148 |     bachelorDegreeZh: form.elements.bachelorDegreeZh.value,
+L0149 |     bachelorMajor: form.elements.bachelorMajor.value,
+L0150 |     bachelorMajorZh: form.elements.bachelorMajorZh.value,
+L0151 |     bachelorStartDate: valueFrom("bachelorStartDateMirror", "bachelorStartDate"),
+L0152 |     bachelorGraduationDate: valueFrom("bachelorGraduationDateMirror", "bachelorGraduationDate"),
+L0153 |     internships: getInternshipValues(),
+L0154 |     commonAnswers: getCommonAnswerValues(),
+L0155 |     linkedin: valueFrom("linkedinMirror", "linkedin"),
+L0156 |     github: valueFrom("githubMirror", "github"),
+L0157 |     website: valueFrom("websiteMirror", "website")
+L0158 |   };
+L0159 | }
+L0160 | 
+L0161 | function getCommonAnswerValues() {
+L0162 |   const commonAnswers = {};
+L0163 |   commonAnswerInputs().forEach((input) => {
+L0164 |     const field = input.dataset.commonAnswer;
+L0165 |     const language = input.dataset.commonLanguage;
+L0166 |     commonAnswers[field] ||= { zh: "", en: "" };
+L0167 |     commonAnswers[field][language] = input.value;
+L0168 |   });
+L0169 |   return commonAnswers;
+L0170 | }
+L0171 | 
+L0172 | function commonAnswerInputs() {
+L0173 |   return Array.from(form.querySelectorAll("[data-common-answer][data-common-language]"));
+L0174 | }
+L0175 | 
+L0176 | function valueFrom(primaryName, fallbackName) {
+L0177 |   return form.elements[primaryName]?.value || form.elements[fallbackName]?.value || "";
+L0178 | }
+L0179 | 
+L0180 | function renderInternships(internships) {
+L0181 |   internshipLists.zh.innerHTML = "";
+L0182 |   internshipLists.en.innerHTML = "";
+L0183 |   const values = internships.length > 0 ? internships : [{}];
+L0184 |   values.forEach(addInternshipPair);
+L0185 | }
+L0186 | 
+L0187 | function addInternshipPair(value = {}) {
+L0188 |   internshipLists.zh.append(createInternshipCard(value, "zh"));
+L0189 |   internshipLists.en.append(createInternshipCard(value, "en"));
+L0190 |   renumberInternships();
+L0191 | }
+L0192 | 
+L0193 | function createInternshipCard(value, language) {
+L0194 |   const card = document.createElement("section");
+L0195 |   card.className = "internship-card";
+L0196 |   card.dataset.internshipLanguage = language;
+L0197 | 
+L0198 |   if (language === "zh") {
+L0199 |     card.innerHTML = `
+L0200 |       <div class="internship-header">
+L0201 |         <h3>实习</h3>
+L0202 |         <button class="remove-internship-button" type="button" data-action="remove-internship">删除</button>
+L0203 |       </div>
+L0204 |       <div class="field-grid">
+L0205 |         <label>公司 <input data-internship-field="companyZh" value="${escapeAttribute(value.companyZh)}" /></label>
+L0206 |         <label>职位 <input data-internship-field="roleZh" value="${escapeAttribute(value.roleZh)}" /></label>
+L0207 |         <label>时间 <input data-internship-field="period" value="${escapeAttribute(value.period)}" placeholder="2025.06 - 2025.08" /></label>
+L0208 |         <label>经历 <textarea data-internship-field="descriptionZh">${escapeHtml(value.descriptionZh)}</textarea></label>
+L0209 |       </div>
+L0210 |     `;
+L0211 |   } else {
+L0212 |     card.innerHTML = `
+L0213 |       <div class="internship-header">
+L0214 |         <h3>Internship</h3>
+L0215 |         <button class="remove-internship-button" type="button" data-action="remove-internship">Remove</button>
+L0216 |       </div>
+L0217 |       <div class="field-grid">
+L0218 |         <label>Company <input data-internship-field="company" value="${escapeAttribute(value.company)}" /></label>
+L0219 |         <label>Role <input data-internship-field="role" value="${escapeAttribute(value.role)}" /></label>
+L0220 |         <label>Period <input data-internship-field="period" value="${escapeAttribute(value.period)}" placeholder="2025.06 - 2025.08" /></label>
+L0221 |         <label>Experience <textarea data-internship-field="description">${escapeHtml(value.description)}</textarea></label>
+L0222 |       </div>
+L0223 |     `;
+L0224 |   }
+L0225 | 
+L0226 |   return card;
+L0227 | }
+L0228 | 
+L0229 | function removeInternshipPair(index) {
+L0230 |   if (!index) return;
+L0231 |   for (const list of Object.values(internshipLists)) {
+L0232 |     list.querySelector(`.internship-card[data-internship-index="${index}"]`)?.remove();
+L0233 |   }
+L0234 |   if (internshipLists.zh.children.length === 0) addInternshipPair();
+L0235 |   renumberInternships();
+L0236 | }
+L0237 | 
+L0238 | function getInternshipValues() {
+L0239 |   const zhCards = Array.from(internshipLists.zh.querySelectorAll(".internship-card"));
+L0240 |   const enCards = Array.from(internshipLists.en.querySelectorAll(".internship-card"));
+L0241 |   const count = Math.max(zhCards.length, enCards.length);
+L0242 | 
+L0243 |   return Array.from({ length: count }, (_, index) => {
+L0244 |     const zhCard = zhCards[index];
+L0245 |     const enCard = enCards[index];
+L0246 |     return {
+L0247 |       company: fieldValue(enCard, "company"),
+L0248 |       companyZh: fieldValue(zhCard, "companyZh"),
+L0249 |       role: fieldValue(enCard, "role"),
+L0250 |       roleZh: fieldValue(zhCard, "roleZh"),
+L0251 |       period: fieldValue(enCard, "period") || fieldValue(zhCard, "period"),
+L0252 |       description: fieldValue(enCard, "description"),
+L0253 |       descriptionZh: fieldValue(zhCard, "descriptionZh")
+L0254 |     };
+L0255 |   });
+L0256 | }
+L0257 | 
+L0258 | function fieldValue(card, field) {
+L0259 |   return card?.querySelector(`[data-internship-field="${field}"]`)?.value || "";
+L0260 | }
+L0261 | 
+L0262 | function renumberInternships() {
+L0263 |   for (const [language, list] of Object.entries(internshipLists)) {
+L0264 |     Array.from(list.querySelectorAll(".internship-card")).forEach((card, index) => {
+L0265 |       const number = index + 1;
+L0266 |       card.dataset.internshipIndex = String(number);
+L0267 |       card.querySelector("h3").textContent = language === "zh" ? `实习 ${number}` : `Internship ${number}`;
+L0268 |     });
+L0269 |   }
+L0270 | }
+L0271 | 
+L0272 | function escapeHtml(value) {
+L0273 |   return String(value ?? "")
+L0274 |     .replaceAll("&", "&amp;")
+L0275 |     .replaceAll("<", "&lt;")
+L0276 |     .replaceAll(">", "&gt;");
+L0277 | }
+L0278 | 
+L0279 | function escapeAttribute(value) {
+L0280 |   return escapeHtml(value).replaceAll('"', "&quot;");
+L0281 | }
+L0282 | 
+
+========================================================================
+FILE: application-tracker-extension/src/questionMemory.js
+SHA256: 041daad33ad5427f7b52fd124ab3c98d96da901188de030e00d526fb49df6468
+LINES: 133
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | const UNSAFE_TYPES = new Set(["hidden", "password", "file", "submit", "button", "reset"]);
+L0002 | 
+L0003 | export function buildQuestionMemoryEntry(draft, now = new Date().toISOString()) {
+L0004 |   const question = cleanText(draft.question);
+L0005 |   const answer = cleanText(draft.answer);
+L0006 |   const section = cleanText(draft.section);
+L0007 |   const group = cleanText(draft.group);
+L0008 |   const contextPath = cleanText(draft.contextPath) || buildContextPath(section, group, question);
+L0009 |   return {
+L0010 |     id: draft.id || createId(),
+L0011 |     question,
+L0012 |     answer,
+L0013 |     section,
+L0014 |     group,
+L0015 |     contextPath,
+L0016 |     displayQuestion: contextPath || question,
+L0017 |     language: draft.language || detectLanguage(question),
+L0018 |     category: draft.category || categorizeQuestion(question),
+L0019 |     source: draft.source || "user_filled",
+L0020 |     pageUrl: cleanText(draft.pageUrl),
+L0021 |     createdAt: draft.createdAt || now,
+L0022 |     updatedAt: now,
+L0023 |     lastUsedAt: draft.lastUsedAt || ""
+L0024 |   };
+L0025 | }
+L0026 | 
+L0027 | export function extractFilledQuestionAnswers(fields) {
+L0028 |   return fields
+L0029 |     .filter(isSafeFilledField)
+L0030 |     .map((field) => withContextFields({
+L0031 |       question: bestQuestionText(field),
+L0032 |       answer: cleanText(field.value)
+L0033 |     }, field))
+L0034 |     .filter((pair) => pair.question && pair.answer);
+L0035 | }
+L0036 | 
+L0037 | export function mergeQuestionMemories(existing, incoming, now = new Date().toISOString()) {
+L0038 |   const merged = existing.map((entry) => buildQuestionMemoryEntry(entry, entry.updatedAt || now));
+L0039 | 
+L0040 |   for (const incomingEntry of incoming) {
+L0041 |     const normalizedIncoming = buildQuestionMemoryEntry(incomingEntry, now);
+L0042 |     const index = merged.findIndex((entry) => isSameMemorySlot(entry, normalizedIncoming));
+L0043 |     if (index === -1) {
+L0044 |       merged.push(normalizedIncoming);
+L0045 |     } else {
+L0046 |       merged[index] = {
+L0047 |         ...merged[index],
+L0048 |         question: normalizedIncoming.question,
+L0049 |         answer: normalizedIncoming.answer,
+L0050 |         section: normalizedIncoming.section,
+L0051 |         group: normalizedIncoming.group,
+L0052 |         contextPath: normalizedIncoming.contextPath,
+L0053 |         displayQuestion: normalizedIncoming.displayQuestion,
+L0054 |         language: normalizedIncoming.language,
+L0055 |         category: normalizedIncoming.category,
+L0056 |         pageUrl: normalizedIncoming.pageUrl || merged[index].pageUrl,
+L0057 |         updatedAt: now
+L0058 |       };
+L0059 |     }
+L0060 |   }
+L0061 | 
+L0062 |   return merged;
+L0063 | }
+L0064 | 
+L0065 | function isSameMemorySlot(a, b) {
+L0066 |   if (a.contextPath || b.contextPath) {
+L0067 |     return a.contextPath === b.contextPath;
+L0068 |   }
+L0069 |   return isSimilarQuestion(a.question, b.question);
+L0070 | }
+L0071 | 
+L0072 | function isSafeFilledField(field) {
+L0073 |   const type = cleanText(field.type || "text").toLowerCase();
+L0074 |   if (UNSAFE_TYPES.has(type)) return false;
+L0075 |   return Boolean(cleanText(field.value));
+L0076 | }
+L0077 | 
+L0078 | function bestQuestionText(field) {
+L0079 |   return cleanText(field.label || field.question || field.placeholder || field.name || field.id);
+L0080 | }
+L0081 | 
+L0082 | function isSimilarQuestion(a, b) {
+L0083 |   const aTokens = tokenSet(a);
+L0084 |   const bTokens = tokenSet(b);
+L0085 |   if (aTokens.size === 0 || bTokens.size === 0) return false;
+L0086 |   const intersection = [...aTokens].filter((token) => bTokens.has(token)).length;
+L0087 |   const smaller = Math.min(aTokens.size, bTokens.size);
+L0088 |   return intersection / smaller >= 0.6;
+L0089 | }
+L0090 | 
+L0091 | function tokenSet(value) {
+L0092 |   return new Set(cleanText(value).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((token) => token.length > 2));
+L0093 | }
+L0094 | 
+L0095 | function detectLanguage(value) {
+L0096 |   return /[\u4e00-\u9fff]/.test(value) ? "zh" : "en";
+L0097 | }
+L0098 | 
+L0099 | function categorizeQuestion(value) {
+L0100 |   const text = cleanText(value).toLowerCase();
+L0101 |   if (/sponsor|visa|work authorization|right to work|合法工作|签证|簽證/.test(text)) return "work_authorization";
+L0102 |   if (/salary|compensation|expected pay|期望薪资|期望薪資|薪酬/.test(text)) return "salary";
+L0103 |   if (/start date|available|notice period|入职|入職|到岗|到崗/.test(text)) return "availability";
+L0104 |   if (/language|mandarin|cantonese|english|语言|語言|普通话|普通話|粤语|粵語/.test(text)) return "language";
+L0105 |   return "general";
+L0106 | }
+L0107 | 
+L0108 | function buildContextPath(section, group, question) {
+L0109 |   if (!section && !group) return "";
+L0110 |   return [section, group, question].filter(Boolean).join(" > ");
+L0111 | }
+L0112 | 
+L0113 | function withContextFields(pair, field) {
+L0114 |   const section = cleanText(field.section);
+L0115 |   const group = cleanText(field.group);
+L0116 |   const contextPath = cleanText(field.contextPath) || buildContextPath(section, group, pair.question);
+L0117 |   return {
+L0118 |     ...pair,
+L0119 |     ...(section ? { section } : {}),
+L0120 |     ...(group ? { group } : {}),
+L0121 |     ...(contextPath ? { contextPath } : {})
+L0122 |   };
+L0123 | }
+L0124 | 
+L0125 | function createId() {
+L0126 |   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+L0127 |   return `memory-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+L0128 | }
+L0129 | 
+L0130 | function cleanText(value) {
+L0131 |   return String(value ?? "").replace(/\s+/g, " ").trim();
+L0132 | }
+L0133 | 

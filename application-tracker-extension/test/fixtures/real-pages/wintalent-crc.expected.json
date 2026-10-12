@@ -1,0 +1,519 @@
+{
+ "fixture": "wintalent-crc.html",
+ "host": "crc.wintalent.cn",
+ "note": "人工核对的标准答案。control=none 表示该题当时处于只显示状态（需先点添加/编辑），file 为上传，二者不计入得分。question 已去掉星号和冒号。",
+ "questionCount": 73,
+ "questions": [
+  {
+   "question": "姓名",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "国籍/地区",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "民族",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "手机号码",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select+text"
+  },
+  {
+   "question": "身份证号码",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "现居住地",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select-2level"
+  },
+  {
+   "question": "政治面貌",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "性别",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "radio"
+  },
+  {
+   "question": "籍贯",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select-2level"
+  },
+  {
+   "question": "电子邮箱",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "学历",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "户口所在地",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "select-2level"
+  },
+  {
+   "question": "出生日期",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "毕业时间",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "专业",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "popup-chooser"
+  },
+  {
+   "question": "毕业院校",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "照片(JPG,PNG格式...",
+   "section": "个人基本信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "file"
+  },
+  {
+   "question": "开始日期",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "结束日期",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "学历",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "学位",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "是否最高学历",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "radio"
+  },
+  {
+   "question": "学校名称",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "专业名称",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "popup-chooser"
+  },
+  {
+   "question": "专业描述",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "主修课程",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "学习成绩排名",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "担任职务",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "开始日期",
+   "section": "培训经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "结束日期",
+   "section": "培训经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "培训机构",
+   "section": "培训经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "培训项目",
+   "section": "培训经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "所获证书",
+   "section": "培训经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "语言",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "阅读能力",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "表达能力",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "写作能力",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "证书名称",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "获得日期",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "分数",
+   "section": "语言技能信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "有效开始日期",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "有效截止日期",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "执照类型",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "发行地点",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "发行机构",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "驾驶执照号码",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "违规次数(非必填)",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "剩余分数（非必填）",
+   "section": "驾驶执照信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "发证日期",
+   "section": "证书",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "发证机构",
+   "section": "证书",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "职称/资格证书名称",
+   "section": "证书",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "职称/资格证书等级",
+   "section": "证书",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "联系人姓名",
+   "section": "紧急联系人",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "是否主要联系人",
+   "section": "紧急联系人",
+   "occurrence": 1,
+   "required": false,
+   "control": "radio"
+  },
+  {
+   "question": "与员工的关系",
+   "section": "紧急联系人",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "联系电话",
+   "section": "紧急联系人",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "期望工作地点",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": true,
+   "control": "select-2level"
+  },
+  {
+   "question": "期望工作地点二",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": true,
+   "control": "select-2level"
+  },
+  {
+   "question": "期望年薪",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "到岗时间",
+   "section": "求职意向",
+   "occurrence": 1,
+   "required": true,
+   "control": "select"
+  },
+  {
+   "question": "开始日期",
+   "section": "校园活动经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "结束日期",
+   "section": "校园活动经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "项目描述",
+   "section": "校园活动经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "开始日期",
+   "section": "实习经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "结束日期",
+   "section": "实习经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "date"
+  },
+  {
+   "question": "实习单位",
+   "section": "实习经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "职务",
+   "section": "实习经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "主要工作职责",
+   "section": "实习经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "技能",
+   "section": "计算机技能",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "掌握程度",
+   "section": "计算机技能",
+   "occurrence": 1,
+   "required": false,
+   "control": "select"
+  },
+  {
+   "question": "是否有亲属受雇于本公司",
+   "section": "其他",
+   "occurrence": 1,
+   "required": false,
+   "control": "radio"
+  },
+  {
+   "question": "受雇于本公司亲属信息",
+   "section": "其他",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "是否愿意服从公司安排",
+   "section": "其他",
+   "occurrence": 1,
+   "required": false,
+   "control": "radio"
+  }
+ ]
+}

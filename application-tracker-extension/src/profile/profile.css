@@ -1,0 +1,297 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202124;
+  background: #f8fafc;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.profile-shell {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+}
+
+h2 {
+  font-size: 17px;
+}
+
+p {
+  margin-top: 6px;
+  color: #475569;
+  font-size: 14px;
+}
+
+a {
+  color: #1a73e8;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+form {
+  display: grid;
+  gap: 14px;
+}
+
+.profile-tabs {
+  display: inline-flex;
+  gap: 4px;
+  width: fit-content;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 4px;
+  background: white;
+}
+
+.profile-tab {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: #475569;
+  background: transparent;
+}
+
+.profile-tab.active {
+  color: white;
+  background: #166534;
+}
+
+.profile-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.form-section {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  background: white;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+  background: white;
+}
+
+textarea {
+  width: 100%;
+  min-height: 88px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px;
+  font: inherit;
+  resize: vertical;
+  background: white;
+}
+
+.section-title-row,
+.internship-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.internship-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.internship-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.internship-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.internship-card h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.internship-language-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+button {
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 800;
+  color: white;
+  background: #166534;
+  cursor: pointer;
+}
+
+.secondary-button,
+.remove-internship-button {
+  border: 1px solid #cbd5e1;
+  color: #111827;
+  background: white;
+}
+
+.remove-internship-button {
+  padding: 7px 10px;
+}
+
+.message {
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #14532d;
+  font-size: 13px;
+  font-weight: 700;
+  background: #dcfce7;
+}
+
+.profile-memory-preview {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f0fdf4;
+}
+
+.profile-memory-preview header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.profile-memory-preview header span {
+  color: #166534;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.profile-memory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.profile-memory-grid article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #dcfce7;
+  border-radius: 8px;
+  padding: 10px;
+  background: white;
+}
+
+.profile-memory-grid strong {
+  font-size: 13px;
+}
+
+.profile-memory-grid small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.profile-memory-grid p {
+  overflow-wrap: anywhere;
+}
+
+.profile-memory-debug {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffbeb;
+}
+
+.profile-memory-debug h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.profile-memory-debug pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #334155;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+@media (max-width: 720px) {
+  .page-header {
+    display: grid;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .internship-language-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-memory-grid {
+    grid-template-columns: 1fr;
+  }
+}

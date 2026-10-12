@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>申请问答记忆库</title>
+    <link rel="stylesheet" href="./memory.css" />
+  </head>
+  <body>
+    <main class="memory-shell">
+      <header class="page-header">
+        <div>
+          <h1>申请问答记忆库</h1>
+          <p>核对答案、主体和适用范围后，申请助手才会复用。历史答案保留待确认，个人信息保持原样。</p>
+        </div>
+        <a href="../records/records.html">返回投递记录</a>
+      </header>
+
+      <section class="toolbar">
+        <input id="searchInput" type="search" placeholder="搜索问题、答案或分类" />
+        <button id="refreshMemories" type="button" hidden>刷新列表</button>
+      </section>
+
+      <section class="backup-card" aria-label="备份和恢复">
+        <h2>备份和恢复</h2>
+        <p>完整备份包含投递记录、个人资料与问答记忆，不包含 API Key。Excel 备份仅包含投递记录。</p>
+        <div class="backup-actions">
+          <button id="exportBackup" class="cleanup-button" type="button">导出完整备份</button>
+          <label class="import-button">导入 JSON 备份<input id="importBackup" type="file" accept=".json,application/json" /></label>
+          <button id="restoreRecovery" type="button" hidden>导入前恢复点</button>
+        </div>
+        <section id="backupPreview" class="backup-preview" hidden>
+          <h3>恢复预览</h3><p id="backupSummary"></p>
+          <label>恢复方式 <select id="restoreMode"><option value="merge">合并到当前数据</option><option value="replace">替换为备份数据</option></select></label>
+          <p id="restoreDescription"></p>
+          <div class="backup-actions"><button id="confirmRestore" class="cleanup-button" type="button">确认恢复</button><button id="refreshPreview" type="button">重新预览</button><button id="cancelRestore" type="button">取消</button></div>
+        </section>
+      </section>
+
+      <p id="message" class="message" role="status" aria-live="polite" hidden></p>
+      <section id="cleanupPreview" class="cleanup-preview" hidden></section>
+      <section id="memoryList" class="memory-list"></section>
+    </main>
+    <script type="module" src="./memory.js"></script>
+  </body>
+</html>
+

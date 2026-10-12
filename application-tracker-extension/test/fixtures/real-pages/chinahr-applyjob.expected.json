@@ -1,0 +1,799 @@
+{
+ "fixture": "chinahr-applyjob.html",
+ "host": "applyjob.chinahr.com",
+ "note": "人工核对的标准答案。control=none 表示该题当时处于只显示状态（需先点添加/编辑），file 为上传，二者不计入得分。question 已去掉星号和冒号。",
+ "questionCount": 113,
+ "questions": [
+  {
+   "question": "您是否愿意到较为偏远地区工作",
+   "section": "职位问题",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "您可接受的工作地点",
+   "section": "职位问题",
+   "occurrence": 1,
+   "required": true,
+   "control": "checkbox"
+  },
+  {
+   "question": "应聘类别",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "姓名",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "证件号码",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "性别",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "radio"
+  },
+  {
+   "question": "出生日期",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "国籍",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "是否具有境外身份",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "境外身份类型",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "民族",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "cascader"
+  },
+  {
+   "question": "政治面貌",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "婚姻状况",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "radio"
+  },
+  {
+   "question": "身高",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "当前户籍所在地",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "当前户籍类型",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "生源地",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "家庭地址",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "电子邮箱",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "备用邮箱",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "手机",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "境外手机",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "紧急联系人姓名",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "紧急联系人手机",
+   "section": "个人信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "学号",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "学历",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "请填写",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "学位",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "学历类型",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "学历类型情况说明",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "开始日期",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "结束日期",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "学校",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "学院",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "高考录取批次",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "主修专业",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "年级排名",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": false,
+   "control": "cascader"
+  },
+  {
+   "question": "主修课程及成绩",
+   "section": "教育经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "学位",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "开始日期",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "结束日期",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "学校",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "学院",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "辅修专业",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "年级排名",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "辅修课程及成绩",
+   "section": "本科双学位、辅修情况",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "工作类别",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "开始日期",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "结束日期",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "工作单位",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "担任职务",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "专业技术级别",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "离职原因",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "主要工作职责",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "证明人",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "单位及职务",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "联系电话",
+   "section": "全职工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "工作类别",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "开始时间",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "结束日期",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "工作单位",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "担任职务",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "离职原因",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "主要工作职责",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "证明人",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "单位及职务",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "联系电话",
+   "section": "实习工作经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "社会及校园活动经历",
+   "section": "社会及校园活动经历",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "IT技能",
+   "section": "IT技能",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "使用时间",
+   "section": "IT技能",
+   "occurrence": 1,
+   "required": true,
+   "control": "date"
+  },
+  {
+   "question": "熟练程度",
+   "section": "IT技能",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "大学英语四级考试成绩",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "大学英语六级考试成绩",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "其他英语等级考试成绩",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": false,
+   "control": "cascader"
+  },
+  {
+   "question": "英语口语水平",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": false,
+   "control": "cascader"
+  },
+  {
+   "question": "小语种掌握情况及水平",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": false,
+   "control": "cascader"
+  },
+  {
+   "question": "小语种掌握情况及水平(成绩）",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "其他外语掌握情况及水平",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "方言掌握情况",
+   "section": "语言能力",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "所获专业技术资格证书",
+   "section": "其他情况",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "项目经验",
+   "section": "其他情况",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "研究成果",
+   "section": "其他情况",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "奖惩情况",
+   "section": "其他情况",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "父亲姓名",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "父亲单位",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "父亲职务",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "父亲联系电话",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "母亲姓名",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "母亲单位",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "母亲职务",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "母亲联系电话",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": true,
+   "control": "text"
+  },
+  {
+   "question": "配偶姓名",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "配偶单位",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "配偶职务",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "配偶联系电话",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": false,
+   "control": "text"
+  },
+  {
+   "question": "其他家庭成员及主要社会关系",
+   "section": "家庭成员",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "是否有亲属受雇于中国银行",
+   "section": "受雇于中行的亲属信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "亲属姓名",
+   "section": "受雇于中行的亲属信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "与本人关系",
+   "section": "受雇于中行的亲属信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "所在机构",
+   "section": "受雇于中行的亲属信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "具体单位及职务",
+   "section": "受雇于中行的亲属信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "您是否为定向生或委培生",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "是否服从调剂",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "意向笔试城市",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "个人评价",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "特长",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": false,
+   "control": "textarea"
+  },
+  {
+   "question": "如应聘成功，您对未来的职业生涯规划是什么",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "textarea"
+  },
+  {
+   "question": "期望月薪（元）",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "通过什么渠道获得招聘信息",
+   "section": "报名信息",
+   "occurrence": 1,
+   "required": true,
+   "control": "cascader"
+  },
+  {
+   "question": "标准证件照",
+   "section": "上传照片",
+   "occurrence": 1,
+   "required": true,
+   "control": "file"
+  },
+  {
+   "question": "五寸日常照片",
+   "section": "上传照片",
+   "occurrence": 1,
+   "required": true,
+   "control": "file"
+  },
+  {
+   "question": "本人意见",
+   "section": "信息确认",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  },
+  {
+   "question": "本人意见",
+   "section": "个人信息使用声明",
+   "occurrence": 1,
+   "required": true,
+   "control": "none"
+  }
+ ]
+}

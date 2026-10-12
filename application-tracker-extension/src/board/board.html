@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>投递看板</title>
+    <link rel="stylesheet" href="./board.css" />
+  </head>
+  <body>
+    <main class="board-shell">
+      <header class="page-header">
+        <div>
+          <h1>投递看板</h1>
+          <p id="summaryLine" class="summary-line">共 0 条 · 进行中 0 · Offer 0 · 已拒 0</p>
+        </div>
+        <div class="actions">
+          <a class="primary-action" href="../records/records.html">返回表格</a>
+        </div>
+      </header>
+
+      <section class="toolbar">
+        <input id="searchInput" type="search" placeholder="搜索公司或岗位" />
+        <select id="statusFilter"></select>
+      </section>
+
+      <p id="message" class="message" hidden></p>
+
+      <section id="boardView" class="board-wrap"></section>
+    </main>
+    <script type="module" src="./board.js"></script>
+  </body>
+</html>

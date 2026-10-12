@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>投递记录</title>
+    <link rel="stylesheet" href="./records.css" />
+  </head>
+  <body>
+    <main class="records-shell">
+      <header class="page-header">
+        <div>
+          <h1>投递记录</h1>
+          <p id="summaryLine" class="summary-line">共 0 条 · 进行中 0 · Offer 0 · 已拒 0</p>
+        </div>
+        <div class="actions">
+          <button id="newRecordButton" class="primary-action" type="button">+ 新增投递</button>
+          <a class="secondary-action" href="../profile/profile.html" target="_blank">编辑个人信息</a>
+          <a class="secondary-action" href="../board/board.html" target="_blank">看板视图</a>
+          <button id="exportButton" type="button">导出 Excel</button>
+          <label class="import-label">
+            导入 Excel
+            <input id="importInput" type="file" accept=".xlsx" hidden />
+          </label>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="页面切换">
+        <button class="tab-button active" type="button" data-tab="records">投递记录</button>
+        <button class="tab-button" type="button" data-tab="applicationInfo">申请信息</button>
+      </nav>
+
+      <section id="recordsPanel" class="tab-panel">
+        <section class="toolbar">
+          <input id="searchInput" type="search" placeholder="搜索公司或岗位" />
+          <select id="statusFilter"></select>
+        </section>
+
+        <section id="bulkToolbar" class="bulk-toolbar" hidden>
+          <span id="bulkCount">已选择 0 条</span>
+          <select id="bulkStatusSelect"></select>
+          <button id="bulkStatusButton" type="button">批量修改状态</button>
+          <button id="bulkDeleteButton" class="danger-button" type="button">批量删除</button>
+        </section>
+
+        <section class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input id="selectAllCheckbox" type="checkbox" aria-label="全选当前列表" /></th>
+                <th>公司</th>
+                <th>岗位</th>
+                <th>Base</th>
+                <th>状态</th>
+                <th><button class="sort-button" data-sort="appliedDate">投递日期</button></th>
+                <th><button class="sort-button" data-sort="nextActionDate">下次跟进</button></th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="recordsBody"></tbody>
+          </table>
+        </section>
+      </section>
+
+      <section id="applicationInfoPanel" class="tab-panel" hidden>
+        <div class="application-info-header">
+          <div>
+            <h2>申请信息</h2>
+            <p>常用信息集中放在这里，申请时可以按块复制。</p>
+          </div>
+          <a class="primary-action" href="../profile/profile.html" target="_blank">编辑个人信息</a>
+        </div>
+        <div id="applicationInfoList" class="application-info-list"></div>
+      </section>
+
+      <p id="message" class="message" hidden></p>
+
+      <dialog id="recordDialog">
+        <form id="editForm" method="dialog">
+          <h2 id="dialogTitle">编辑记录</h2>
+          <input name="id" type="hidden" />
+          <label>公司 <input name="company" required /></label>
+          <label>岗位 <input name="role" required /></label>
+          <label>Base 地 <input name="base" /></label>
+          <label>Candidate portal link <input name="portalLink" type="url" required /></label>
+          <label>网页标题 <input name="pageTitle" /></label>
+          <label>投递来源 <select name="source" required></select></label>
+          <label>投递日期 <input name="appliedDate" type="date" required /></label>
+          <label>当前进度 <select name="status" required></select></label>
+          <label>下次跟进 / 截止日期 <input name="nextActionDate" type="date" /></label>
+          <label>JD 原文或要点 <textarea name="jdText" rows="4"></textarea></label>
+          <label>备注 <textarea name="notes" rows="3"></textarea></label>
+          <section>
+            <h3>进度时间线</h3>
+            <ol id="historyList"></ol>
+          </section>
+          <div id="editErrors" class="errors" hidden></div>
+          <menu>
+            <button id="cancelEditButton" type="button">取消</button>
+            <button id="saveEditButton" type="submit">保存</button>
+          </menu>
+        </form>
+      </dialog>
+    </main>
+    <script src="../../vendor/xlsx.full.min.js"></script>
+    <script type="module" src="./records.js"></script>
+  </body>
+</html>

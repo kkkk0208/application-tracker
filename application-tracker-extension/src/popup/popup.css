@@ -1,0 +1,429 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 380px;
+  max-width: 420px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #202124;
+  background: #f8fafc;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.popup-shell {
+  padding: 16px;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 18px;
+}
+
+h2 {
+  font-size: 15px;
+}
+
+h3 {
+  font-size: 13px;
+}
+
+a {
+  color: #1a73e8;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 4px;
+  background: white;
+}
+
+.tab-button {
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #475569;
+  background: transparent;
+}
+
+.tab-button.active {
+  color: white;
+  background: #166534;
+}
+
+form {
+  display: grid;
+  gap: 10px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+[data-job-source] { color: #64748b; font-size: 11px; font-weight: 400; }
+
+input,
+select,
+textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px;
+  font: inherit;
+  background: white;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  border: 0;
+  border-radius: 6px;
+  padding: 9px 11px;
+  font: inherit;
+  font-weight: 800;
+  color: white;
+  background: #166534;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.secondary-button {
+  border: 1px solid #cbd5e1;
+  color: #111827;
+  background: white;
+}
+
+.form-actions,
+.application-info-actions,
+.language-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form-actions button {
+  flex: 0 0 auto;
+}
+
+.application-info-actions {
+  margin-bottom: 12px;
+}
+
+.language-tabs {
+  gap: 4px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 4px;
+  background: white;
+}
+
+.language-tab {
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #475569;
+  background: transparent;
+}
+
+.language-tab.active {
+  color: white;
+  background: #166534;
+}
+
+.application-info-list {
+  display: grid;
+  gap: 10px;
+}
+
+.question-scan-results {
+  margin-bottom: 12px;
+}
+
+.question-scan-card,
+.question-scan-empty {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+}
+
+.question-scan-card header {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.question-scan-card header p,
+.question-scan-empty p {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.question-scan-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.question-scan-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.scan-select {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.scan-select input {
+  width: auto;
+  margin: 0;
+}
+
+.scan-select span {
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.scan-question-body {
+  display: grid;
+  gap: 7px;
+}
+
+.scan-question-body p {
+  color: #111827;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.scan-question-body textarea {
+  min-height: 54px;
+  padding: 7px;
+  font-size: 12px;
+}
+
+.ai-reason {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.scan-debug-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fffbeb;
+}
+
+.scan-debug-panel h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.scan-debug-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.scan-debug-list article {
+  display: grid;
+  gap: 3px;
+  border: 1px solid #fef3c7;
+  border-radius: 7px;
+  padding: 7px;
+  background: white;
+}
+
+.scan-debug-list strong,
+.scan-debug-list small,
+.scan-debug-list span {
+  overflow-wrap: anywhere;
+}
+
+.scan-debug-list strong {
+  font-size: 12px;
+}
+
+.scan-debug-list small,
+.scan-debug-list span {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.ai-suggest-button {
+  justify-self: start;
+  border: 1px solid #cbd5e1;
+  padding: 6px 8px;
+  color: #14532d;
+  font-size: 12px;
+  background: #ecfdf5;
+}
+
+.confirm-fill-button {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.scan-recognized span {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.scan-common span {
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
+.scan-memory span {
+  color: #365314;
+  background: #ecfccb;
+}
+
+.scan-filled span {
+  color: #334155;
+  background: #e2e8f0;
+}
+
+.scan-unknown span {
+  color: #713f12;
+  background: #fef3c7;
+}
+
+.application-info-group {
+  display: grid;
+  gap: 10px;
+}
+
+.application-info-card,
+.application-info-empty {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: white;
+}
+
+.application-info-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.application-info-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.application-info-card dl div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.application-info-card dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.application-info-card dd {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.copy-item-button,
+.application-info-card button[data-action="copy-item"] {
+  border: 1px solid #cbd5e1;
+  padding: 5px 7px;
+  color: #111827;
+  font-size: 12px;
+  background: white;
+}
+
+.application-info-entry + .application-info-entry {
+  margin-top: 12px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.application-info-entry h3 {
+  margin-bottom: 8px;
+}
+
+.warning,
+.errors {
+  margin: 0 0 10px;
+  border-radius: 6px;
+  padding: 8px;
+  color: #7c2d12;
+  background: #ffedd5;
+}
+
+.message {
+  margin: 0;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #14532d;
+  background: #dcfce7;
+}

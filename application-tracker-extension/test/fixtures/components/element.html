@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>Element UI 2 组件验收</title>
+<link rel="stylesheet" href="/node_modules/element-ui/lib/theme-chalk/index.css">
+<link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+<body><main id="root">
+<h1>Element UI 2 真实组件</h1>
+<el-form label-position="top">
+  <div data-fixture-field="degree"><el-form-item label="学历"><el-select v-model="values.degree" clearable placeholder="请选择"><el-option v-for="item in degrees" :key="item" :label="item" :value="item"></el-option></el-select></el-form-item></div>
+  <div data-fixture-field="school"><el-form-item label="学校"><el-select v-model="values.school" clearable filterable placeholder="请选择"><el-option v-for="item in schools" :key="item" :label="item" :value="item"></el-option></el-select></el-form-item></div>
+  <div data-fixture-field="location"><el-form-item label="所在地"><el-cascader v-model="values.location" :options="locations" clearable></el-cascader></el-form-item></div>
+  <div data-fixture-field="date"><el-form-item label="日期"><el-date-picker v-model="values.date" type="date" value-format="yyyy-MM-dd" format="yyyy-MM-dd" placeholder="YYYY-MM-DD" clearable></el-date-picker></el-form-item></div>
+  <div data-fixture-field="month"><el-form-item label="月份"><el-date-picker v-model="values.month" type="month" value-format="yyyy-MM" format="yyyy-MM" placeholder="YYYY-MM" clearable></el-date-picker></el-form-item></div>
+  <div data-fixture-field="range"><el-form-item label="任职时间"><el-date-picker v-model="values.range" type="daterange" value-format="yyyy-MM-dd" format="yyyy-MM-dd" start-placeholder="开始日期" end-placeholder="结束日期" clearable></el-date-picker></el-form-item></div>
+  <div data-fixture-field="gender"><el-form-item label="性别"><el-radio-group v-model="values.gender"><el-radio label="男">男</el-radio><el-radio label="女">女</el-radio></el-radio-group></el-form-item></div>
+  <div data-fixture-field="languages"><el-form-item label="语言"><el-checkbox-group v-model="values.languages"><el-checkbox label="中文">中文</el-checkbox><el-checkbox label="英语">英语</el-checkbox></el-checkbox-group></el-form-item></div>
+</el-form>
+</main>
+<script src="/node_modules/vue/dist/vue.js"></script>
+<script src="/node_modules/element-ui/lib/index.js"></script>
+<script>
+window.fixtureLibrary = "element";
+window.fixtureApp = new Vue({ el: "#root", data: {
+  values: { degree: "", school: "", location: [], date: "", month: "", range: [], gender: "", languages: [] },
+  degrees: ["本科", "硕士", "博士"], schools: ["示例大学", "星海大学", "远山学院"],
+  locations: [{ value: "广东省", label: "广东省", children: [{ value: "深圳市", label: "深圳市", children: [{ value: "南山区", label: "南山区" }, { value: "福田区", label: "福田区" }] }, { value: "广州市", label: "广州市", children: [{ value: "天河区", label: "天河区" }] }] }]
+} });
+Object.defineProperty(window, "fixtureValues", { get() { return JSON.parse(JSON.stringify(window.fixtureApp.values)); } });
+window.fixtureReady = true;
+</script></body></html>

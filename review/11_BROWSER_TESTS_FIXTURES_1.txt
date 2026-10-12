@@ -1,0 +1,831 @@
+Application Tracker / BROWSER_TESTS_FIXTURES
+快照日期：2026-10-12（Asia/Shanghai）
+完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
+本附件包含：
+- application-tracker-extension/scripts/browser-tests.mjs
+- application-tracker-extension/scripts/choice-browser-tests.mjs
+- application-tracker-extension/scripts/component-browser-tests.mjs
+- application-tracker-extension/scripts/data-ui-tests.mjs
+
+========================================================================
+FILE: application-tracker-extension/scripts/browser-tests.mjs
+SHA256: ff22d6a6f34cdfb89384e24ec0d54c6b7e6e53af8685920daaff2453164d454c
+LINES: 286
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { readFile, mkdir } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0008 | const require = createRequire(import.meta.url);
+L0009 | let playwright;
+L0010 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0011 | const root = path.resolve(import.meta.dirname, "..");
+L0012 | const server = createServer(async (req, res) => {
+L0013 |   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+L0014 |   if (pathname === "/fixture") { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end('<!doctype html><html><head><title>Application fixture</title></head><body><main id="fixture"></main></body></html>'); return; }
+L0015 |   const file = path.resolve(root, "." + pathname);
+L0016 |   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+L0017 |   try { res.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript" : file.endsWith(".css") ? "text/css" : "text/html; charset=utf-8"); res.end(await readFile(file)); } catch { res.writeHead(404).end(); }
+L0018 | });
+L0019 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0020 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0021 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0022 | const page = await browser.newPage();
+L0023 | let passed = 0;
+L0024 | async function fixture(html) { await page.goto(origin + "/fixture"); await page.locator("#fixture").evaluate((el, text) => { el.innerHTML = text; }, html); return page.evaluate(pageBridge, { action: "scan" }); }
+L0025 | const action = (s, f, value, extra = {}) => page.evaluate(pageBridge, { action: "fill", token: s.token, scanId: s.scanId, url: s.url, fieldId: f.fieldId, operationId: crypto.randomUUID(), value, ...extra });
+L0026 | const inspect = (s, f, extra = {}) => page.evaluate(pageBridge, { action: "inspect-options", token: s.token, scanId: s.scanId, url: s.url, fieldId: f.fieldId, ...extra });
+L0027 | async function dropdown({ delay = 0, search = false, closeable = true } = {}) {
+L0028 |   const snapshot = await fixture(`<div class="form-item"><label>学历</label><div id="degree" role="combobox" aria-label="学历" aria-controls="degrees" aria-expanded="false" style="min-height:24px"><span class="selected-value"></span>${search ? '<input aria-autocomplete="list" aria-label="学历搜索">' : ''}</div></div><div id="degrees" role="listbox" hidden></div>`);
+L0029 |   await page.evaluate(({ delay, closeable }) => {
+L0030 |     const box = document.querySelector('[role="combobox"]');
+L0031 |     const menu = document.getElementById("degrees");
+L0032 |     let generation = 0;
+L0033 |     const close = () => { if (closeable) { generation++; menu.hidden = true; box.setAttribute("aria-expanded", "false"); } };
+L0034 |     const populate = (query = "") => {
+L0035 |       const next = ++generation;
+L0036 |       menu.setAttribute("aria-busy", "true");
+L0037 |       menu.innerHTML = "<p>Loading…</p>";
+L0038 |       setTimeout(() => {
+L0039 |         if (next !== generation) return;
+L0040 |         menu.innerHTML = query ? '<div role="option" data-value="master">Master’s degree</div>' : '<div role="option" data-value="master">Master’s degree</div><div role="option" data-value="bachelor">Bachelor’s degree</div><div role="option" aria-disabled="true">Doctorate (closed)</div>';
+L0041 |         menu.setAttribute("aria-busy", "false");
+L0042 |       }, delay);
+L0043 |     };
+L0044 |     box.onclick = (event) => {
+L0045 |       if (event.target.matches("input")) return;
+L0046 |       if (!menu.hidden && closeable) close();
+L0047 |       else { menu.hidden = false; box.setAttribute("aria-expanded", "true"); populate(); }
+L0048 |     };
+L0049 |     document.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+L0050 |     box.querySelector("input")?.addEventListener("input", (event) => populate(event.target.value));
+L0051 |     menu.onclick = (event) => {
+L0052 |       const option = event.target.closest('[role="option"]');
+L0053 |       if (!option || option.getAttribute("aria-disabled") === "true") return;
+L0054 |       box.querySelector(".selected-value").textContent = option.textContent;
+L0055 |       close();
+L0056 |     };
+L0057 |   }, { delay, closeable });
+L0058 |   return snapshot;
+L0059 | }
+L0060 | async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
+L0061 | try {
+L0062 |   await check("job context excludes application summaries and blocks containing answers", async () => {
+L0063 |     const s = await fixture('<article><h2>已填写的申请摘要</h2><p>私人回答 SAMPLE_PRIVATE_ANSWER</p></article><section class="job-description">岗位职责 SAMPLE_JOB_CONTEXT</section><section data-job-description><label>补充说明<textarea>SAMPLE_FORM_ANSWER</textarea></label></section>');
+L0064 |     assert.match(s.jobText, /SAMPLE_JOB_CONTEXT/);
+L0065 |     assert.equal(s.jobText.includes("SAMPLE_PRIVATE_ANSWER"), false);
+L0066 |     assert.equal(s.jobText.includes("SAMPLE_FORM_ANSWER"), false);
+L0067 |   });
+L0068 |   await check("stable node survives insertion before it", async () => {
+L0069 |     const s = await fixture('<form><label>姓名<input id="name"></label><label>邮箱<input id="email" type="email"></label></form>');
+L0070 |     await page.locator("form").evaluate((el) => el.insertAdjacentHTML("afterbegin", '<input id="injected">'));
+L0071 |     assert.equal((await action(s, s.fields[1], "test@example.com")).status, "verified");
+L0072 |     assert.equal(await page.locator("#email").inputValue(), "test@example.com"); assert.equal(await page.locator("#injected").inputValue(), "");
+L0073 |   });
+L0074 |   await check("unique semantic replacement is rebound and verified", async () => {
+L0075 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0076 |     await page.locator("#name").evaluate((el) => el.replaceWith(el.cloneNode()));
+L0077 |     const result = await action(s, s.fields[0], "Example");
+L0078 |     assert.equal(result.status, "verified"); assert.equal(result.rebound, true); assert.equal(await page.locator("#name").inputValue(), "Example");
+L0079 |     assert.deepEqual(await page.evaluate(pageBridge, { action: "changes", token: s.token, scanId: s.scanId, url: s.url }), { added: 0, changed: [] });
+L0080 |   });
+L0081 |   await check("user-entered values are preserved", async () => {
+L0082 |     const s = await fixture('<label>姓名<input id="name"></label>'); await page.locator("#name").fill("User value");
+L0083 |     assert.equal((await action(s, s.fields[0], "Example")).status, "skipped"); assert.equal(await page.locator("#name").inputValue(), "User value");
+L0084 |   });
+L0085 |   await check("pre-filled and newly read-only inputs stay unchanged", async () => {
+L0086 |     const s = await fixture('<label>姓名<input id="name" value="Existing"></label><label>邮箱<input id="email"></label>');
+L0087 |     assert.equal((await action(s, s.fields[0], "Example")).status, "skipped");
+L0088 |     await page.locator("#email").evaluate((el) => el.readOnly = true);
+L0089 |     assert.notEqual((await action(s, s.fields[1], "test@example.com")).status, "verified");
+L0090 |   });
+L0091 |   await check("changed label invalidates operation", async () => {
+L0092 |     const s = await fixture('<label>姓名<input id="name"></label>'); await page.locator("label").evaluate((el) => el.firstChild.textContent = "父亲姓名");
+L0093 |     assert.equal((await action(s, s.fields[0], "Example")).status, "failed");
+L0094 |   });
+L0095 |   await check("old scan and navigation cannot execute", async () => {
+L0096 |     const s = await fixture('<label>姓名<input></label>'); await page.evaluate(pageBridge, { action: "scan" });
+L0097 |     await assert.rejects(action(s, s.fields[0], "Example"));
+L0098 |     await page.reload(); await assert.rejects(action(s, s.fields[0], "Example"));
+L0099 |   });
+L0100 |   await check("negative option substrings and ambiguous duplicates rejected", async () => {
+L0101 |     const s = await fixture('<label>是否<select><option value="">请选择</option><option value="no">不是</option></select></label>');
+L0102 |     assert.equal((await action(s, s.fields[0], "是")).status, "failed");
+L0103 |     assert.equal((await action(s, s.fields[0], "不是")).status, "verified");
+L0104 |   });
+L0105 |   await check("radio group selects real No option, not unchecked Yes", async () => {
+L0106 |     const s = await fixture('<fieldset><legend>需要签证吗</legend><label><input type="radio" name="visa" value="y">是</label><label><input type="radio" name="visa" value="n">否</label></fieldset>');
+L0107 |     assert.equal(s.fields.length, 1); assert.equal(s.fields[0].label, "需要签证吗");
+L0108 |     assert.equal((await action(s, s.fields[0], "否")).status, "verified"); assert.equal(await page.locator('[value="n"]').isChecked(), true);
+L0109 |   });
+L0110 |   await check("checkbox group verifies complete selected set", async () => {
+L0111 |     const s = await fixture('<fieldset><legend>语言能力</legend><label><input type="checkbox" name="language" value="zh">中文</label><label><input type="checkbox" name="language" value="en">English</label></fieldset>');
+L0112 |     assert.equal(s.fields.length, 1); assert.equal((await action(s, s.fields[0], JSON.stringify(["中文", "English"]))).status, "verified");
+L0113 |   });
+L0114 |   await check("password file and consent are unsupported and password is not read", async () => {
+L0115 |     const s = await fixture('<label>密码<input type="password" value="secret"></label><label>简历<input type="file"></label><label><input type="checkbox">同意条款</label>');
+L0116 |     assert.ok(s.fields.every((f) => !f.supported)); assert.ok(!JSON.stringify(s).includes("secret"));
+L0117 |   });
+L0118 |   await check("controlled deferred input reset is not a success", async () => {
+L0119 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0120 |     await page.locator("#name").evaluate((el) => el.addEventListener("input", () => setTimeout(() => el.value = "", 180)));
+L0121 |     assert.equal((await action(s, s.fields[0], "Example")).status, "failed");
+L0122 |   });
+L0123 |   await check("invalid email is not a success", async () => {
+L0124 |     const s = await fixture('<label>邮箱<input type="email"></label>');
+L0125 |     assert.equal((await action(s, s.fields[0], "bad-address")).status, "failed");
+L0126 |   });
+L0127 |   await check("operation ids make retries idempotent", async () => {
+L0128 |     const s = await fixture('<label>姓名<input></label>'); const operationId = crypto.randomUUID();
+L0129 |     const first = await action(s, s.fields[0], "Example", { operationId });
+L0130 |     const second = await action(s, s.fields[0], "Other", { operationId }); assert.deepEqual(second, first);
+L0131 |   });
+L0132 |   await check("undo restores required empty baseline and preserves later user edit", async () => {
+L0133 |     const s = await fixture('<label>姓名<input id="name" required></label>');
+L0134 |     await action(s, s.fields[0], "Example");
+L0135 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "verified");
+L0136 |     await page.locator("#name").fill("User edit");
+L0137 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "skipped");
+L0138 |   });
+L0139 |   await check("open shadow root is scanned and filled", async () => {
+L0140 |     await fixture('<div id="host"></div>');
+L0141 |     await page.locator("#host").evaluate((el) => el.attachShadow({ mode: "open" }).innerHTML = '<label>邮箱<input type="email"></label>');
+L0142 |     const s = await page.evaluate(pageBridge, { action: "scan" }); assert.equal(s.fields.length, 1);
+L0143 |     assert.equal((await action(s, s.fields[0], "test@example.com")).status, "verified");
+L0144 |   });
+L0145 |   await check("custom dropdown only selects real options and verifies committed text", async () => {
+L0146 |     const s = await fixture('<label>学历</label><div class="sd-Select-container" role="combobox" aria-label="学历" aria-controls="menu"><span class="sd-Select-value"></span></div><div id="menu" role="listbox" hidden><div role="option">硕士</div><div role="option">本科</div></div>');
+L0147 |     await page.evaluate(() => { const box = document.querySelector('[role="combobox"]'); const menu = document.getElementById("menu"); box.onclick = () => menu.hidden = false; menu.onclick = (e) => { box.firstChild.textContent = e.target.textContent; menu.hidden = true; }; });
+L0148 |     assert.equal((await action(s, s.fields[0], "硕士")).status, "verified");
+L0149 |   });
+L0150 |   await check("frame targets are isolated even when local ids repeat", async () => {
+L0151 |     await fixture('<label>主页面搜索<input></label><iframe srcdoc="<label>学校<input></label>"></iframe>');
+L0152 |     const frame = page.frames()[1]; await frame.waitForSelector("input");
+L0153 |     const main = await page.evaluate(pageBridge, { action: "scan" }); const child = await frame.evaluate(pageBridge, { action: "scan" });
+L0154 |     await assert.rejects(frame.evaluate(pageBridge, { action: "fill", token: main.token, scanId: main.scanId, url: main.url, fieldId: main.fields[0].fieldId, operationId: crypto.randomUUID(), value: "wrong" }));
+L0155 |     assert.equal(await frame.locator("input").inputValue(), ""); assert.notEqual(child.token, main.token);
+L0156 |   });
+L0157 |   await check("inspection exposes stable semantic options and restores closed menu", async () => {
+L0158 |     const s = await dropdown();
+L0159 |     const observed = await inspect(s, s.fields[0]);
+L0160 |     assert.equal(observed.status, "inspected"); assert.equal(observed.restored, true);
+L0161 |     assert.equal(observed.field.options[0].text, "Master’s degree"); assert.equal(observed.options[2].disabled, true);
+L0162 |     assert.equal(await page.locator("#degrees").isVisible(), false);
+L0163 |     assert.equal(await page.locator(".selected-value").textContent(), "");
+L0164 |     const again = await inspect(s, s.fields[0]);
+L0165 |     assert.deepEqual(again.options.map((o) => o.id), observed.options.map((o) => o.id));
+L0166 |     const result = await action(s, s.fields[0], observed.options[0].text, { optionId: observed.options[0].id });
+L0167 |     assert.equal(result.status, "verified");
+L0168 |   });
+L0169 |   await check("late options wait for loading completion before selection", async () => {
+L0170 |     const s = await dropdown({ delay: 1050 });
+L0171 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
+L0172 |     assert.equal((await action(s, s.fields[0], "Master’s degree")).status, "verified");
+L0173 |   });
+L0174 |   await check("inspection preserves a menu that was already open", async () => {
+L0175 |     const s = await dropdown(); await page.locator("#degree").click();
+L0176 |     const result = await inspect(s, s.fields[0]);
+L0177 |     assert.equal(result.status, "inspected"); assert.equal(result.restored, true);
+L0178 |     assert.equal(await page.locator("#degrees").isVisible(), true);
+L0179 |   });
+L0180 |   await check("inspection never invents search text and restores an explicit query", async () => {
+L0181 |     const s = await dropdown({ delay: 550, search: true });
+L0182 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
+L0183 |     assert.equal(await page.locator("#degree input").inputValue(), "");
+L0184 |     const searched = await inspect(s, s.fields[0], { query: "Master" });
+L0185 |     assert.equal(searched.status, "inspected"); assert.equal(searched.options.length, 1);
+L0186 |     assert.equal(await page.locator("#degree input").inputValue(), "");
+L0187 |     assert.equal((await action(s, s.fields[0], "Master’s degree")).status, "verified");
+L0188 |   });
+L0189 |   await check("changed inspected candidates require another review", async () => {
+L0190 |     const s = await dropdown(); await inspect(s, s.fields[0]);
+L0191 |     await page.evaluate(() => {
+L0192 |       const box = document.getElementById("degree"); const menu = document.getElementById("degrees");
+L0193 |       box.onclick = () => { menu.hidden = false; menu.setAttribute("aria-busy", "false"); box.setAttribute("aria-expanded", "true"); menu.innerHTML = '<div role="option">Different degree</div>'; };
+L0194 |     });
+L0195 |     const result = await action(s, s.fields[0], "Master’s degree");
+L0196 |     assert.equal(result.code, "OPTIONS_CHANGED"); assert.equal(result.retryable, false);
+L0197 |     assert.equal(await page.locator(".selected-value").textContent(), "");
+L0198 |   });
+L0199 |   await check("manual typing during dropdown wait stops selection without overwriting", async () => {
+L0200 |     const s = await dropdown({ delay: 900, search: true });
+L0201 |     const pending = action(s, s.fields[0], "Master’s degree");
+L0202 |     await page.locator("#degrees").waitFor({ state: "visible" });
+L0203 |     await page.locator("#degree input").fill("My manual query");
+L0204 |     const result = await pending;
+L0205 |     assert.equal(result.code, "USER_EDITED"); assert.equal(result.status, "skipped");
+L0206 |     assert.equal(await page.locator("#degree input").inputValue(), "My manual query");
+L0207 |     assert.equal(await page.locator(".selected-value").textContent(), "");
+L0208 |   });
+L0209 |   await check("manual typing during verification remains intact", async () => {
+L0210 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0211 |     const pending = action(s, s.fields[0], "Example");
+L0212 |     await page.waitForFunction(() => document.getElementById("name").value === "Example");
+L0213 |     await page.locator("#name").fill("User correction");
+L0214 |     const result = await pending;
+L0215 |     assert.equal(result.code, "USER_EDITED"); assert.equal(await page.locator("#name").inputValue(), "User correction");
+L0216 |   });
+L0217 |   await check("equivalent replacement during verification retains operation and undo", async () => {
+L0218 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0219 |     await page.locator("#name").evaluate((el) => el.addEventListener("input", () => setTimeout(() => el.replaceWith(el.cloneNode()), 100), { once: true }));
+L0220 |     const result = await action(s, s.fields[0], "Example");
+L0221 |     assert.equal(result.status, "verified"); assert.equal(result.rebound, true);
+L0222 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "verified");
+L0223 |   });
+L0224 |   await check("ambiguous semantic replacements and edited replacements are rejected", async () => {
+L0225 |     let s = await fixture('<div><label>姓名<input></label></div><div><label>姓名<input></label></div>');
+L0226 |     await page.locator("input").first().evaluate((el) => el.replaceWith(el.cloneNode()));
+L0227 |     assert.equal((await action(s, s.fields[0], "Example")).code, "AMBIGUOUS_REPLACEMENT");
+L0228 |     assert.deepEqual(await page.locator("input").evaluateAll((nodes) => nodes.map((el) => el.value)), ["", ""]);
+L0229 |     s = await fixture('<label>姓名<input id="name"></label>');
+L0230 |     await page.locator("input").evaluate((el) => { const clone = el.cloneNode(); clone.value = "User edit"; el.replaceWith(clone); });
+L0231 |     assert.equal((await action(s, s.fields[0], "Example")).code, "USER_EDITED");
+L0232 |     assert.equal(await page.locator("input").inputValue(), "User edit");
+L0233 |   });
+L0234 |   await check("unsafe menu restoration reports an explicit reason without selecting", async () => {
+L0235 |     const s = await dropdown({ closeable: false });
+L0236 |     const result = await inspect(s, s.fields[0]);
+L0237 |     assert.equal(result.code, "MENU_RESTORE_FAILED"); assert.equal(result.restored, false);
+L0238 |     assert.equal(await page.locator(".selected-value").textContent(), "");
+L0239 |   });
+L0240 |   await check("scan records conflicting family context without reading password values", async () => {
+L0241 |     const s = await fixture('<form><h2>工作经历</h2><fieldset><legend>家庭成员</legend><label>父亲职位<input></label><label>密码<input type="password" value="hidden-secret"></label></fieldset></form>');
+L0242 |     assert.equal(s.fields[0].entityHint, "family"); assert.ok(s.fields[0].contextConflicts.length);
+L0243 |     assert.ok(s.fields[0].contextEvidence.some((item) => item.source === "group" && item.text === "家庭成员"));
+L0244 |     assert.equal(JSON.stringify(s).includes("hidden-secret"), false);
+L0245 |   });
+L0246 |   await check("autocomplete input itself exposes options and verifies its committed value", async () => {
+L0247 |     const s = await fixture('<label>学校<input id="school" role="combobox" aria-autocomplete="list" aria-controls="schools" aria-expanded="false"></label><div id="schools" role="listbox" hidden><div role="option">Example University</div></div>');
+L0248 |     await page.evaluate(() => {
+L0249 |       const input = document.getElementById("school"); const menu = document.getElementById("schools");
+L0250 |       input.onclick = () => { menu.hidden = false; input.setAttribute("aria-expanded", "true"); };
+L0251 |       input.onkeydown = (event) => { if (event.key === "Escape") { menu.hidden = true; input.setAttribute("aria-expanded", "false"); } };
+L0252 |       menu.onclick = (event) => { input.value = event.target.textContent; menu.hidden = true; input.setAttribute("aria-expanded", "false"); };
+L0253 |     });
+L0254 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
+L0255 |     assert.equal((await action(s, s.fields[0], "Example University")).status, "verified");
+L0256 |     assert.equal(await page.locator("#school").inputValue(), "Example University");
+L0257 |   });
+L0258 |   await check("search waits for changed results even without a loading marker", async () => {
+L0259 |     const s = await dropdown({ search: true });
+L0260 |     await page.evaluate(() => {
+L0261 |       const input = document.querySelector("#degree input");
+L0262 |       const clone = input.cloneNode(); input.replaceWith(clone);
+L0263 |       clone.addEventListener("input", () => {
+L0264 |         const query = clone.value;
+L0265 |         setTimeout(() => { if (query) document.getElementById("degrees").innerHTML = '<div role="option">Filtered degree</div>'; }, 700);
+L0266 |       });
+L0267 |     });
+L0268 |     await page.locator("#degree").click();
+L0269 |     await page.waitForFunction(() => document.querySelectorAll('#degrees [role="option"]').length === 3);
+L0270 |     const result = await inspect(s, s.fields[0], { query: "Filter" });
+L0271 |     assert.equal(result.status, "inspected"); assert.deepEqual(result.options.map((option) => option.text), ["Filtered degree"]);
+L0272 |     assert.equal(await page.locator("#degree input").inputValue(), "");
+L0273 |   });
+L0274 |   await check("a transient unopened menu gets only one bounded retry", async () => {
+L0275 |     const s = await dropdown();
+L0276 |     await page.evaluate(() => {
+L0277 |       const box = document.getElementById("degree"); const open = box.onclick; let attempts = 0;
+L0278 |       box.onclick = (event) => { box.dataset.attempts = String(++attempts); if (attempts > 1) open(event); };
+L0279 |     });
+L0280 |     const result = await action(s, s.fields[0], "Master’s degree");
+L0281 |     assert.equal(result.status, "verified"); assert.equal(result.retries, 1);
+L0282 |     assert.equal(await page.locator("#degree").getAttribute("data-attempts"), "2");
+L0283 |   });
+L0284 |   console.log(`Browser cases passed: ${passed}`);
+L0285 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+L0286 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/choice-browser-tests.mjs
+SHA256: f7e78c3f18ca79232e25b0da6ddb3a25779cc5c2b7c41df6a91483e307681421
+LINES: 168
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { createRequire } from "node:module";
+L0004 | import { homedir } from "node:os";
+L0005 | import path from "node:path";
+L0006 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0007 | 
+L0008 | const require = createRequire(import.meta.url);
+L0009 | let playwright;
+L0010 | try { playwright = require("playwright"); }
+L0011 | catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0012 | const server = createServer((_req, res) => {
+L0013 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0014 |   res.end('<!doctype html><html><head><title>Choice control fixture</title><style>[data-option]{display:inline-block;margin:8px;padding:12px;cursor:pointer}[aria-checked="true"],.selected{background:#aee}</style></head><body><main id="fixture"></main></body></html>');
+L0015 | });
+L0016 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0017 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0018 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0019 | const page = await browser.newPage();
+L0020 | let passed = 0;
+L0021 | const errors = [];
+L0022 | page.on("pageerror", (error) => errors.push(error.message));
+L0023 | 
+L0024 | async function fixture(html) {
+L0025 |   await page.goto(origin);
+L0026 |   await page.locator("#fixture").evaluate((node, source) => { node.innerHTML = source; }, html);
+L0027 |   await page.evaluate(() => {
+L0028 |     window.programClicks = 0;
+L0029 |     window.trustedClicks = 0;
+L0030 |     for (const member of document.querySelectorAll("[data-option]")) member.addEventListener("click", (event) => {
+L0031 |       if (event.isTrusted) window.trustedClicks++; else window.programClicks++;
+L0032 |       if (member.getAttribute("aria-disabled") === "true") return;
+L0033 |       const group = member.closest("[data-choice-group]");
+L0034 |       if (!group) return;
+L0035 |       const wasSelected = member.getAttribute("aria-checked") === "true" || member.classList.contains("selected");
+L0036 |       if (group.dataset.multiple !== "true") for (const peer of group.querySelectorAll("[data-option]")) {
+L0037 |         peer.setAttribute("aria-checked", "false"); peer.classList.remove("selected");
+L0038 |       }
+L0039 |       if (group.dataset.classState === "true") member.classList.toggle("selected", !wasSelected);
+L0040 |       else member.setAttribute("aria-checked", String(!wasSelected));
+L0041 |     });
+L0042 |   });
+L0043 |   return page.evaluate(pageBridge, { action: "scan" });
+L0044 | }
+L0045 | const action = (snapshot, field, value, extra = {}) => page.evaluate(pageBridge, { action: "fill", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, operationId: crypto.randomUUID(), value, ...extra });
+L0046 | const undo = (snapshot, field, result) => action(snapshot, field, "", { action: "undo", expected: result.after });
+L0047 | const selected = () => page.locator('[data-option][aria-checked="true"], [data-option].selected').allTextContents();
+L0048 | const group = (kind, title = "性别", values = ["男", "女"]) => `<fieldset><legend>${title}</legend><div data-choice-group ${kind === "radio" ? 'role="radiogroup"' : kind === "checkbox" ? 'role="group" data-multiple="true"' : 'data-class-state="true"'}>${values.map((text, index) => `<div id="option-${index}" data-option ${kind === "div" ? 'class="custom-choice" tabindex="0"' : `role="${kind}" aria-checked="false"`}><span>${text}</span></div>`).join("")}</div></fieldset>`;
+L0049 | async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
+L0050 | 
+L0051 | try {
+L0052 |   await check("role radio uses the group question and synonym matching, verifies and undoes a toggleable fixture", async () => {
+L0053 |     const snapshot = await fixture(group("radio"));
+L0054 |     assert.equal(snapshot.fields.length, 1);
+L0055 |     const field = snapshot.fields[0];
+L0056 |     assert.equal(field.kind, "choice"); assert.equal(field.label, "性别");
+L0057 |     assert.equal(field.value, ""); assert.equal(field.supported, true);
+L0058 |     assert.deepEqual(field.options.map((option) => option.text), ["男", "女"]);
+L0059 |     const result = await action(snapshot, field, "Male");
+L0060 |     assert.equal(result.status, "verified"); assert.equal(result.after, "男");
+L0061 |     assert.deepEqual(await selected(), ["男"]);
+L0062 |     assert.equal((await undo(snapshot, field, result)).status, "verified");
+L0063 |     assert.deepEqual(await selected(), []);
+L0064 |     assert.equal((await page.evaluate(pageBridge, { action: "scan" })).fields[0].value, "");
+L0065 |   });
+L0066 | 
+L0067 |   await check("role checkboxes verify the complete selected set and undo every selected member", async () => {
+L0068 |     const snapshot = await fixture(group("checkbox", "语言能力", ["中文", "English", "法语"]));
+L0069 |     const field = snapshot.fields[0];
+L0070 |     assert.equal(snapshot.fields.length, 1); assert.equal(field.label, "语言能力");
+L0071 |     assert.equal(field.kind, "choice"); assert.equal(field.constraints.multiple, true);
+L0072 |     const result = await action(snapshot, field, JSON.stringify(["中文", "English"]));
+L0073 |     assert.equal(result.status, "verified"); assert.deepEqual(JSON.parse(result.after), ["中文", "English"]);
+L0074 |     assert.deepEqual(await selected(), ["中文", "English"]);
+L0075 |     assert.equal((await undo(snapshot, field, result)).status, "verified");
+L0076 |     assert.deepEqual(await selected(), []);
+L0077 |   });
+L0078 | 
+L0079 |   await check("same-class clickable div options group without native inputs or ARIA roles", async () => {
+L0080 |     const snapshot = await fixture(group("div", "工作城市", ["深圳", "广州"]));
+L0081 |     const field = snapshot.fields[0];
+L0082 |     assert.equal(snapshot.fields.length, 1); assert.equal(field.kind, "choice");
+L0083 |     assert.equal(field.label, "工作城市"); assert.equal(field.constraints.multiple, false);
+L0084 |     const result = await action(snapshot, field, "深圳");
+L0085 |     assert.equal(result.status, "verified"); assert.deepEqual(await selected(), ["深圳"]);
+L0086 |     assert.equal((await undo(snapshot, field, result)).status, "verified");
+L0087 |     assert.deepEqual(await selected(), []);
+L0088 |   });
+L0089 | 
+L0090 |   await check("choice groups remain separate and read checked classes without replacing existing answers", async () => {
+L0091 |     const first = group("div", "工作城市", ["深圳", "广州"]).replace('class="custom-choice"', 'class="custom-choice active"');
+L0092 |     const snapshot = await fixture(first + group("radio", "性别", ["男", "女"]).replaceAll('id="option-', 'id="gender-'));
+L0093 |     assert.deepEqual(snapshot.fields.map((field) => field.label), ["工作城市", "性别"]);
+L0094 |     assert.equal(snapshot.fields[0].value, "深圳");
+L0095 |     assert.equal((await action(snapshot, snapshot.fields[0], "广州")).status, "skipped");
+L0096 |     assert.equal(await page.evaluate(() => window.programClicks), 0);
+L0097 |     for (const state of ["is-checked", "selected", "checked", "on"]) {
+L0098 |       await page.locator("#option-0").evaluate((node, state) => { node.className = `custom-choice ${state}`; }, state);
+L0099 |       assert.equal((await page.evaluate(pageBridge, { action: "scan" })).fields[0].value, "深圳");
+L0100 |     }
+L0101 |   });
+L0102 | 
+L0103 |   await check("a trusted click on another radio option's child stops verification and preserves the user's selection", async () => {
+L0104 |     const snapshot = await fixture(group("radio"));
+L0105 |     const pending = action(snapshot, snapshot.fields[0], "男");
+L0106 |     await page.waitForFunction(() => window.programClicks === 1);
+L0107 |     await page.locator("#option-1 span").click();
+L0108 |     const result = await pending;
+L0109 |     assert.equal(result.status, "skipped", JSON.stringify(result));
+L0110 |     assert.equal(result.code, "USER_EDITED");
+L0111 |     assert.deepEqual(await selected(), ["女"]);
+L0112 |     assert.equal(await page.evaluate(() => window.trustedClicks), 1);
+L0113 |     assert.equal(await page.evaluate(() => window.programClicks), 1);
+L0114 |   });
+L0115 | 
+L0116 |   await check("a trusted checkbox edit stops the pending operation and retains the manual choice", async () => {
+L0117 |     const snapshot = await fixture(group("checkbox", "语言能力", ["中文", "English", "法语"]));
+L0118 |     const pending = action(snapshot, snapshot.fields[0], JSON.stringify(["中文", "English"]));
+L0119 |     await page.waitForFunction(() => window.programClicks >= 1);
+L0120 |     await page.locator("#option-2 span").click();
+L0121 |     const result = await pending;
+L0122 |     assert.equal(result.status, "skipped", JSON.stringify(result));
+L0123 |     assert.equal(result.code, "USER_EDITED");
+L0124 |     assert.ok((await selected()).includes("法语"));
+L0125 |     assert.equal(await page.evaluate(() => window.trustedClicks), 1);
+L0126 |   });
+L0127 | 
+L0128 |   await check("default submit buttons, their child spans and consent choices are never clicked", async () => {
+L0129 |     const snapshot = await fixture('<form id="unsafe-form"><div><button class="custom-choice"><span class="option">提交</span></button><button class="custom-choice"><span class="option">继续</span></button></div>' + group("checkbox", "同意隐私条款", ["同意", "不同意"]) + '</form>');
+L0130 |     await page.evaluate(() => { window.submissions = 0; document.getElementById("unsafe-form").onsubmit = (event) => { event.preventDefault(); window.submissions++; }; });
+L0131 |     assert.equal(snapshot.fields.length, 1);
+L0132 |     assert.equal(snapshot.fields[0].label, "同意隐私条款");
+L0133 |     assert.equal(snapshot.fields[0].supported, false);
+L0134 |     const result = await action(snapshot, snapshot.fields[0], '["同意"]');
+L0135 |     assert.notEqual(result.status, "verified");
+L0136 |     assert.equal(await page.evaluate(() => window.submissions), 0);
+L0137 |     assert.equal(await page.evaluate(() => window.programClicks), 0);
+L0138 |     assert.deepEqual(await selected(), []);
+L0139 |   });
+L0140 | 
+L0141 |   await check("disabled custom choices cannot be selected", async () => {
+L0142 |     const snapshot = await fixture(group("radio").replace('id="option-1"', 'id="option-1" aria-disabled="true"'));
+L0143 |     assert.equal(snapshot.fields[0].options[1].disabled, true);
+L0144 |     const result = await action(snapshot, snapshot.fields[0], "女");
+L0145 |     assert.notEqual(result.status, "verified");
+L0146 |     assert.equal(await page.evaluate(() => window.programClicks), 0);
+L0147 |   });
+L0148 | 
+L0149 |   await check("nearby text excludes input values, textarea, contenteditable and private content", async () => {
+L0150 |     const snapshot = await fixture('<div class="form-group"><input id="unknown" placeholder="补充说明"><span>公开的题目提示 PUBLIC_HELP</span><input value="PRIVATE_INPUT"><textarea>PRIVATE_TEXTAREA</textarea><div contenteditable="true">PRIVATE_EDITABLE</div><div role="textbox">PRIVATE_TEXTBOX</div><span data-private>PRIVATE_MARKED</span><span hidden>PRIVATE_HIDDEN</span></div>');
+L0151 |     const field = snapshot.fields.find((candidate) => candidate.identity.id === "unknown");
+L0152 |     assert.equal(field.labelSource, "placeholder");
+L0153 |     assert.match(field.nearbyText, /PUBLIC_HELP/);
+L0154 |     assert.ok(!field.nearbyText.includes("PRIVATE"), field.nearbyText);
+L0155 |     assert.ok(field.nearbyText.length <= 160);
+L0156 |     const none = await fixture('<div class="form-group"><input id="unknown"><span>公开说明 PUBLIC_NONE</span><textarea>PRIVATE_TEXTAREA</textarea></div>');
+L0157 |     const unnamed = none.fields.find((candidate) => candidate.identity.id === "unknown");
+L0158 |     assert.equal(unnamed.labelSource, "none");
+L0159 |     assert.match(unnamed.nearbyText, /PUBLIC_NONE/);
+L0160 |     assert.ok(!unnamed.nearbyText.includes("PRIVATE"));
+L0161 |   });
+L0162 |   assert.deepEqual(errors, []);
+L0163 |   console.log(`Choice and privacy browser cases passed: ${passed}`);
+L0164 | } finally {
+L0165 |   await browser.close();
+L0166 |   await new Promise((resolve) => server.close(resolve));
+L0167 | }
+L0168 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/component-browser-tests.mjs
+SHA256: d35097d89e5c7d3731b771ab014bb9132f39f56b46497b941ab98adc7d8f470f
+LINES: 218
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { readFile } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0008 | 
+L0009 | const require = createRequire(import.meta.url);
+L0010 | let playwright;
+L0011 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0012 | const root = path.resolve(import.meta.dirname, "..");
+L0013 | const selectedLibrary = process.argv.find((arg) => arg.startsWith("--library="))?.split("=")[1];
+L0014 | const selectedCase = process.argv.find((arg) => arg.startsWith("--case="))?.split("=")[1];
+L0015 | const scanOnly = process.argv.includes("--scan");
+L0016 | const debug = process.argv.includes("--debug");
+L0017 | const server = createServer(async (req, res) => {
+L0018 |   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+L0019 |   const file = path.resolve(root, "." + pathname);
+L0020 |   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+L0021 |   try {
+L0022 |     const types = { ".js": "text/javascript", ".css": "text/css", ".woff": "font/woff", ".ttf": "font/ttf" };
+L0023 |     res.setHeader("Content-Type", types[path.extname(file)] || "text/html; charset=utf-8");
+L0024 |     res.end(await readFile(file));
+L0025 |   } catch { res.writeHead(404).end(); }
+L0026 | });
+L0027 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0028 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0029 | let browser;
+L0030 | let passed = 0;
+L0031 | const failures = [];
+L0032 | try {
+L0033 |   browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0034 |   const context = await browser.newContext({ viewport: { width: 1366, height: 1200 } });
+L0035 |   await context.route("**/*", (route) => route.request().url().startsWith(origin + "/") ? route.continue() : route.abort());
+L0036 |   const page = await context.newPage();
+L0037 |   page.setDefaultTimeout(5000);
+L0038 |   let pageErrors = [];
+L0039 |   page.on("pageerror", (error) => pageErrors.push(error.message));
+L0040 |   async function fixture(library) {
+L0041 |     pageErrors = [];
+L0042 |     await page.goto(`${origin}/test/fixtures/components/${library}.html`);
+L0043 |     await page.waitForFunction(() => window.fixtureReady === true);
+L0044 |     assert.deepEqual(pageErrors, [], "The actual component library must initialize without errors");
+L0045 |     return page.evaluate(pageBridge, { action: "scan" });
+L0046 |   }
+L0047 |   const fieldFor = (snapshot, label) => {
+L0048 |     const matches = snapshot.fields.filter((field) => field.label === label);
+L0049 |     assert.equal(matches.length, 1, `Expected one ${label} control, got ${JSON.stringify(snapshot.fields.map(({ label, kind, supported }) => ({ label, kind, supported })))}`);
+L0050 |     assert.equal(matches[0].supported, true, `${label}: ${matches[0].reason}`);
+L0051 |     return matches[0];
+L0052 |   };
+L0053 |   const outstanding = new Set();
+L0054 |   function tracked(pending) {
+L0055 |     outstanding.add(pending);
+L0056 |     pending.finally(() => outstanding.delete(pending)).catch(() => {});
+L0057 |     return pending;
+L0058 |   }
+L0059 |   const action = (snapshot, field, value, extra = {}) => tracked(page.evaluate(pageBridge, { action: "fill", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, operationId: crypto.randomUUID(), value, ...extra }));
+L0060 |   const inspect = (snapshot, field, extra = {}) => tracked(page.evaluate(pageBridge, { action: "inspect-options", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, ...extra }));
+L0061 |   const stateValue = (id) => page.evaluate((key) => window.fixtureValues[key], id);
+L0062 |   const menus = '.ant-select-dropdown:visible, .ant-cascader-menus:visible, .ant-picker-dropdown:visible, .ant-calendar-picker-container:visible, .el-select-dropdown:visible, .el-cascader__dropdown:visible, .el-picker-panel:visible';
+L0063 |   const menusClosed = async () => assert.equal(await page.locator(menus).count(), 0, "Opened component menus must close again");
+L0064 |   const encoded = (value) => Array.isArray(value) ? JSON.stringify(value) : value;
+L0065 |   const normalizedEmpty = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0);
+L0066 |   async function check(library, name, fn) {
+L0067 |     if (selectedCase && !name.includes(selectedCase)) return;
+L0068 |     try { await fn(); passed++; console.log(`PASS ${library}: ${name}`); }
+L0069 |     catch (error) {
+L0070 |       const message = `${library}: ${name}: ${error.message}`;
+L0071 |       failures.push(message); console.error(`FAIL ${message}`);
+L0072 |       if (debug) console.log(JSON.stringify(await page.evaluate(() => ({
+L0073 |         values: window.fixtureValues,
+L0074 |         inputs: [...document.querySelectorAll("input")].map((input) => ({ value: input.value, placeholder: input.placeholder, className: input.className })),
+L0075 |         menus: [...document.querySelectorAll(".ant-select-dropdown,.ant-cascader-menus,.ant-picker-dropdown,.ant-calendar-picker-container,.el-select-dropdown,.el-cascader__dropdown,.el-picker-panel")].filter((element) => element.getClientRects().length).map((element) => element.outerHTML.slice(0, 18000))
+L0076 |       })), null, 2));
+L0077 |     }
+L0078 |     finally { await Promise.allSettled([...outstanding]); }
+L0079 |   }
+L0080 | 
+L0081 |   const controls = [
+L0082 |     { id: "degree", label: "学历", kind: "custom-select", value: "硕士" },
+L0083 |     { id: "school", label: "学校", kind: "custom-select", value: "星海大学" },
+L0084 |     { id: "location", label: "所在地", kind: "cascader", value: ["广东省", "深圳市", "南山区"] },
+L0085 |     { id: "date", label: "日期", kind: "date", value: "2027-06-15" },
+L0086 |     { id: "month", label: "月份", kind: "date", value: "2027-08" },
+L0087 |     { id: "range", label: "任职时间", kind: "date", value: ["2027-06-01", "2027-08-31"] },
+L0088 |     { id: "gender", label: "性别", kind: "radio", value: "女" },
+L0089 |     { id: "languages", label: "语言", kind: "checkboxes", value: ["中文", "英语"] }
+L0090 |   ];
+L0091 |   for (const library of ["antd3", "antd5", "element"].filter((value) => !selectedLibrary || selectedLibrary === value)) {
+L0092 |     if (scanOnly) {
+L0093 |       const snapshot = await fixture(library);
+L0094 |       console.log(JSON.stringify({ library, fields: snapshot.fields }, null, 2));
+L0095 |       continue;
+L0096 |     }
+L0097 |     for (const control of controls) {
+L0098 |       await check(library, `${control.id} opens, selects, retains and ${control.kind === "radio" ? "reports unavailable empty undo" : "undoes"}`, async () => {
+L0099 |         const snapshot = await fixture(library);
+L0100 |         const field = fieldFor(snapshot, control.label);
+L0101 |         assert.equal(field.kind, control.kind);
+L0102 |         const result = await action(snapshot, field, encoded(control.value));
+L0103 |         assert.equal(result.status, "verified", JSON.stringify(result));
+L0104 |         assert.deepEqual(await stateValue(control.id), control.value, "Framework state must retain the chosen value");
+L0105 |         await menusClosed();
+L0106 |         const undo = await action(snapshot, field, result.before, { action: "undo", expected: result.after });
+L0107 |         if (control.kind === "radio") {
+L0108 |           // These real controlled groups expose no public clear action. A DOM
+L0109 |           // checked mutation alone would falsely claim success over React/Vue.
+L0110 |           assert.equal(undo.code, "UNDO_UNSUPPORTED", JSON.stringify(undo));
+L0111 |           assert.ok(undo.reason);
+L0112 |           assert.deepEqual(await stateValue(control.id), control.value, "An unavailable undo must preserve framework state");
+L0113 |           const selectedLabels = await page.locator(`[data-fixture-field="${control.id}"] input:checked`).evaluateAll((nodes) => nodes.map((node) => node.closest("label").innerText.trim()));
+L0114 |           assert.deepEqual(selectedLabels, [control.value], "An unavailable undo must also preserve the selected DOM control");
+L0115 |         } else {
+L0116 |           assert.equal(undo.status, "verified", JSON.stringify(undo));
+L0117 |           assert.ok(normalizedEmpty(await stateValue(control.id)), "Undo must clear both framework state and displayed value");
+L0118 |         }
+L0119 |         await menusClosed();
+L0120 |       });
+L0121 |     }
+L0122 |     for (const control of controls.filter((control) => ["degree", "school"].includes(control.id))) {
+L0123 |       await check(library, `${control.id} inspection restores closed menu and search text`, async () => {
+L0124 |         const snapshot = await fixture(library);
+L0125 |         const field = fieldFor(snapshot, control.label);
+L0126 |         const result = await inspect(snapshot, field, control.id === "school" ? { query: "星海" } : {});
+L0127 |         assert.equal(result.status, "inspected", JSON.stringify(result));
+L0128 |         assert.equal(result.restored, true, JSON.stringify(result));
+L0129 |         assert.ok(result.options.some((option) => option.text === control.value));
+L0130 |         assert.ok(normalizedEmpty(await stateValue(control.id)));
+L0131 |         await menusClosed();
+L0132 |         const searchValues = await page.locator(`[data-fixture-field="${control.id}"] input:not([readonly])`).evaluateAll((nodes) => nodes.map((node) => node.value));
+L0133 |         assert.ok(searchValues.every((value) => value === ""), "Inspection must restore the original empty search query");
+L0134 |       });
+L0135 |     }
+L0136 |     await check(library, "degree manual choice during option loading stops automation", async () => {
+L0137 |       const snapshot = await fixture(library);
+L0138 |       const pending = action(snapshot, fieldFor(snapshot, "学历"), "硕士");
+L0139 |       const option = page.locator(".ant-select-dropdown-menu-item:visible, .ant-select-item-option:visible, .el-select-dropdown__item:visible").filter({ hasText: /^本科$/ }).first();
+L0140 |       await option.click({ force: true });
+L0141 |       const result = await pending;
+L0142 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0143 |       assert.equal(await stateValue("degree"), "本科");
+L0144 |     });
+L0145 |     await check(library, "location manual path choice stops automation", async () => {
+L0146 |       const snapshot = await fixture(library);
+L0147 |       const pending = action(snapshot, fieldFor(snapshot, "所在地"), JSON.stringify(["广东省", "深圳市", "南山区"]));
+L0148 |       const options = () => page.locator(".ant-cascader-menu-item:visible, .el-cascader-node:visible");
+L0149 |       await options().filter({ hasText: /^广东省$/ }).first().click();
+L0150 |       const result = await pending;
+L0151 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0152 |       await options().filter({ hasText: /^广州市$/ }).first().click();
+L0153 |       await options().filter({ hasText: /^天河区$/ }).first().click();
+L0154 |       assert.deepEqual(await stateValue("location"), ["广东省", "广州市", "天河区"]);
+L0155 |     });
+L0156 |     await check(library, "date manual clear during verification is preserved", async () => {
+L0157 |       const snapshot = await fixture(library);
+L0158 |       const pending = action(snapshot, fieldFor(snapshot, "日期"), "2027-06-15");
+L0159 |       await page.waitForFunction(() => window.fixtureValues.date === "2027-06-15");
+L0160 |       const block = page.locator('[data-fixture-field="date"]');
+L0161 |       await block.locator(".ant-calendar-picker, .ant-picker, .el-date-editor").first().hover();
+L0162 |       await block.locator(".ant-calendar-picker-clear, .ant-picker-clear, .el-icon-circle-close").first().click();
+L0163 |       const result = await pending;
+L0164 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0165 |       assert.ok(normalizedEmpty(await stateValue("date")), "The user's manual clear must remain intact");
+L0166 |     });
+L0167 |     await check(library, "school manual search during inspection is preserved", async () => {
+L0168 |       const snapshot = await fixture(library);
+L0169 |       const pending = inspect(snapshot, fieldFor(snapshot, "学校"), { query: "星海" });
+L0170 |       const search = page.locator('[data-fixture-field="school"] input:not([readonly])').first();
+L0171 |       await page.waitForFunction(() => [...document.querySelectorAll('[data-fixture-field="school"] input')].some((input) => input.value === "星海"));
+L0172 |       await search.fill("用户自己搜索");
+L0173 |       const result = await pending;
+L0174 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0175 |       assert.equal(await search.inputValue(), "用户自己搜索");
+L0176 |       assert.ok(normalizedEmpty(await stateValue("school")));
+L0177 |     });
+L0178 |   }
+L0179 | 
+L0180 |   if (!selectedLibrary || selectedLibrary === "my97") {
+L0181 |     if (scanOnly) console.log(JSON.stringify({ library: "my97", fields: (await fixture("my97")).fields }, null, 2));
+L0182 |     else {
+L0183 |       for (const control of [
+L0184 |         { id: "date", label: "日期", value: "2027-06-15", expected: "2027-06-15" },
+L0185 |         { id: "month", label: "月份", value: "2027-08", expected: "2027-08" },
+L0186 |         { id: "chineseMonth", label: "中文月份", value: "2027-08", expected: "2027年08月" }
+L0187 |       ]) {
+L0188 |         await check("my97", `${control.id} formats, retains and undoes`, async () => {
+L0189 |           const snapshot = await fixture("my97");
+L0190 |           const field = fieldFor(snapshot, control.label);
+L0191 |           assert.equal(field.adapter, "my97-date");
+L0192 |           const result = await action(snapshot, field, control.value);
+L0193 |           assert.equal(result.status, "verified", JSON.stringify(result));
+L0194 |           assert.equal(await stateValue(control.id), control.expected);
+L0195 |           const undo = await action(snapshot, field, "", { action: "undo", expected: result.after });
+L0196 |           assert.equal(undo.status, "verified", JSON.stringify(undo));
+L0197 |           assert.equal(await stateValue(control.id), "");
+L0198 |         });
+L0199 |       }
+L0200 |       await check("my97", "manual change during verification is preserved", async () => {
+L0201 |         const snapshot = await fixture("my97");
+L0202 |         const field = fieldFor(snapshot, "月份");
+L0203 |         const pending = action(snapshot, field, "2027-08");
+L0204 |         await page.waitForFunction(() => document.getElementById("month").value === "2027-08");
+L0205 |         await page.locator("#month").fill("2028-02");
+L0206 |         const result = await pending;
+L0207 |         assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0208 |         assert.equal(await stateValue("month"), "2028-02");
+L0209 |       });
+L0210 |     }
+L0211 |   }
+L0212 |   if (!scanOnly) console.log(`Component browser cases passed: ${passed}; failed: ${failures.length}`);
+L0213 | } finally {
+L0214 |   if (browser) await browser.close();
+L0215 |   await new Promise((resolve) => server.close(resolve));
+L0216 | }
+L0217 | if (failures.length) process.exitCode = 1;
+L0218 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/data-ui-tests.mjs
+SHA256: d9445b01563b8d55e645647993416a7a548098847a5d4512503b87465c4a3cf4
+LINES: 123
+说明：L 后面的数字是原始文件行号；行号前缀不是源码。
+------------------------------------------------------------------------
+L0001 | // Synthetic data only, in fresh headless pages. The Chrome API adapter exercises
+L0002 | // the same mutation queue as the extension worker; it is not a user profile.
+L0003 | import assert from "node:assert/strict";
+L0004 | import { createServer } from "node:http";
+L0005 | import { readFile, mkdir } from "node:fs/promises";
+L0006 | import { createRequire } from "node:module";
+L0007 | import { homedir } from "node:os";
+L0008 | import path from "node:path";
+L0009 | import { createMutationQueue, MUTATION_MESSAGE } from "../src/storageMutations.js";
+L0010 | import { createBackup } from "../src/backup.js";
+L0011 | import { createRecord } from "../src/model.js";
+L0012 | import { STORAGE_KEY, PROFILE_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY } from "../src/constants.js";
+L0013 | import { MEMORY_KEY } from "../src/storageKeys.js";
+L0014 | 
+L0015 | const require = createRequire(import.meta.url);
+L0016 | let playwright;
+L0017 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0018 | const root = path.resolve(import.meta.dirname, "..");
+L0019 | const server = createServer(async (request, response) => {
+L0020 |   const file = path.resolve(root, "." + new URL(request.url, "http://localhost").pathname);
+L0021 |   if (!file.startsWith(root + path.sep)) return response.writeHead(403).end();
+L0022 |   response.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript; charset=utf-8" : file.endsWith(".css") ? "text/css; charset=utf-8" : "text/html; charset=utf-8");
+L0023 |   try { response.end(await readFile(file)); } catch { response.writeHead(404).end(); }
+L0024 | });
+L0025 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0026 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0027 | const browser = await playwright.chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+L0028 | const errors = [];
+L0029 | try {
+L0030 |   const record = { ...createRecord({ company: "示例公司", role: "分析师", portalLink: "https://example.com/apply?id=1", source: "company_portal", appliedDate: "2026-09-20", status: "applied", notes: "原备注" }), id: "original-record" };
+L0031 |   const memory = { id: "original-memory", question: "其他技能", answer: "SQL", language: "zh", entityId: "self", scope: "https://example.com/apply?jobId=1", scopeVersion: 2, confirmed: true, updatedAt: "2026-09-20T12:00:00Z", history: [] };
+L0032 |   let data = { [STORAGE_KEY]: [record], [PROFILE_STORAGE_KEY]: { fullNameZh: "示例用户" }, [MEMORY_KEY]: [memory], [AI_SETTINGS_STORAGE_KEY]: { enabled: true, apiKey: "TEST_CREDENTIAL_DO_NOT_EXPORT" } };
+L0033 |   const pages = [];
+L0034 |   const get = async (keys) => structuredClone(Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((key) => key in data).map((key) => [key, data[key]])));
+L0035 |   const set = async (values) => {
+L0036 |     const changes = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, { oldValue: data[key], newValue: value }]));
+L0037 |     data = { ...data, ...structuredClone(values) };
+L0038 |     await Promise.all(pages.map((page) => page.evaluate((changes) => window.__storageEvent?.emit(changes, "local"), changes)));
+L0039 |   };
+L0040 |   const mutate = createMutationQueue({ get, set });
+L0041 |   async function pageFor(route) {
+L0042 |     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); pages.push(page);
+L0043 |     page.on("pageerror", (error) => errors.push(error.message));
+L0044 |     await page.exposeBinding("dataApi", async (_, method, args) => {
+L0045 |       if (method === "get") return get(args);
+L0046 |       if (method === "message" && args.type === MUTATION_MESSAGE) {
+L0047 |         try { return { ok: true, value: await mutate(args.mutation) }; } catch (error) { return { ok: false, error: error.message }; }
+L0048 |       }
+L0049 |       throw new Error(`Unexpected API ${method}`);
+L0050 |     });
+L0051 |     await page.addInitScript(() => {
+L0052 |       const listeners = new Set();
+L0053 |       window.__storageEvent = { addListener: (listener) => listeners.add(listener), emit: (...args) => listeners.forEach((listener) => listener(...args)) };
+L0054 |       window.chrome = { storage: { local: { get: (keys) => dataApi("get", keys) }, onChanged: window.__storageEvent }, runtime: { sendMessage: (message) => dataApi("message", message) } };
+L0055 |     });
+L0056 |     await page.goto(origin + route);
+L0057 |     return page;
+L0058 |   }
+L0059 |   const table = await pageFor("/src/records/records.html");
+L0060 |   const board = await pageFor("/src/board/board.html");
+L0061 |   await table.locator("button[data-action='edit']").click();
+L0062 |   await table.locator("textarea[name='notes']").fill("在表格里修改的新备注");
+L0063 |   await table.locator("#saveEditButton").click();
+L0064 |   await table.waitForFunction(() => !document.getElementById("recordDialog").open);
+L0065 |   await board.locator("select[data-action='status']").selectOption("oa");
+L0066 |   await table.waitForFunction(() => document.querySelector("select[data-action='status']")?.value === "oa");
+L0067 |   assert.equal(data[STORAGE_KEY][0].notes, "在表格里修改的新备注");
+L0068 |   console.log("PASS data UI synchronizes board and table while status updates preserve new notes");
+L0069 |   await table.locator("button[data-action='edit']").click();
+L0070 |   await table.locator("textarea[name='notes']").fill("旧窗口的编辑");
+L0071 |   await mutate({ operation: "record.patch", id: record.id, changes: { notes: "另一页面的最新备注" } });
+L0072 |   await table.locator("#saveEditButton").click();
+L0073 |   await table.locator("#editErrors").waitFor({ state: "visible" });
+L0074 |   assert.match(await table.locator("#editErrors").textContent(), /另一页面/);
+L0075 |   assert.equal(data[STORAGE_KEY][0].notes, "另一页面的最新备注");
+L0076 |   console.log("PASS data UI preserves edit drafts and reports conflicting concurrent edits");
+L0077 | 
+L0078 |   const memoryPage = await pageFor("/src/memory/memory.html");
+L0079 |   await memoryPage.locator(".memory-card").waitFor();
+L0080 |   await memoryPage.locator(".memory-card summary").click();
+L0081 |   assert.equal(await memoryPage.locator("[data-entity] option:checked").textContent(), "本人");
+L0082 |   await memoryPage.locator("[data-scope]").fill("https://example.com/apply?jobId=2&token=secret");
+L0083 |   await memoryPage.locator("[data-save]").click();
+L0084 |   await memoryPage.waitForFunction(() => document.getElementById("message").textContent.includes("已确认保存"));
+L0085 |   assert.equal(data[MEMORY_KEY][0].scope, "https://example.com/apply?jobId=2");
+L0086 |   console.log("PASS memory UI edits readable scopes and retains job identity without credentials");
+L0087 |   const downloadPromise = memoryPage.waitForEvent("download");
+L0088 |   await memoryPage.locator("#exportBackup").click();
+L0089 |   const exported = JSON.parse(await readFile(await (await downloadPromise).path(), "utf8"));
+L0090 |   assert.equal(exported.data.records.length, 1);
+L0091 |   assert.equal(JSON.stringify(exported).includes("TEST_CREDENTIAL_DO_NOT_EXPORT"), false);
+L0092 |   console.log("PASS backup UI exports complete data without API credentials");
+L0093 |   const incoming = createBackup({ records: [{ ...record, id: "imported-record", company: "备份公司" }], profile: { fullNameZh: "备份用户" }, memories: [{ ...memory, id: "imported-memory", answer: "Python" }], legacyMemories: [], legacyMemoryBackup: [] });
+L0094 |   await memoryPage.locator("#importBackup").setInputFiles({ name: "backup.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(incoming)) });
+L0095 |   await memoryPage.locator("#backupPreview").waitFor({ state: "visible" });
+L0096 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /恢复后共 2 条投递/);
+L0097 |   await memoryPage.locator("#confirmRestore").click();
+L0098 |   await memoryPage.waitForFunction(() => document.getElementById("message").textContent.startsWith("恢复完成"));
+L0099 |   assert.equal(data[STORAGE_KEY].length, 2);
+L0100 |   assert.equal(data[PROFILE_STORAGE_KEY].fullNameZh, "示例用户");
+L0101 |   assert.equal(data[MEMORY_KEY].find((entry) => entry.id === "imported-memory").confirmed, false);
+L0102 |   await table.waitForFunction(() => document.querySelectorAll("#recordsBody tr").length === 2);
+L0103 |   console.log("PASS backup UI previews and merges records while retaining current profile");
+L0104 |   await memoryPage.locator("#restoreRecovery").click();
+L0105 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled);
+L0106 |   await memoryPage.locator("#confirmRestore").click();
+L0107 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden);
+L0108 |   assert.equal(data[STORAGE_KEY].length, 1);
+L0109 |   assert.equal(data[MEMORY_KEY].length, 1);
+L0110 |   console.log("PASS backup UI recovers the data present before import");
+L0111 |   await memoryPage.locator("#importBackup").setInputFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from('{"schemaVersion":999}') });
+L0112 |   await memoryPage.waitForFunction(() => document.getElementById("message").textContent.includes("校验失败"));
+L0113 |   assert.equal(await memoryPage.locator("#backupPreview").isVisible(), false);
+L0114 |   assert.equal(data[STORAGE_KEY].length, 1);
+L0115 |   console.log("PASS backup UI rejects invalid files without changing data");
+L0116 |   await memoryPage.setViewportSize({ width: 420, height: 1000 });
+L0117 |   assert.equal(await memoryPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0118 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0119 |   await memoryPage.screenshot({ path: path.join(artifacts, "memory-backup-preview.png"), fullPage: true });
+L0120 |   assert.deepEqual(errors, []);
+L0121 |   console.log("Data UI integration cases passed: 8 (Chrome API adapter, synthetic fixtures)");
+L0122 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+L0123 | 

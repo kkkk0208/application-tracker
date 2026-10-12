@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>My97 格式输入验收</title>
+<link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head><body><main>
+<h1>My97 输入接口模拟</h1>
+<div class="fixture-field" data-fixture-field="date"><label>日期<input id="date" class="Wdate" onclick="WdatePicker({dateFmt:'yyyy-MM-dd'})" placeholder="YYYY-MM-DD"></label></div>
+<div class="fixture-field" data-fixture-field="month"><label>月份<input id="month" class="Wdate" onclick="WdatePicker({dateFmt:'yyyy-MM'})" placeholder="YYYY-MM"></label></div>
+<div class="fixture-field" data-fixture-field="chineseMonth"><label>中文月份<input id="chineseMonth" class="Wdate" onclick="WdatePicker({dateFmt:'yyyy年MM月'})" placeholder="YYYY年MM月"></label></div>
+</main><script>
+window.WdatePicker = function (options) { window.lastPickerFormat = options.dateFmt; };
+Object.defineProperty(window, "fixtureValues", { get() { return Object.fromEntries(Array.from(document.querySelectorAll("input"), (input) => [input.id, input.value])); } });
+window.fixtureReady = true;
+</script></body></html>
