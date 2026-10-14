@@ -31,7 +31,7 @@ L0026 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/aiDraft.test.js
-SHA256: fcddd4eb42a26ca8b57308af14f83972fd17b37fa01e26389c09d5f592199bfb
+SHA256: 7681470b054888d0aaac5174f460be4671576fce94ca721fca70775220eaa0db
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { buildDraftBatch, requestDraft } from "../src/assistant/ai.js";
@@ -70,9 +70,9 @@ L0035 |     assert.ok(!JSON.stringify(batch).includes(change.answer));
 L0036 |   }
 L0037 | });
 L0038 | 
-L0039 | test("unsupported, filled, factual and unrelated narrative fields have no draft batch", () => {
+L0039 | test("unsupported, filled, non-prose and incompatible subject fields have no draft batch", () => {
 L0040 |   const intro = planFor(field("自我介绍"));
-L0041 |   for (const change of [{ supported: false }, { value: "SENTINEL_WEB_VALUE" }, { kind: "text", narrative: false }, { intent: "", label: "学校所在地", needsSemanticReview: true }, { entityId: "family.father" }]) assert.equal(draftFor({ ...intro, ...change }), null);
+L0041 |   for (const change of [{ supported: false }, { value: "SENTINEL_WEB_VALUE" }, { kind: "text", narrative: false }, { entityId: "family.father" }]) assert.equal(draftFor({ ...intro, ...change }), null);
 L0042 |   assert.equal(buildDraftBatch(intro, [], snapshot, "zh"), null);
 L0043 | });
 L0044 | 
@@ -209,20 +209,34 @@ L0174 |   assert.equal(drafted.accepted[0].answer, "本轮示例草稿");
 L0175 |   assert.equal(JSON.stringify(item), before);
 L0176 | });
 L0177 | 
-L0178 | test("draft intent recovery rejects unknown subjects, low-confidence questions and factual text fields", () => {
+L0178 | test("draft intent recovery still rejects unknown subjects and non-prose inputs", () => {
 L0179 |   const cleared = { ...planFor(field("自我介绍")), answer: "", intent: "", ruleConfidence: "none", needsSemanticReview: false };
-L0180 |   for (const change of [{ entityId: "education.unknown" }, { entityId: "family.father" }, { label: "请介绍你为什么想加入这家公司" }, { label: "学校所在地" }, { label: "邮箱", kind: "text", narrative: false }, { label: "自我介绍", kind: "text", narrative: false }]) assert.equal(draftFor({ ...cleared, ...change }), null);
+L0180 |   for (const change of [{ entityId: "education.unknown" }, { entityId: "family.father" }, { label: "邮箱", kind: "text", narrative: false }, { label: "自我介绍", kind: "text", narrative: false }]) assert.equal(draftFor({ ...cleared, ...change }), null);
 L0181 | });
 L0182 | 
-L0183 | test("a textarea never grants drafting permission for salary, contact or other direct facts", () => {
-L0184 |   for (const label of ["期望薪资", "邮箱", "学历", "姓名"]) {
+L0183 | test("an explicitly requested factual textarea uses only its canonical fact and cannot borrow missing facts", () => {
+L0184 |   for (const [label, id] of [["期望薪资", "common_answer.expectedSalary.zh"], ["邮箱", "contact.email"], ["姓名", "identity.full_name.zh"]]) {
 L0185 |     const item = planFor(field(label));
-L0186 |     assert.equal(draftFor(item), null);
+L0186 |     assert.deepEqual(draftFor(item).facts.map((fact) => fact.id), [id]);
 L0187 |   }
-L0188 |   const salary = planFor(field("期望薪资"));
-L0189 |   assert.equal(salary.answer, "SENTINEL_SALARY");
-L0190 |   assert.equal(draftFor({ ...salary, narrative: true, kind: "textarea" }), null);
-L0191 | });
+L0188 |   assert.equal(draftFor(planFor(field("学历"))), null, "Missing degree data cannot borrow unrelated education or experience facts");
+L0189 | });
+L0190 | 
+L0191 | test("an arbitrary long-text question can draft from education, experience and common answers after explicit sending", async () => {
+L0192 |   const item = planFor(field("请分享一个你克服困难的事例"));
+L0193 |   assert.equal(item.intent, "");
+L0194 |   const batch = draftFor(item);
+L0195 |   assert.ok(batch.facts.some((fact) => fact.id.startsWith("education.")));
+L0196 |   assert.ok(batch.facts.some((fact) => fact.id.startsWith("experience.")));
+L0197 |   assert.ok(batch.facts.some((fact) => fact.id.startsWith("common_answer.")));
+L0198 |   for (const secret of ["SENTINEL_NAME", "SENTINEL_EMAIL", "SENTINEL_SALARY", "SENTINEL_URL"]) assert.ok(!JSON.stringify(batch).includes(secret), secret);
+L0199 |   let calls = 0;
+L0200 |   const result = await requestDraft(settings, batch, item, facts, undefined, async (_url, options) => {
+L0201 |     calls++; assert.deepEqual(JSON.parse(JSON.parse(options.body).input[1].content).facts, batch.facts);
+L0202 |     return response([proposal(item)]);
+L0203 |   });
+L0204 |   assert.equal(calls, 1); assert.equal(result.accepted[0].status, "review");
+L0205 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/aiJobInfo.test.js
@@ -340,381 +354,397 @@ L0110 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/aiPairing.test.js
-SHA256: d115019ef51a9666880edb8e4c40fd687030d0e7915ba9fbad6af9cf7ef709eb
+SHA256: 29d2c48c8b3f4137d992d8938a7794eb8d0610e7e394230c36467f851357eb82
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { acceptPairs, BLOCKED_LABEL, buildCatalog, buildPairingPayload, PAIRING_FORMAT, pairingCandidates, requestPairing, splitName } from "../src/assistant/aiPairing.js";
 L0004 | import { factsFromProfile, MEMORY_SCOPE_VERSION, preparePlan, scopeFor } from "../src/assistant/planner.js";
-L0005 | 
-L0006 | // The eight former recognition tests from assistant.test.js are migrated here:
-L0007 | // labels/canonical names and no values -> metadata privacy test;
-L0008 | // options/context without answers -> low-confidence payload test;
-L0009 | // tentative vs exact facts -> candidate exclusion test;
-L0010 | // explicitly clearing an uncertain rule -> none clearing test;
-L0011 | // fact answer still needs review -> local-content/review test;
-L0012 | // school-location and subject -> mismatch and subject tests;
-L0013 | // late edits/filled fields -> late pairing test;
-L0014 | // confirmed memories not erased -> reliable-fact/memory none test.
-L0015 | 
-L0016 | const profile = { fullNameZh: "林示例", fullName: "Shili Lin", email: "sentinel@example.com", phone: "13900007731", masterUniversityZh: "SENTINEL_UNIVERSITY_7731", masterDegreeZh: "硕士", masterStartDate: "2020-09", bachelorUniversityZh: "SENTINEL_BACHELOR_7731", commonAnswers: { selfIntroduction: { zh: "SENTINEL_INTRODUCTION_7731" } } };
-L0017 | const facts = factsFromProfile(profile, "zh");
-L0018 | const url = "https://example.com/apply?job=one&token=SENTINEL_URL_TOKEN";
-L0019 | const field = (label, extra = {}) => ({ fieldId: label, groupId: "group", label, labelSource: "label", kind: "text", type: "text", supported: true, value: "", options: [], constraints: {}, section: "基本信息", group: "", ...extra });
-L0020 | const planFor = (fields, source = facts, memories = [], language = "zh") => preparePlan({ fields, url, title: "示例申请页", jobText: "SENTINEL_JOB_DESCRIPTION" }, source, memories, language);
-L0021 | const pair = (item, factId, extra = {}) => ({ fieldId: item.fieldId, source: "fact", factId, memoryId: null, transform: "none", ...extra });
-L0022 | const none = (item) => pair(item, null, { source: "none" });
-L0023 | const accept = (pairs, plan, source = facts, memories = [], options = {}) => acceptPairs({ pairs }, plan, source, memories, { url, language: "zh", batchIds: new Set(plan.map((item) => item.fieldId)), ...options });
-L0024 | const memory = (extra = {}) => ({ id: "m1", question: "其他技能", answer: "SENTINEL_MEMORY_ANSWER", confirmed: true, language: "zh", entityId: "self", scope: "global", updatedAt: "2026-10-13T00:00:00Z", ...extra });
-L0025 | 
-L0026 | test("pairing requests contain only questions and catalog metadata, never local facts or memory answers", () => {
-L0027 |   const privateFacts = factsFromProfile({ ...profile, fullNameZh: "SENTINEL_NAME_7731" }, "zh");
-L0028 |   const [item] = planFor([field("请填写您的学校名称", { help: "官方名称", nearbyText: "已显示的提示", contextEvidence: [{ source: "section", text: "教育经历", value: "SENTINEL_CONTEXT_VALUE" }], options: [{ text: "甲", value: "SENTINEL_OPTION_VALUE" }], constraints: { required: true, maxLength: 100, value: "SENTINEL_CONSTRAINT_VALUE" } })], privateFacts);
-L0029 |   item.answer = "SENTINEL_LOCAL_DRAFT";
-L0030 |   item.url = url; item.jobText = "SENTINEL_JOB_DESCRIPTION";
-L0031 |   const catalog = buildCatalog(privateFacts, [memory()], url, "zh");
-L0032 |   catalog.facts[0].value = "SENTINEL_UNSAFE_CATALOG_VALUE";
-L0033 |   catalog.memories[0].answer = "SENTINEL_UNSAFE_CATALOG_ANSWER";
-L0034 |   const payload = buildPairingPayload("configured-model", [item, field("已填", { value: "SENTINEL_WEB_VALUE" })], catalog, "zh");
-L0035 |   const encoded = JSON.stringify(payload);
-L0036 |   for (const sentinel of ["SENTINEL_NAME_7731", profile.email, profile.phone, profile.masterUniversityZh, profile.bachelorUniversityZh, profile.commonAnswers.selfIntroduction.zh, "SENTINEL_MEMORY_ANSWER", "SENTINEL_LOCAL_DRAFT", "SENTINEL_WEB_VALUE", "SENTINEL_JOB_DESCRIPTION", "SENTINEL_URL_TOKEN", "SENTINEL_OPTION_VALUE", "SENTINEL_CONTEXT_VALUE", "SENTINEL_CONSTRAINT_VALUE", "SENTINEL_UNSAFE_CATALOG_VALUE", "SENTINEL_UNSAFE_CATALOG_ANSWER"]) assert.ok(!encoded.includes(sentinel), sentinel);
-L0037 |   const sent = JSON.parse(payload.input[1].content);
-L0038 |   assert.equal(payload.model, "configured-model");
-L0039 |   assert.equal(sent.fields.length, 1);
-L0040 |   assert.deepEqual(sent.fields[0].options, ["甲"]);
-L0041 |   assert.deepEqual(sent.fields[0].contextEvidence, [{ source: "section", text: "教育经历" }]);
-L0042 |   assert.deepEqual(sent.fields[0].constraints, { required: true, maxLength: 100 });
-L0043 |   assert.equal(sent.fields[0].help, "官方名称");
-L0044 |   assert.equal("nearbyText" in sent.fields[0], false);
-L0045 | });
-L0046 | 
-L0047 | test("catalog kind and names use metadata without even reading value or answer getters", () => {
-L0048 |   const ids = ["contact.email", "contact.phone", "contact.linkedin", "contact.github", "contact.website", "education.master.start_date", "education.master.graduation_date", "experience.internship.0.period", "experience.internship.0.description.zh", "common_answer.selfIntroduction.zh", "identity.full_name.zh"];
-L0049 |   const source = ids.map((id) => ({ id, label: `目录 ${id}`, entityId: "self", get value() { throw new Error("must not read facts"); } }));
-L0050 |   const remembered = { ...memory(), get answer() { throw new Error("must not read answers"); } };
-L0051 |   const catalog = buildCatalog(source, [remembered], url, "zh");
-L0052 |   assert.deepEqual(catalog.facts.map((entry) => entry.kind), ["email", "phone", "url", "url", "url", "date", "date", "period", "long_text", "long_text", "text"]);
-L0053 |   assert.deepEqual(catalog.facts.map((entry) => entry.label), source.map((entry) => entry.label));
-L0054 |   assert.equal(catalog.memories[0].question, remembered.question);
-L0055 | });
-L0056 | 
-L0057 | test("catalog includes only confirmed memories in the current language and versioned page scope", () => {
-L0058 |   const good = memory({ scope: scopeFor(url), scopeVersion: MEMORY_SCOPE_VERSION });
-L0059 |   const catalog = buildCatalog(facts, [good, memory({ id: "unconfirmed", confirmed: false }), memory({ id: "english", language: "en" }), memory({ id: "other-page", scope: "https://example.com/other", scopeVersion: MEMORY_SCOPE_VERSION }), memory({ id: "legacy-scope", scope: scopeFor(url) })], url, "zh");
-L0060 |   assert.deepEqual(catalog.memories, [{ id: "m1", question: "其他技能", entityId: "self" }]);
-L0061 | });
-L0062 | 
-L0063 | test("pairing excludes high-confidence local answers, filled and edited fields, and existing memories", () => {
-L0064 |   const plan = planFor([field("姓名"), field("邮箱"), field("请填写您的学校名称"), field("已填", { value: "网页值" }), field("已编辑", { edited: true }), field("其他技能")], facts, [memory()]);
-L0065 |   assert.deepEqual(pairingCandidates(plan).map((item) => item.fieldId), ["请填写您的学校名称"]);
-L0066 |   assert.equal(plan[0].selected, true); assert.equal(plan[1].selected, true); assert.equal(plan.at(-1).memoryId, "m1");
-L0067 | });
-L0068 | 
-L0069 | test("low-confidence candidates include full options and context but never an existing answer", () => {
-L0070 |   const [item] = planFor([field("请填写您的学校名称", { labelSource: "placeholder", nearbyText: "n".repeat(200), section: "硕士教育", group: "学校资料", help: "官方名称", options: [{ text: "大学甲", value: "secret" }], constraints: { required: true }, visualEvidence: "截图V1：学校名称 / 硕士教育" })]);
-L0071 |   item.answer = "LOCAL DRAFT VALUE";
-L0072 |   const payload = buildPairingPayload("fixture", [item], buildCatalog(facts, [], url, "zh"), "zh");
-L0073 |   const [sent] = JSON.parse(payload.input[1].content).fields;
-L0074 |   assert.equal(sent.nearbyText.length, 160);
-L0075 |   assert.equal(sent.section, item.section); assert.equal(sent.group, item.group); assert.equal(sent.visualEvidence, item.visualEvidence);
-L0076 |   assert.ok(!JSON.stringify(payload).includes("LOCAL DRAFT VALUE"));
-L0077 | });
-L0078 | 
-L0079 | test("pairing payload is capped at thirty fields", () => {
-L0080 |   const fields = Array.from({ length: 65 }, (_, index) => field("未知", { fieldId: String(index) }));
-L0081 |   assert.equal(JSON.parse(buildPairingPayload("fixture", fields, { facts: [], memories: [] }, "zh").input[1].content).fields.length, 30);
-L0082 | });
-L0083 | 
-L0084 | test("none explicitly clears a tentative rule answer and selection", () => {
-L0085 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0086 |   Object.assign(item, { answer: "旧猜测", selected: true, factIds: ["education.master.university.zh"], source: "旧规则" });
-L0087 |   const result = accept([none(item)], [item]);
-L0088 |   assert.equal(result.errors.length, 0);
-L0089 |   Object.assign(item, result.accepted[0]);
-L0090 |   assert.equal(item.answer, ""); assert.equal(item.intent, ""); assert.equal(item.selected, false); assert.equal(item.status, "missing");
-L0091 |   assert.equal(item.reason, "资料里没有对应内容"); assert.equal(item.semanticReviewed, true); assert.deepEqual(item.factIds, []);
-L0092 | });
-L0093 | 
-L0094 | test("none cannot clear reliable facts or an already used confirmed memory", () => {
-L0095 |   const plan = planFor([field("姓名"), field("其他技能")], facts, [memory()]);
-L0096 |   const result = accept(plan.map(none), plan, facts, [memory()]);
-L0097 |   assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 2);
-L0098 |   assert.equal(plan[0].answer, profile.fullNameZh); assert.equal(plan[1].answer, "SENTINEL_MEMORY_ANSWER");
-L0099 | });
-L0100 | 
-L0101 | test("none clears unresolved visual guesses while retaining the partial-group safety explanation", () => {
-L0102 |   const source = factsFromProfile({ bachelorUniversityZh: "本科大学", masterMajorZh: "硕士专业" }, "zh");
-L0103 |   const fields = [field("学校名称", { section: "本科教育", visualEvidence: "截图V1：学校名称 / 本科教育" }), field("专业", { section: "教育经历" })];
-L0104 |   const item = planFor(fields, source)[1];
-L0105 |   assert.equal(item.visualGroupUnresolved, true); assert.equal(item.entityId, "education.unknown");
-L0106 |   const reason = item.reason;
-L0107 |   Object.assign(item, { answer: "旧的专业猜测", selected: true, factIds: ["education.master.major.zh"], source: "旧规则", ruleConfidence: "low" });
-L0108 |   const result = accept([none(item)], [item], source);
-L0109 |   assert.equal(result.errors.length, 0);
-L0110 |   assert.equal(result.accepted[0].reason, reason); assert.match(result.accepted[0].reason, /截图仅确认/);
-L0111 |   assert.equal(result.accepted[0].answer, ""); assert.equal(result.accepted[0].selected, false);
-L0112 |   assert.equal(result.accepted[0].intent, ""); assert.deepEqual(result.accepted[0].factIds, []);
-L0113 |   assert.equal(item.entityId, "education.unknown");
-L0114 | });
-L0115 | 
-L0116 | test("fact pairing resolves local content and requires review without selecting itself", () => {
-L0117 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0118 |   const result = accept([pair(item, "education.master.university.zh")], [item]);
-L0119 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, profile.masterUniversityZh);
-L0120 |   assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
-L0121 |   assert.equal(result.accepted[0].needsSemanticReview, false); assert.equal(result.accepted[0].semanticReviewed, true);
-L0122 |   assert.equal(result.accepted[0].ruleConfidence, "none");
-L0123 | });
-L0124 | 
-L0125 | test("unknown, duplicated and out-of-batch fields or facts are rejected", () => {
-L0126 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0127 |   const good = pair(item, "education.master.university.zh");
-L0128 |   for (const pairs of [[{ ...good, fieldId: "unknown" }], [{ ...good, factId: "unknown" }], [good, good]]) assert.equal(accept(pairs, [item]).accepted.length, 0);
-L0129 |   assert.equal(accept([good], [item], facts, [], { batchIds: new Set() }).accepted.length, 0);
-L0130 |   assert.equal(accept([good], [item], [...facts, facts.find((fact) => fact.id === good.factId)]).accepted.length, 0);
-L0131 | });
-L0132 | 
-L0133 | test("fact subject and language cannot be changed by AI", () => {
-L0134 |   const [item] = planFor([field("请填写您的学校名称", { section: "本科教育" })]);
-L0135 |   assert.equal(accept([pair(item, "education.master.university.zh")], [item]).accepted.length, 0);
-L0136 |   const englishFacts = factsFromProfile({ masterUniversity: "English University" }, "en");
-L0137 |   const [master] = planFor([field("请填写您的学校名称", { section: "硕士教育" })]);
-L0138 |   assert.equal(accept([pair(master, "education.master.university.en")], [master], englishFacts).accepted.length, 0);
-L0139 |   const [family] = planFor([field("父亲在哪家公司任职")]);
-L0140 |   const company = { id: "experience.internship.0.company.zh", entityId: "experience.internship.0", value: "公司甲", label: "实习1公司" };
-L0141 |   assert.equal(accept([pair(family, company.id)], [family], [company]).accepted.length, 0);
-L0142 | });
-L0143 | 
-L0144 | test("school-location, ranking and grade mismatches cannot become profile facts", () => {
-L0145 |   const source = factsFromProfile({ masterUniversityZh: "大学甲", masterMajorZh: "专业甲", masterDegreeZh: "硕士" }, "zh");
-L0146 |   for (const [label, factId] of [["学校所在地", "education.master.university.zh"], ["专业排名", "education.master.major.zh"], ["学位成绩", "education.master.degree.zh"]]) {
-L0147 |     const [item] = planFor([field(label, { section: "硕士教育" })], source);
-L0148 |     assert.equal(accept([pair(item, factId)], [item], source).accepted.length, 0);
-L0149 |   }
-L0150 | });
-L0151 | 
-L0152 | test("blocked questions stay manual even if AI chooses an existing fact", () => {
-L0153 |   for (const label of ["奖惩情况", "证件号码", "民族", "研究论文", "出生日期", "certificate number", "first name"]) {
-L0154 |     assert.equal(BLOCKED_LABEL.test(label), true);
-L0155 |     const [item] = planFor([field(label)]);
-L0156 |     assert.equal(accept([pair(item, "identity.full_name.zh")], [item]).accepted.length, 0);
-L0157 |   }
-L0158 | });
-L0159 | 
-L0160 | test("late pairing cannot overwrite a user's edit, filled field or changed candidate status", async () => {
-L0161 |   for (const change of [{ edited: true, answer: "人工答案" }, { value: "网页答案" }, { answer: "可靠本地答案", ruleConfidence: "high" }]) {
-L0162 |     const [item] = planFor([field("请填写您的学校名称")]);
-L0163 |     const raw = await requestPairing({ enabled: true, apiKey: "fixture", model: "fixture" }, [item], buildCatalog(facts, [], url, "zh"), "zh", undefined, async () => {
-L0164 |       Object.assign(item, change);
-L0165 |       return { ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify({ pairs: [pair(item, "education.master.university.zh")] }) }) };
-L0166 |     });
-L0167 |     assert.equal(acceptPairs(raw, [item], facts, [], { url, language: "zh", batchIds: new Set([item.fieldId]) }).accepted.length, 0);
-L0168 |   }
-L0169 | });
-L0170 | 
-L0171 | test("fact option pairing maps degree synonyms locally", () => {
-L0172 |   const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", type: "select-one", options: [{ id: "master", text: "Master's degree", disabled: false }] })]);
-L0173 |   const result = accept([pair(item, "education.master.degree.zh")], [item]);
-L0174 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, "Master's degree");
-L0175 | });
-L0176 | 
-L0177 | test("unmatched, duplicate, disabled and unread options yield explicit missing without a guess", () => {
-L0178 |   for (const options of [[], [{ text: "本科" }], [{ text: "硕士", disabled: true }], [{ text: "硕士" }, { text: "硕士" }]]) {
-L0179 |     const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", type: "select-one", options })]);
-L0180 |     item.answer = "旧答案";
-L0181 |     const result = accept([pair(item, "education.master.degree.zh")], [item]);
-L0182 |     assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
-L0183 |     assert.equal(result.accepted[0].answer, ""); assert.equal(result.accepted[0].selected, false);
-L0184 |     assert.match(result.accepted[0].reason, /资料里是「硕士」.*没有对应项/);
-L0185 |   }
-L0186 | });
-L0187 | 
-L0188 | test("a valid option exceeding the length constraint is rejected without claiming a missing option", () => {
-L0189 |   const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", options: [{ text: "硕士" }], constraints: { maxLength: 1 } })]);
-L0190 |   const result = accept([pair(item, "education.master.degree.zh")], [item]);
-L0191 |   assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /字数限制/);
-L0192 | });
-L0193 | 
-L0194 | test("month-only dates preserve precision and use the page's date format", () => {
-L0195 |   const [item] = planFor([field("请填写入学年月", { section: "硕士教育", kind: "date", type: "text", dateFormat: "YYYY.MM" })]);
-L0196 |   const result = accept([pair(item, "education.master.start_date")], [item]);
-L0197 |   assert.equal(result.accepted[0].answer, "2020.09");
-L0198 |   const requiringDay = { ...item, dateFormat: "YYYY-MM-DD" };
-L0199 |   assert.equal(accept([pair(requiringDay, "education.master.start_date")], [requiringDay]).accepted.length, 0);
-L0200 | });
-L0201 | 
-L0202 | test("splitName handles single and compound Chinese surnames and multi-part English names", () => {
-L0203 |   for (const [name, surname, given] of [["林示例", "林", "示例"], ["欧阳示例", "欧阳", "示例"], ["𠮷示例", "𠮷", "示例"], ["Shili Lin", "Lin", "Shili"], ["Shili Example Lin", "Lin", "Shili Example"]]) {
-L0204 |     assert.equal(splitName(name, "surname"), surname); assert.equal(splitName(name, "given_name"), given);
-L0205 |   }
-L0206 |   for (const name of ["", "林", "Lin"]) { assert.equal(splitName(name, "surname"), ""); assert.equal(splitName(name, "given_name"), ""); }
-L0207 |   assert.equal(splitName("林示例", "unknown"), "");
-L0208 | });
-L0209 | 
-L0210 | test("name transforms work only on the corresponding name-part questions", () => {
-L0211 |   for (const [label, transform, answer] of [["姓", "surname", "林"], ["名", "given_name", "示例"], ["surname", "surname", "林"], ["first name", "given_name", "示例"]]) {
-L0212 |     const [item] = planFor([field(label)]);
-L0213 |     assert.equal(accept([pair(item, "identity.full_name.zh", { transform })], [item]).accepted[0].answer, answer);
-L0214 |   }
-L0215 |   for (const [label, transform] of [["名", "surname"], ["姓", "given_name"], ["别的题", "surname"], ["last name", "given_name"], ["姓名", "surname"], ["first name (national id)", "given_name"]]) {
-L0216 |     const [item] = planFor([field(label)]);
-L0217 |     assert.equal(accept([pair(item, "identity.full_name.zh", { transform })], [item]).accepted.length, 0);
-L0218 |   }
-L0219 |   const [item] = planFor([field("姓")]);
-L0220 |   assert.equal(accept([pair(item, "contact.email", { transform: "surname" })], [item]).accepted.length, 0);
-L0221 |   for (const label of ["姓氏", "名字", "family name"]) {
-L0222 |     const [part] = planFor([field(label)]);
-L0223 |     assert.equal(accept([pair(part, "identity.full_name.zh")], [part]).accepted.length, 0);
-L0224 |   }
-L0225 | });
-L0226 | 
-L0227 | test("empty facts and invalid local values are rejected", () => {
-L0228 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0229 |   for (const value of ["", null, "   "]) {
-L0230 |     const source = facts.map((fact) => fact.id === "education.master.university.zh" ? { ...fact, value } : fact);
-L0231 |     assert.equal(accept([pair(item, "education.master.university.zh")], [item], source).accepted.length, 0);
-L0232 |   }
-L0233 |   const [email] = planFor([field("请填邮箱", { type: "email" })]);
-L0234 |   assert.equal(accept([pair(email, "contact.email")], [email], [{ ...facts.find((fact) => fact.id === "contact.email"), value: "invalid" }]).accepted.length, 0);
-L0235 | });
-L0236 | 
-L0237 | test("memory pairing uses the locally stored answer and stays under review", () => {
-L0238 |   const [item] = planFor([field("其他技能")]);
-L0239 |   const remembered = memory();
-L0240 |   const result = accept([pair(item, null, { source: "memory", memoryId: remembered.id })], [item], facts, [remembered]);
-L0241 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, remembered.answer);
-L0242 |   assert.equal(result.accepted[0].memoryVersion, remembered.updatedAt); assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
-L0243 | });
-L0244 | 
-L0245 | test("memory confirmation, language, subject, scope and full question meaning are rechecked locally", () => {
-L0246 |   const [item] = planFor([field("其他技能")]);
-L0247 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
-L0248 |   for (const change of [{ confirmed: false }, { language: "en" }, { entityId: "family.father" }, { scope: "https://example.com/other", scopeVersion: MEMORY_SCOPE_VERSION }, { scope: scopeFor(url) }, { question: "期望薪资" }, { answer: "" }]) {
-L0249 |     assert.equal(accept([proposal], [item], facts, [memory(change)]).accepted.length, 0);
-L0250 |   }
-L0251 |   assert.equal(accept([proposal], [item], facts, []).accepted.length, 0);
-L0252 | });
-L0253 | 
-L0254 | test("memory pairing can reuse a high-confidence local equivalent but rejects low-confidence and school-location aliases", () => {
-L0255 |   const [item] = planFor([field("学校名称", { section: "硕士教育" })], []);
-L0256 |   const remembered = memory({ question: "University", entityId: "education.master", answer: "大学乙" });
-L0257 |   const proposal = pair(item, null, { source: "memory", memoryId: remembered.id });
-L0258 |   assert.equal(accept([proposal], [item], facts, [remembered]).accepted[0].answer, "大学乙");
-L0259 |   const low = { ...item, label: "请填写您的学校名称", ruleConfidence: "low" };
-L0260 |   assert.equal(accept([proposal], [low], facts, [remembered]).accepted.length, 0);
-L0261 |   const wrong = { ...item, label: "学校所在地" };
-L0262 |   assert.equal(accept([{ ...proposal, fieldId: wrong.fieldId }], [wrong], facts, [remembered]).accepted.length, 0);
-L0263 | });
-L0264 | 
-L0265 | test("memory option answers map locally and cannot invent a missing selection", () => {
-L0266 |   const [item] = planFor([field("其他技能", { kind: "select", options: [{ text: "Yes" }, { text: "No" }] })]);
-L0267 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
-L0268 |   assert.equal(accept([proposal], [item], facts, [memory({ answer: "是" })]).accepted[0].answer, "Yes");
-L0269 |   const result = accept([proposal], [item], facts, [memory({ answer: "未知" })]);
-L0270 |   assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
-L0271 | });
-L0272 | 
-L0273 | test("multiple memory choices require a unique match for every requested option", () => {
-L0274 |   const [item] = planFor([field("其他技能", { kind: "checkboxes", constraints: { multiple: true }, options: [{ text: "Yes" }, { text: "No" }] })]);
-L0275 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
-L0276 |   assert.equal(accept([proposal], [item], facts, [memory({ answer: '["是","否"]' })]).accepted[0].answer, '["Yes","No"]');
-L0277 |   for (const answer of ['["是","Yes"]', '["是","未知"]', "是"]) {
-L0278 |     const result = accept([proposal], [item], facts, [memory({ answer })]);
-L0279 |     assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
-L0280 |   }
-L0281 | });
-L0282 | 
-L0283 | test("malformed sources, mixed references and transformations are rejected", () => {
-L0284 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0285 |   const good = pair(item, "education.master.university.zh");
-L0286 |   for (const change of [{ source: "invented" }, { transform: "invented" }, { memoryId: "m1" }, { source: "none" }, { source: "memory", memoryId: "m1" }, { transform: undefined }]) assert.equal(accept([{ ...good, ...change }], [item], facts, [memory()]).accepted.length, 0);
-L0287 |   assert.equal(accept([null], [item]).accepted.length, 0);
-L0288 | });
-L0289 | 
-L0290 | test("pairing request uses strict schema, configured model, no storage and a cancellable timeout", async () => {
-L0291 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0292 |   const controller = new AbortController();
-L0293 |   let sent;
-L0294 |   const result = await requestPairing({ enabled: true, apiKey: "fixture", model: "configured-model" }, [item], buildCatalog(facts, [], url, "zh"), "zh", controller.signal, async (endpoint, options) => {
-L0295 |     assert.equal(endpoint, "https://api.openai.com/v1/responses"); assert.equal(options.method, "POST");
-L0296 |     assert.equal(options.headers.Authorization, "Bearer fixture"); assert.ok(options.signal instanceof AbortSignal);
-L0297 |     controller.abort(); assert.equal(options.signal.aborted, true);
-L0298 |     sent = JSON.parse(options.body);
-L0299 |     return { ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "output_text", text: '{"pairs":[]}' }] }] }) };
-L0300 |   });
-L0301 |   assert.equal(sent.model, "configured-model"); assert.equal(sent.store, false); assert.equal(sent.max_output_tokens, 2500);
-L0302 |   assert.equal(sent.text.format.name, PAIRING_FORMAT); assert.equal(sent.text.format.strict, true);
-L0303 |   assert.deepEqual(sent.text.format.schema.properties.pairs.items.required, ["fieldId", "source", "factId", "memoryId", "transform"]);
-L0304 |   assert.deepEqual(result, { pairs: [] });
-L0305 | });
-L0306 | 
-L0307 | test("HTTP, incomplete, refusal, malformed JSON and missing lists surface Chinese errors", async () => {
-L0308 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0309 |   const invoke = (response) => requestPairing({ enabled: true, apiKey: "fixture", model: "fixture" }, [item], buildCatalog(facts, [], url, "zh"), "zh", undefined, async () => response);
-L0310 |   await assert.rejects(invoke({ ok: false, status: 429, json: async () => ({}) }), /请求受限/);
-L0311 |   await assert.rejects(invoke({ ok: false, status: 401, json: async () => ({}) }), /请求失败（401）/);
-L0312 |   for (const data of [{ status: "incomplete" }, { status: "failed" }, {}, null]) await assert.rejects(invoke({ ok: true, json: async () => data }), /未完成本批配对/);
-L0313 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "refusal" }] }] }) }), /未提供本批配对/);
-L0314 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output_text: "not json" }) }), /无法校验/);
-L0315 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output_text: '{"items":[]}' }) }), /缺少配对列表/);
-L0316 |   await assert.rejects(invoke({ ok: true, json: async () => { throw new Error("bad JSON"); } }), /无法校验/);
-L0317 | });
-L0318 | 
-L0319 | test("disabled settings fail and an empty candidate list performs no request", async () => {
-L0320 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0321 |   const catalog = buildCatalog(facts, [], url, "zh");
-L0322 |   for (const settings of [{ enabled: false, apiKey: "fixture" }, { enabled: true, apiKey: "" }]) await assert.rejects(requestPairing(settings, [item], catalog, "zh", undefined, () => assert.fail("must not request")), /请先/);
-L0323 |   const result = await requestPairing({ enabled: true, apiKey: "fixture" }, planFor([field("姓名")]), catalog, "zh", undefined, () => assert.fail("must not request"));
-L0324 |   assert.deepEqual(result, { pairs: [] });
-L0325 | });
-L0326 | 
-L0327 | test("high-confidence empty email and salary questions cannot be paired to a phone fact", () => {
-L0328 |   const phoneFacts = factsFromProfile({ phone: "13900007731" }, "zh");
-L0329 |   for (const label of ["邮箱", "期望薪资"]) {
-L0330 |     const [item] = planFor([field(label)], phoneFacts);
-L0331 |     assert.equal(item.answer, ""); assert.equal(item.ruleConfidence, "high");
-L0332 |     assert.equal(pairingCandidates([item]).length, 1);
-L0333 |     const result = accept([pair(item, "contact.phone")], [item], phoneFacts);
-L0334 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /明确的题意/);
-L0335 |     if (label === "期望薪资") assert.equal(item.sensitive, true);
-L0336 |   }
-L0337 | });
-L0338 | 
-L0339 | test("pairing preserves an existing sensitive designation even when its fact intent is ordinary", () => {
-L0340 |   const [item] = planFor([field("请填写您的学校名称")]);
-L0341 |   item.sensitive = true;
-L0342 |   const result = accept([pair(item, "education.master.university.zh")], [item]);
-L0343 |   assert.equal(result.accepted[0].sensitive, true);
-L0344 | });
-L0345 | 
-L0346 | test("unknown repeated experience subjects cannot be supplied by a global alias memory", () => {
-L0347 |   const source = factsFromProfile({ internships: [{ companyZh: "公司甲" }, { companyZh: "公司乙" }] }, "zh");
-L0348 |   const items = planFor([field("公司", { fieldId: "company1", groupId: "internship1", section: "实习经历" }), field("公司", { fieldId: "company2", groupId: "internship2", section: "实习经历" })], source);
-L0349 |   const remembered = memory({ question: "公司名称", entityId: "experience.unknown", answer: "公司甲" });
-L0350 |   const result = accept(items.map((item) => pair(item, null, { source: "memory", memoryId: "m1" })), items, source, [remembered]);
-L0351 |   assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 2);
-L0352 |   assert.ok(result.errors.every((entry) => /尚未确定/.test(entry.reason)));
-L0353 |   assert.equal(buildCatalog(source, [remembered], url, "zh").memories.length, 0);
-L0354 |   assert.equal(accept(items.map(none), items, source, [remembered]).accepted.length, 2);
-L0355 | });
-L0356 | 
-L0357 | test("a current-salary question cannot borrow an expected-salary memory through a loose rule", () => {
-L0358 |   const [item] = planFor([field("Current salary")], []);
-L0359 |   const remembered = memory({ question: "Expected salary", answer: "面议" });
-L0360 |   const result = accept([pair(item, null, { source: "memory", memoryId: "m1" })], [item], [], [remembered]);
-L0361 |   assert.equal(item.ruleConfidence, "low"); assert.equal(result.accepted.length, 0);
-L0362 | });
-L0363 | 
-L0364 | test("splitting date parts validates the whole source date and cannot invent a missing day", () => {
-L0365 |   for (const [value, datePart] of [["2020-02-31", "year"], ["2020-13", "month"], ["2020-02", "day"]]) {
-L0366 |     const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value }];
-L0367 |     const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart, options: [{ text: "2020" }, { text: "13" }, { text: "1" }] })], source);
-L0368 |     const result = accept([pair(item, source[0].id)], [item], source);
-L0369 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /日期资料无效|缺少已确认的日/);
-L0370 |   }
-L0371 |   const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value: "2020-02-29" }];
-L0372 |   const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart: "day", options: [{ text: "29" }] })], source);
-L0373 |   assert.equal(accept([pair(item, source[0].id)], [item], source).accepted[0].answer, "29");
-L0374 | });
+L0005 | import { finalizePreview } from "../src/assistant/preview.js";
+L0006 | 
+L0007 | // The eight former recognition tests from assistant.test.js are migrated here:
+L0008 | // labels/canonical names and no values -> metadata privacy test;
+L0009 | // options/context without answers -> low-confidence payload test;
+L0010 | // tentative vs exact facts -> candidate exclusion test;
+L0011 | // explicitly clearing an uncertain rule -> none clearing test;
+L0012 | // fact answer still needs review -> local-content/review test;
+L0013 | // school-location and subject -> mismatch and subject tests;
+L0014 | // late edits/filled fields -> late pairing test;
+L0015 | // confirmed memories not erased -> reliable-fact/memory none test.
+L0016 | 
+L0017 | const profile = { fullNameZh: "林示例", fullName: "Shili Lin", email: "sentinel@example.com", phone: "13900007731", masterUniversityZh: "SENTINEL_UNIVERSITY_7731", masterDegreeZh: "硕士", masterStartDate: "2020-09", bachelorUniversityZh: "SENTINEL_BACHELOR_7731", commonAnswers: { selfIntroduction: { zh: "SENTINEL_INTRODUCTION_7731" } } };
+L0018 | const facts = factsFromProfile(profile, "zh");
+L0019 | const url = "https://example.com/apply?job=one&token=SENTINEL_URL_TOKEN";
+L0020 | const field = (label, extra = {}) => ({ fieldId: label, groupId: "group", label, labelSource: "label", kind: "text", type: "text", supported: true, value: "", options: [], constraints: {}, section: "基本信息", group: "", ...extra });
+L0021 | const planFor = (fields, source = facts, memories = [], language = "zh") => preparePlan({ fields, url, title: "示例申请页", jobText: "SENTINEL_JOB_DESCRIPTION" }, source, memories, language);
+L0022 | const pair = (item, factId, extra = {}) => ({ fieldId: item.fieldId, source: "fact", factId, memoryId: null, transform: "none", ...extra });
+L0023 | const none = (item) => pair(item, null, { source: "none" });
+L0024 | const accept = (pairs, plan, source = facts, memories = [], options = {}) => acceptPairs({ pairs }, plan, source, memories, { url, language: "zh", batchIds: new Set(plan.map((item) => item.fieldId)), ...options });
+L0025 | const memory = (extra = {}) => ({ id: "m1", question: "其他技能", answer: "SENTINEL_MEMORY_ANSWER", confirmed: true, language: "zh", entityId: "self", scope: "global", updatedAt: "2026-10-13T00:00:00Z", ...extra });
+L0026 | 
+L0027 | test("pairing requests contain only questions and catalog metadata, never local facts or memory answers", () => {
+L0028 |   const privateFacts = factsFromProfile({ ...profile, fullNameZh: "SENTINEL_NAME_7731" }, "zh");
+L0029 |   const [item] = planFor([field("请填写您的学校名称", { help: "官方名称", nearbyText: "已显示的提示", contextEvidence: [{ source: "section", text: "教育经历", value: "SENTINEL_CONTEXT_VALUE" }], options: [{ text: "甲", value: "SENTINEL_OPTION_VALUE" }], constraints: { required: true, maxLength: 100, value: "SENTINEL_CONSTRAINT_VALUE" } })], privateFacts);
+L0030 |   item.answer = "SENTINEL_LOCAL_DRAFT";
+L0031 |   item.url = url; item.jobText = "SENTINEL_JOB_DESCRIPTION";
+L0032 |   const catalog = buildCatalog(privateFacts, [memory()], url, "zh");
+L0033 |   catalog.facts[0].value = "SENTINEL_UNSAFE_CATALOG_VALUE";
+L0034 |   catalog.memories[0].answer = "SENTINEL_UNSAFE_CATALOG_ANSWER";
+L0035 |   const payload = buildPairingPayload("configured-model", [item, field("已填", { value: "SENTINEL_WEB_VALUE" })], catalog, "zh");
+L0036 |   const encoded = JSON.stringify(payload);
+L0037 |   for (const sentinel of ["SENTINEL_NAME_7731", profile.email, profile.phone, profile.masterUniversityZh, profile.bachelorUniversityZh, profile.commonAnswers.selfIntroduction.zh, "SENTINEL_MEMORY_ANSWER", "SENTINEL_LOCAL_DRAFT", "SENTINEL_WEB_VALUE", "SENTINEL_JOB_DESCRIPTION", "SENTINEL_URL_TOKEN", "SENTINEL_OPTION_VALUE", "SENTINEL_CONTEXT_VALUE", "SENTINEL_CONSTRAINT_VALUE", "SENTINEL_UNSAFE_CATALOG_VALUE", "SENTINEL_UNSAFE_CATALOG_ANSWER"]) assert.ok(!encoded.includes(sentinel), sentinel);
+L0038 |   const sent = JSON.parse(payload.input[1].content);
+L0039 |   assert.equal(payload.model, "configured-model");
+L0040 |   assert.equal(sent.fields.length, 1);
+L0041 |   assert.deepEqual(sent.fields[0].options, ["甲"]);
+L0042 |   assert.deepEqual(sent.fields[0].contextEvidence, [{ source: "section", text: "教育经历" }]);
+L0043 |   assert.deepEqual(sent.fields[0].constraints, { required: true, maxLength: 100 });
+L0044 |   assert.equal(sent.fields[0].help, "官方名称");
+L0045 |   assert.equal("nearbyText" in sent.fields[0], false);
+L0046 | });
+L0047 | 
+L0048 | test("catalog kind and names use metadata without even reading value or answer getters", () => {
+L0049 |   const ids = ["contact.email", "contact.phone", "contact.linkedin", "contact.github", "contact.website", "education.master.start_date", "education.master.graduation_date", "experience.internship.0.period", "experience.internship.0.description.zh", "common_answer.selfIntroduction.zh", "identity.full_name.zh"];
+L0050 |   const source = ids.map((id) => ({ id, label: `目录 ${id}`, entityId: "self", get value() { throw new Error("must not read facts"); } }));
+L0051 |   const remembered = { ...memory(), get answer() { throw new Error("must not read answers"); } };
+L0052 |   const catalog = buildCatalog(source, [remembered], url, "zh");
+L0053 |   assert.deepEqual(catalog.facts.map((entry) => entry.kind), ["email", "phone", "url", "url", "url", "date", "date", "period", "long_text", "long_text", "text"]);
+L0054 |   assert.deepEqual(catalog.facts.map((entry) => entry.label), source.map((entry) => entry.label));
+L0055 |   assert.equal(catalog.memories[0].question, remembered.question);
+L0056 | });
+L0057 | 
+L0058 | test("catalog includes only confirmed memories in the current language and versioned page scope", () => {
+L0059 |   const good = memory({ scope: scopeFor(url), scopeVersion: MEMORY_SCOPE_VERSION });
+L0060 |   const catalog = buildCatalog(facts, [good, memory({ id: "unconfirmed", confirmed: false }), memory({ id: "english", language: "en" }), memory({ id: "other-page", scope: "https://example.com/other", scopeVersion: MEMORY_SCOPE_VERSION }), memory({ id: "legacy-scope", scope: scopeFor(url) })], url, "zh");
+L0061 |   assert.deepEqual(catalog.memories, [{ id: "m1", question: "其他技能", entityId: "self" }]);
+L0062 | });
+L0063 | 
+L0064 | test("pairing excludes high-confidence local answers, filled and edited fields, and existing memories", () => {
+L0065 |   const plan = planFor([field("姓名"), field("邮箱"), field("请填写您的学校名称"), field("已填", { value: "网页值" }), field("已编辑", { edited: true }), field("其他技能")], facts, [memory()]);
+L0066 |   assert.deepEqual(pairingCandidates(plan).map((item) => item.fieldId), ["请填写您的学校名称"]);
+L0067 |   assert.equal(plan[0].selected, true); assert.equal(plan[1].selected, true); assert.equal(plan.at(-1).memoryId, "m1");
+L0068 | });
+L0069 | 
+L0070 | test("low-confidence candidates include full options and context but never an existing answer", () => {
+L0071 |   const [item] = planFor([field("请填写您的学校名称", { labelSource: "placeholder", nearbyText: "n".repeat(200), section: "硕士教育", group: "学校资料", help: "官方名称", options: [{ text: "大学甲", value: "secret" }], constraints: { required: true }, visualEvidence: "截图V1：学校名称 / 硕士教育" })]);
+L0072 |   item.answer = "LOCAL DRAFT VALUE";
+L0073 |   const payload = buildPairingPayload("fixture", [item], buildCatalog(facts, [], url, "zh"), "zh");
+L0074 |   const [sent] = JSON.parse(payload.input[1].content).fields;
+L0075 |   assert.equal(sent.nearbyText.length, 160);
+L0076 |   assert.equal(sent.section, item.section); assert.equal(sent.group, item.group); assert.equal(sent.visualEvidence, item.visualEvidence);
+L0077 |   assert.ok(!JSON.stringify(payload).includes("LOCAL DRAFT VALUE"));
+L0078 | });
+L0079 | 
+L0080 | test("pairing payload is capped at thirty fields", () => {
+L0081 |   const fields = Array.from({ length: 65 }, (_, index) => field("未知", { fieldId: String(index) }));
+L0082 |   assert.equal(JSON.parse(buildPairingPayload("fixture", fields, { facts: [], memories: [] }, "zh").input[1].content).fields.length, 30);
+L0083 | });
+L0084 | 
+L0085 | test("none explicitly clears a tentative rule answer and selection", () => {
+L0086 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0087 |   Object.assign(item, { answer: "旧猜测", selected: true, factIds: ["education.master.university.zh"], source: "旧规则" });
+L0088 |   const result = accept([none(item)], [item]);
+L0089 |   assert.equal(result.errors.length, 0);
+L0090 |   Object.assign(item, result.accepted[0]);
+L0091 |   assert.equal(item.answer, ""); assert.equal(item.intent, ""); assert.equal(item.selected, false); assert.equal(item.status, "missing");
+L0092 |   assert.equal(item.reason, "资料里没有对应内容"); assert.equal(item.semanticReviewed, true); assert.deepEqual(item.factIds, []);
+L0093 | });
+L0094 | 
+L0095 | test("none cannot clear reliable facts or an already used confirmed memory", () => {
+L0096 |   const plan = planFor([field("姓名"), field("其他技能")], facts, [memory()]);
+L0097 |   const result = accept(plan.map(none), plan, facts, [memory()]);
+L0098 |   assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 2);
+L0099 |   assert.equal(plan[0].answer, profile.fullNameZh); assert.equal(plan[1].answer, "SENTINEL_MEMORY_ANSWER");
+L0100 | });
+L0101 | 
+L0102 | test("none clears unresolved visual guesses while retaining the partial-group safety explanation", () => {
+L0103 |   const source = factsFromProfile({ bachelorUniversityZh: "本科大学", masterMajorZh: "硕士专业" }, "zh");
+L0104 |   const fields = [field("学校名称", { section: "本科教育", visualEvidence: "截图V1：学校名称 / 本科教育" }), field("专业", { section: "教育经历" })];
+L0105 |   const item = planFor(fields, source)[1];
+L0106 |   assert.equal(item.visualGroupUnresolved, true); assert.equal(item.entityId, "education.unknown");
+L0107 |   const reason = item.reason;
+L0108 |   Object.assign(item, { answer: "旧的专业猜测", selected: true, factIds: ["education.master.major.zh"], source: "旧规则", ruleConfidence: "low" });
+L0109 |   const result = accept([none(item)], [item], source);
+L0110 |   assert.equal(result.errors.length, 0);
+L0111 |   assert.equal(result.accepted[0].reason, reason); assert.match(result.accepted[0].reason, /截图仅确认/);
+L0112 |   assert.equal(result.accepted[0].answer, ""); assert.equal(result.accepted[0].selected, false);
+L0113 |   assert.equal(result.accepted[0].intent, ""); assert.deepEqual(result.accepted[0].factIds, []);
+L0114 |   assert.equal(item.entityId, "education.unknown");
+L0115 | });
+L0116 | 
+L0117 | test("fact pairing resolves local content and requires review without selecting itself", () => {
+L0118 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0119 |   const result = accept([pair(item, "education.master.university.zh")], [item]);
+L0120 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, profile.masterUniversityZh);
+L0121 |   assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
+L0122 |   assert.equal(result.accepted[0].needsSemanticReview, false); assert.equal(result.accepted[0].semanticReviewed, true);
+L0123 |   assert.equal(result.accepted[0].ruleConfidence, "none");
+L0124 | });
+L0125 | 
+L0126 | test("unknown, duplicated and out-of-batch fields or facts are rejected", () => {
+L0127 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0128 |   const good = pair(item, "education.master.university.zh");
+L0129 |   for (const pairs of [[{ ...good, fieldId: "unknown" }], [{ ...good, factId: "unknown" }], [good, good]]) assert.equal(accept(pairs, [item]).accepted.length, 0);
+L0130 |   assert.equal(accept([good], [item], facts, [], { batchIds: new Set() }).accepted.length, 0);
+L0131 |   assert.equal(accept([good], [item], [...facts, facts.find((fact) => fact.id === good.factId)]).accepted.length, 0);
+L0132 | });
+L0133 | 
+L0134 | test("fact subject and language cannot be changed by AI", () => {
+L0135 |   const [item] = planFor([field("请填写您的学校名称", { section: "本科教育" })]);
+L0136 |   assert.equal(accept([pair(item, "education.master.university.zh")], [item]).accepted.length, 0);
+L0137 |   const englishFacts = factsFromProfile({ masterUniversity: "English University" }, "en");
+L0138 |   const [master] = planFor([field("请填写您的学校名称", { section: "硕士教育" })]);
+L0139 |   assert.equal(accept([pair(master, "education.master.university.en")], [master], englishFacts).accepted.length, 0);
+L0140 |   const [family] = planFor([field("父亲在哪家公司任职")]);
+L0141 |   const company = { id: "experience.internship.0.company.zh", entityId: "experience.internship.0", value: "公司甲", label: "实习1公司" };
+L0142 |   assert.equal(accept([pair(family, company.id)], [family], [company]).accepted.length, 0);
+L0143 | });
+L0144 | 
+L0145 | test("school-location, ranking and grade mismatches cannot become profile facts", () => {
+L0146 |   const source = factsFromProfile({ masterUniversityZh: "大学甲", masterMajorZh: "专业甲", masterDegreeZh: "硕士" }, "zh");
+L0147 |   for (const [label, factId] of [["学校所在地", "education.master.university.zh"], ["专业排名", "education.master.major.zh"], ["学位成绩", "education.master.degree.zh"]]) {
+L0148 |     const [item] = planFor([field(label, { section: "硕士教育" })], source);
+L0149 |     assert.equal(accept([pair(item, factId)], [item], source).accepted.length, 0);
+L0150 |   }
+L0151 | });
+L0152 | 
+L0153 | test("blocked questions stay manual even if AI chooses an existing fact", () => {
+L0154 |   for (const label of ["奖惩情况", "证件号码", "民族", "研究论文", "出生日期", "certificate number", "first name"]) {
+L0155 |     assert.equal(BLOCKED_LABEL.test(label), true);
+L0156 |     const [item] = planFor([field(label)]);
+L0157 |     assert.equal(accept([pair(item, "identity.full_name.zh")], [item]).accepted.length, 0);
+L0158 |   }
+L0159 | });
+L0160 | 
+L0161 | test("late pairing cannot overwrite a user's edit, filled field or changed candidate status", async () => {
+L0162 |   for (const change of [{ edited: true, answer: "人工答案" }, { value: "网页答案" }, { answer: "可靠本地答案", ruleConfidence: "high" }]) {
+L0163 |     const [item] = planFor([field("请填写您的学校名称")]);
+L0164 |     const raw = await requestPairing({ enabled: true, apiKey: "fixture", model: "fixture" }, [item], buildCatalog(facts, [], url, "zh"), "zh", undefined, async () => {
+L0165 |       Object.assign(item, change);
+L0166 |       return { ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify({ pairs: [pair(item, "education.master.university.zh")] }) }) };
+L0167 |     });
+L0168 |     assert.equal(acceptPairs(raw, [item], facts, [], { url, language: "zh", batchIds: new Set([item.fieldId]) }).accepted.length, 0);
+L0169 |   }
+L0170 | });
+L0171 | 
+L0172 | test("fact option pairing maps degree synonyms locally", () => {
+L0173 |   const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", type: "select-one", options: [{ id: "master", text: "Master's degree", disabled: false }] })]);
+L0174 |   const result = accept([pair(item, "education.master.degree.zh")], [item]);
+L0175 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, "Master's degree");
+L0176 | });
+L0177 | 
+L0178 | test("unmatched, duplicate, disabled and unread options yield explicit missing without a guess", () => {
+L0179 |   for (const options of [[], [{ text: "本科" }], [{ text: "硕士", disabled: true }], [{ text: "硕士" }, { text: "硕士" }]]) {
+L0180 |     const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", type: "select-one", options })]);
+L0181 |     item.answer = "旧答案";
+L0182 |     const result = accept([pair(item, "education.master.degree.zh")], [item]);
+L0183 |     assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
+L0184 |     assert.equal(result.accepted[0].answer, ""); assert.equal(result.accepted[0].selected, false);
+L0185 |     assert.match(result.accepted[0].reason, /资料里是「硕士」.*没有对应项/);
+L0186 |   }
+L0187 | });
+L0188 | 
+L0189 | test("a valid option exceeding the length constraint is rejected without claiming a missing option", () => {
+L0190 |   const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", options: [{ text: "硕士" }], constraints: { maxLength: 1 } })]);
+L0191 |   const result = accept([pair(item, "education.master.degree.zh")], [item]);
+L0192 |   assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /字数限制/);
+L0193 | });
+L0194 | 
+L0195 | test("month-only dates preserve precision and use the page's date format", () => {
+L0196 |   const [item] = planFor([field("请填写入学年月", { section: "硕士教育", kind: "date", type: "text", dateFormat: "YYYY.MM" })]);
+L0197 |   const result = accept([pair(item, "education.master.start_date")], [item]);
+L0198 |   assert.equal(result.accepted[0].answer, "2020.09");
+L0199 |   const requiringDay = { ...item, dateFormat: "YYYY-MM-DD" };
+L0200 |   assert.equal(accept([pair(requiringDay, "education.master.start_date")], [requiringDay]).accepted.length, 0);
+L0201 | });
+L0202 | 
+L0203 | test("splitName handles single and compound Chinese surnames and multi-part English names", () => {
+L0204 |   for (const [name, surname, given] of [["林示例", "林", "示例"], ["欧阳示例", "欧阳", "示例"], ["𠮷示例", "𠮷", "示例"], ["Shili Lin", "Lin", "Shili"], ["Shili Example Lin", "Lin", "Shili Example"]]) {
+L0205 |     assert.equal(splitName(name, "surname"), surname); assert.equal(splitName(name, "given_name"), given);
+L0206 |   }
+L0207 |   for (const name of ["", "林", "Lin"]) { assert.equal(splitName(name, "surname"), ""); assert.equal(splitName(name, "given_name"), ""); }
+L0208 |   assert.equal(splitName("林示例", "unknown"), "");
+L0209 | });
+L0210 | 
+L0211 | test("name transforms work only on the corresponding name-part questions", () => {
+L0212 |   for (const [label, transform, answer] of [["姓", "surname", "林"], ["名", "given_name", "示例"], ["surname", "surname", "林"], ["first name", "given_name", "示例"]]) {
+L0213 |     const [item] = planFor([field(label)]);
+L0214 |     assert.equal(accept([pair(item, "identity.full_name.zh", { transform })], [item]).accepted[0].answer, answer);
+L0215 |   }
+L0216 |   for (const [label, transform] of [["名", "surname"], ["姓", "given_name"], ["别的题", "surname"], ["last name", "given_name"], ["姓名", "surname"], ["first name (national id)", "given_name"]]) {
+L0217 |     const [item] = planFor([field(label)]);
+L0218 |     assert.equal(accept([pair(item, "identity.full_name.zh", { transform })], [item]).accepted.length, 0);
+L0219 |   }
+L0220 |   const [item] = planFor([field("姓")]);
+L0221 |   assert.equal(accept([pair(item, "contact.email", { transform: "surname" })], [item]).accepted.length, 0);
+L0222 |   for (const label of ["姓氏", "名字", "family name"]) {
+L0223 |     const [part] = planFor([field(label)]);
+L0224 |     assert.equal(accept([pair(part, "identity.full_name.zh")], [part]).accepted.length, 0);
+L0225 |   }
+L0226 | });
+L0227 | 
+L0228 | test("empty facts and invalid local values are rejected", () => {
+L0229 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0230 |   for (const value of ["", null, "   "]) {
+L0231 |     const source = facts.map((fact) => fact.id === "education.master.university.zh" ? { ...fact, value } : fact);
+L0232 |     assert.equal(accept([pair(item, "education.master.university.zh")], [item], source).accepted.length, 0);
+L0233 |   }
+L0234 |   const [email] = planFor([field("请填邮箱", { type: "email" })]);
+L0235 |   assert.equal(accept([pair(email, "contact.email")], [email], [{ ...facts.find((fact) => fact.id === "contact.email"), value: "invalid" }]).accepted.length, 0);
+L0236 | });
+L0237 | 
+L0238 | test("memory pairing uses the locally stored answer and stays under review", () => {
+L0239 |   const [item] = planFor([field("其他技能")]);
+L0240 |   const remembered = memory();
+L0241 |   const result = accept([pair(item, null, { source: "memory", memoryId: remembered.id })], [item], facts, [remembered]);
+L0242 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, remembered.answer);
+L0243 |   assert.equal(result.accepted[0].memoryVersion, remembered.updatedAt); assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
+L0244 | });
+L0245 | 
+L0246 | test("memory confirmation, language, subject, scope and full question meaning are rechecked locally", () => {
+L0247 |   const [item] = planFor([field("其他技能")]);
+L0248 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
+L0249 |   for (const change of [{ confirmed: false }, { language: "en" }, { entityId: "family.father" }, { scope: "https://example.com/other", scopeVersion: MEMORY_SCOPE_VERSION }, { scope: scopeFor(url) }, { question: "期望薪资" }, { answer: "" }]) {
+L0250 |     assert.equal(accept([proposal], [item], facts, [memory(change)]).accepted.length, 0);
+L0251 |   }
+L0252 |   assert.equal(accept([proposal], [item], facts, []).accepted.length, 0);
+L0253 | });
+L0254 | 
+L0255 | test("memory pairing can reuse a high-confidence local equivalent but rejects low-confidence and school-location aliases", () => {
+L0256 |   const [item] = planFor([field("学校名称", { section: "硕士教育" })], []);
+L0257 |   const remembered = memory({ question: "University", entityId: "education.master", answer: "大学乙" });
+L0258 |   const proposal = pair(item, null, { source: "memory", memoryId: remembered.id });
+L0259 |   assert.equal(accept([proposal], [item], facts, [remembered]).accepted[0].answer, "大学乙");
+L0260 |   const low = { ...item, label: "请填写您的学校名称", ruleConfidence: "low" };
+L0261 |   assert.equal(accept([proposal], [low], facts, [remembered]).accepted.length, 0);
+L0262 |   const wrong = { ...item, label: "学校所在地" };
+L0263 |   assert.equal(accept([{ ...proposal, fieldId: wrong.fieldId }], [wrong], facts, [remembered]).accepted.length, 0);
+L0264 | });
+L0265 | 
+L0266 | test("memory option answers map locally and cannot invent a missing selection", () => {
+L0267 |   const [item] = planFor([field("其他技能", { kind: "select", options: [{ text: "Yes" }, { text: "No" }] })]);
+L0268 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
+L0269 |   assert.equal(accept([proposal], [item], facts, [memory({ answer: "是" })]).accepted[0].answer, "Yes");
+L0270 |   const result = accept([proposal], [item], facts, [memory({ answer: "未知" })]);
+L0271 |   assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
+L0272 | });
+L0273 | 
+L0274 | test("multiple memory choices require a unique match for every requested option", () => {
+L0275 |   const [item] = planFor([field("其他技能", { kind: "checkboxes", constraints: { multiple: true }, options: [{ text: "Yes" }, { text: "No" }] })]);
+L0276 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
+L0277 |   assert.equal(accept([proposal], [item], facts, [memory({ answer: '["是","否"]' })]).accepted[0].answer, '["Yes","No"]');
+L0278 |   for (const answer of ['["是","Yes"]', '["是","未知"]', "是"]) {
+L0279 |     const result = accept([proposal], [item], facts, [memory({ answer })]);
+L0280 |     assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
+L0281 |   }
+L0282 | });
+L0283 | 
+L0284 | test("malformed sources, mixed references and transformations are rejected", () => {
+L0285 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0286 |   const good = pair(item, "education.master.university.zh");
+L0287 |   for (const change of [{ source: "invented" }, { transform: "invented" }, { memoryId: "m1" }, { source: "none" }, { source: "memory", memoryId: "m1" }, { transform: undefined }]) assert.equal(accept([{ ...good, ...change }], [item], facts, [memory()]).accepted.length, 0);
+L0288 |   assert.equal(accept([null], [item]).accepted.length, 0);
+L0289 | });
+L0290 | 
+L0291 | test("pairing request uses strict schema, configured model, no storage and a cancellable timeout", async () => {
+L0292 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0293 |   const controller = new AbortController();
+L0294 |   let sent;
+L0295 |   const result = await requestPairing({ enabled: true, apiKey: "fixture", model: "configured-model" }, [item], buildCatalog(facts, [], url, "zh"), "zh", controller.signal, async (endpoint, options) => {
+L0296 |     assert.equal(endpoint, "https://api.openai.com/v1/responses"); assert.equal(options.method, "POST");
+L0297 |     assert.equal(options.headers.Authorization, "Bearer fixture"); assert.ok(options.signal instanceof AbortSignal);
+L0298 |     controller.abort(); assert.equal(options.signal.aborted, true);
+L0299 |     sent = JSON.parse(options.body);
+L0300 |     return { ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "output_text", text: '{"pairs":[]}' }] }] }) };
+L0301 |   });
+L0302 |   assert.equal(sent.model, "configured-model"); assert.equal(sent.store, false); assert.equal(sent.max_output_tokens, 2500);
+L0303 |   assert.equal(sent.text.format.name, PAIRING_FORMAT); assert.equal(sent.text.format.strict, true);
+L0304 |   assert.deepEqual(sent.text.format.schema.properties.pairs.items.required, ["fieldId", "source", "factId", "memoryId", "transform"]);
+L0305 |   assert.deepEqual(result, { pairs: [] });
+L0306 | });
+L0307 | 
+L0308 | test("HTTP, incomplete, refusal, malformed JSON and missing lists surface Chinese errors", async () => {
+L0309 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0310 |   const invoke = (response) => requestPairing({ enabled: true, apiKey: "fixture", model: "fixture" }, [item], buildCatalog(facts, [], url, "zh"), "zh", undefined, async () => response);
+L0311 |   await assert.rejects(invoke({ ok: false, status: 429, json: async () => ({}) }), /请求受限/);
+L0312 |   await assert.rejects(invoke({ ok: false, status: 401, json: async () => ({}) }), /请求失败（401）/);
+L0313 |   for (const data of [{ status: "incomplete" }, { status: "failed" }, {}, null]) await assert.rejects(invoke({ ok: true, json: async () => data }), /未完成本批配对/);
+L0314 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "refusal" }] }] }) }), /未提供本批配对/);
+L0315 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output_text: "not json" }) }), /无法校验/);
+L0316 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output_text: '{"items":[]}' }) }), /缺少配对列表/);
+L0317 |   await assert.rejects(invoke({ ok: true, json: async () => { throw new Error("bad JSON"); } }), /无法校验/);
+L0318 | });
+L0319 | 
+L0320 | test("disabled settings fail and an empty candidate list performs no request", async () => {
+L0321 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0322 |   const catalog = buildCatalog(facts, [], url, "zh");
+L0323 |   for (const settings of [{ enabled: false, apiKey: "fixture" }, { enabled: true, apiKey: "" }]) await assert.rejects(requestPairing(settings, [item], catalog, "zh", undefined, () => assert.fail("must not request")), /请先/);
+L0324 |   const result = await requestPairing({ enabled: true, apiKey: "fixture" }, planFor([field("姓名")]), catalog, "zh", undefined, () => assert.fail("must not request"));
+L0325 |   assert.deepEqual(result, { pairs: [] });
+L0326 | });
+L0327 | 
+L0328 | test("high-confidence empty email and salary questions cannot be paired to a phone fact", () => {
+L0329 |   const phoneFacts = factsFromProfile({ phone: "13900007731" }, "zh");
+L0330 |   for (const label of ["邮箱", "期望薪资"]) {
+L0331 |     const [item] = planFor([field(label)], phoneFacts);
+L0332 |     assert.equal(item.answer, ""); assert.equal(item.ruleConfidence, "high");
+L0333 |     assert.equal(pairingCandidates([item]).length, 1);
+L0334 |     const result = accept([pair(item, "contact.phone")], [item], phoneFacts);
+L0335 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /明确的题意/);
+L0336 |     if (label === "期望薪资") assert.equal(item.sensitive, true);
+L0337 |   }
+L0338 | });
+L0339 | 
+L0340 | test("pairing preserves an existing sensitive designation even when its fact intent is ordinary", () => {
+L0341 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0342 |   item.sensitive = true;
+L0343 |   const result = accept([pair(item, "education.master.university.zh")], [item]);
+L0344 |   assert.equal(result.accepted[0].sensitive, true);
+L0345 | });
+L0346 | 
+L0347 | test("unknown repeated experience subjects cannot be supplied by a global alias memory", () => {
+L0348 |   const source = factsFromProfile({ internships: [{ companyZh: "公司甲" }, { companyZh: "公司乙" }] }, "zh");
+L0349 |   const items = planFor([field("公司", { fieldId: "company1", groupId: "internship1", section: "实习经历" }), field("公司", { fieldId: "company2", groupId: "internship2", section: "实习经历" })], source);
+L0350 |   const remembered = memory({ question: "公司名称", entityId: "experience.unknown", answer: "公司甲" });
+L0351 |   const result = accept(items.map((item) => pair(item, null, { source: "memory", memoryId: "m1" })), items, source, [remembered]);
+L0352 |   assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 2);
+L0353 |   assert.ok(result.errors.every((entry) => /尚未确定/.test(entry.reason)));
+L0354 |   assert.equal(buildCatalog(source, [remembered], url, "zh").memories.length, 0);
+L0355 |   assert.equal(accept(items.map(none), items, source, [remembered]).accepted.length, 2);
+L0356 | });
+L0357 | 
+L0358 | test("a current-salary question cannot borrow an expected-salary memory through a loose rule", () => {
+L0359 |   const [item] = planFor([field("Current salary")], []);
+L0360 |   const remembered = memory({ question: "Expected salary", answer: "面议" });
+L0361 |   const result = accept([pair(item, null, { source: "memory", memoryId: "m1" })], [item], [], [remembered]);
+L0362 |   assert.equal(item.ruleConfidence, "low"); assert.equal(result.accepted.length, 0);
+L0363 | });
+L0364 | 
+L0365 | test("splitting date parts validates the whole source date and cannot invent a missing day", () => {
+L0366 |   for (const [value, datePart] of [["2020-02-31", "year"], ["2020-13", "month"], ["2020-02", "day"]]) {
+L0367 |     const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value }];
+L0368 |     const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart, options: [{ text: "2020" }, { text: "13" }, { text: "1" }] })], source);
+L0369 |     const result = accept([pair(item, source[0].id)], [item], source);
+L0370 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /日期资料无效|缺少已确认的日/);
+L0371 |   }
+L0372 |   const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value: "2020-02-29" }];
+L0373 |   const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart: "day", options: [{ text: "29" }] })], source);
+L0374 |   assert.equal(accept([pair(item, source[0].id)], [item], source).accepted[0].answer, "29");
+L0375 | });
+L0376 | 
+L0377 | test("rephrased open prose can reuse a confirmed memory but requires a fresh selection", () => {
+L0378 |   const [item] = planFor([field("请举例说明你是如何解决问题的", { kind: "textarea", type: "textarea" })]);
+L0379 |   const remembered = memory({ question: "分享一个克服困难的经历", answer: "已确认的解决问题经历" });
+L0380 |   const raw = { pairs: [{ fieldId: item.fieldId, source: "memory", factId: null, memoryId: remembered.id, transform: "none" }] };
+L0381 |   const result = acceptPairs(raw, [item], facts, [remembered], { url, language: "zh", batchIds: new Set([item.fieldId]) });
+L0382 |   assert.equal(result.errors.length, 0);
+L0383 |   const matched = { ...item, selected: true, selectionExplicit: true, ...result.accepted[0] };
+L0384 |   assert.equal(finalizePreview([matched])[0].selected, false);
+L0385 |   assert.equal(finalizePreview([{ ...matched, selectionExplicit: true, selected: true }])[0].selected, true);
+L0386 |   for (const change of [{ confirmed: false }, { language: "en" }, { entityId: "education.master" }, { question: "期望薪资" }]) {
+L0387 |     const rejected = acceptPairs(raw, [item], facts, [{ ...remembered, ...change }], { url, language: "zh", batchIds: new Set([item.fieldId]) });
+L0388 |     assert.equal(rejected.accepted.length, 0);
+L0389 |   }
+L0390 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/aiProfileMemory.test.js
@@ -1813,50 +1843,3 @@ L0101 |   assert.equal(record.statusHistory.length, 1);
 L0102 |   assert.equal(record.source, "company_portal");
 L0103 | });
 L0104 | 
-L0105 | test("buildPreImportBackupFilename creates dated xlsx backup filename", () => {
-L0106 |   assert.equal(
-L0107 |     buildPreImportBackupFilename("2026-06-02"),
-L0108 |     "application-records-backup-before-import-2026-06-02.xlsx"
-L0109 |   );
-L0110 | });
-L0111 | 
-L0112 | test("buildWorkbookSheets places readable sheet before restore data sheet", () => {
-L0113 |   const sheets = buildWorkbookSheets([{
-L0114 |     id: "id-1",
-L0115 |     company: "Acme",
-L0116 |     role: "Analyst",
-L0117 |     base: "London",
-L0118 |     portalLink: "https://example.com/job",
-L0119 |     pageTitle: "Analyst - Acme",
-L0120 |     source: "company_portal",
-L0121 |     appliedDate: "2026-06-02",
-L0122 |     status: "applied",
-L0123 |     statusHistory: [{ status: "applied", date: "2026-06-02T10:00:00.000Z" }],
-L0124 |     nextActionDate: "",
-L0125 |     jdText: "",
-L0126 |     notes: "",
-L0127 |     createdAt: "2026-06-02T10:00:00.000Z",
-L0128 |     updatedAt: "2026-06-02T10:00:00.000Z"
-L0129 |   }]);
-L0130 | 
-L0131 |   assert.equal(sheets[0].name, "投递记录");
-L0132 |   assert.equal(sheets[0].hidden, 0);
-L0133 |   assert.equal(sheets[0].rows[0]["公司"], "Acme");
-L0134 |   assert.equal(sheets[1].name, "_restore_data");
-L0135 |   assert.equal(sheets[1].hidden, 2);
-L0136 |   assert.equal(sheets[1].rows[0].company, "Acme");
-L0137 | });
-L0138 | 
-L0139 | const excelNow = "2026-10-13T08:00:00.000Z";
-L0140 | const excelRecord = (id, now = excelNow) => ({ ...createRecord({ company: `示例公司 ${id}`, role: "分析师", portalLink: "微信内推", source: "referral", appliedDate: "2026-10-13", status: "applied", notes: "原备注" }, now), id });
-L0141 | function importSheets(sheets, now = "2026-10-14T08:00:00.000Z") {
-L0142 |   const workbook = { SheetNames: sheets.map((sheet) => sheet.name), Sheets: Object.fromEntries(sheets.map((sheet) => [sheet.name, sheet.rows])), Workbook: { Sheets: sheets.map((sheet) => ({ Hidden: sheet.hidden })) } };
-L0143 |   return workbookToImportedRecords(workbook, (rows) => rows, now);
-L0144 | }
-L0145 | 
-L0146 | test("visible Excel edits take precedence and stable IDs retain metadata after sorting", () => {
-L0147 |   const first = excelRecord("first"), second = excelRecord("second");
-L0148 |   const sheets = buildWorkbookSheets([first, second]);
-L0149 |   sheets[0].rows.reverse();
-L0150 |   sheets[0].rows[1]["备注"] = "Excel 修改后的备注";
-L0151 |   sheets[0].rows[1]["当前进度"] = "Offer";

@@ -1,6 +1,7 @@
 import { STATUSES } from "../constants.js";
 import { buildRecordDraft, recentJobChoices, recordStatus } from "../assistant/recordDraft.js";
 import { checkTarget } from "../assistant/session.js";
+import { cleanPortalUrl } from "../model.js";
 import { collectJobSignals } from "../jobInfo/collectSignals.js";
 import { extractJobInfo } from "../jobInfo/extractJobInfo.js";
 import { requestJobInfo, shouldRequestJobInfo } from "../jobInfo/aiJobInfo.js";
@@ -49,7 +50,7 @@ export function createRecordCard({ container, getSession, persist, isBusy, setBu
     aborter?.abort(); aborter = new AbortController();
     const signal = aborter.signal;
     if (!session || !snapshot || !current(session, snapshot, url)) return;
-    if (session.recordDraft?.portalLink !== url) {
+    if (!session.recordDraft || cleanPortalUrl(session.recordDraft.portalLink) !== cleanPortalUrl(url)) {
       invalidateDuplicateConfirmation();
       session.recordDraft = buildRecordDraft({ url, title: snapshot.title });
       session.recordEdited = {};
@@ -58,6 +59,7 @@ export function createRecordCard({ container, getSession, persist, isBusy, setBu
       delete session.recordInfo;
       delete session.recordError;
     }
+    session.recordDraft.portalLink = cleanPortalUrl(url);
     session.recordEdited ||= {};
     session.recordDraft.origin ||= { company: "", role: "" };
     const valid = () => run === preparation && current(session, snapshot, url) && !signal.aborted && !saving;

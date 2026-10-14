@@ -45,17 +45,29 @@ test("low confidence, location-only, absent info and unsafe URLs do not enter re
   assert.equal(storage.writes.length, 0);
 });
 
-test("recent jobs strip query, fragment and URL credentials before storage and deduplication", async () => {
+test("recent jobs strip private URL parts and retain different roles at a shared address", async () => {
   const storage = sessionStorage();
   await rememberJob(storage, "https://person:private@careers.example/jobs/1?token=secret#apply", jobInfo());
   await rememberJob(storage, "https://careers.example/jobs/2?tracking=1", jobInfo("另一公司", "助理"));
   await rememberJob(storage, "https://careers.example/jobs/1?token=other", jobInfo("新公司", "新岗位"));
   const jobs = await loadRecentJobs(storage);
-  assert.equal(jobs.length, 2);
+  assert.equal(jobs.length, 3);
   assert.equal(jobs[0].url, "https://careers.example/jobs/1");
   assert.equal(jobs[0].company, "新公司");
   assert.equal(jobs[1].url, "https://careers.example/jobs/2");
+  assert.equal(jobs[2].role, "分析师");
   assert.doesNotMatch(JSON.stringify(storage.values), /token|private|person|secret|tracking/);
+});
+
+test("recent jobs keep SPA job routes and business IDs without login tokens", async () => {
+  const storage = sessionStorage();
+  await rememberJob(storage, "https://careers.example/apply?jobId=1&token=secret#/job/1?ticket=secret", jobInfo("公司", "同名岗位"));
+  await rememberJob(storage, "https://careers.example/apply?jobId=2&token=secret#/job/2", jobInfo("公司", "同名岗位"));
+  const jobs = await loadRecentJobs(storage);
+  assert.equal(jobs.length, 2);
+  assert.equal(jobs[0].url, "https://careers.example/apply?jobId=2#/job/2");
+  assert.equal(jobs[1].url, "https://careers.example/apply?jobId=1#/job/1");
+  assert.doesNotMatch(JSON.stringify(jobs), /secret|ticket|token/);
 });
 
 test("recent jobs retain the latest twenty URL identities", async () => {

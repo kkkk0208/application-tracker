@@ -59,6 +59,22 @@ try {
   const action = (snapshot, field, value, extra = {}) => tracked(page.evaluate(pageBridge, { action: "fill", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, operationId: crypto.randomUUID(), value, ...extra }));
   const inspect = (snapshot, field, extra = {}) => tracked(page.evaluate(pageBridge, { action: "inspect-options", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, ...extra }));
   const stateValue = (id) => page.evaluate((key) => window.fixtureValues[key], id);
+  const holdOptionsUntilUserEdit = () => page.evaluate(() => {
+    const selector = '.ant-select-dropdown,.ant-cascader-menus,.el-select-dropdown,.el-cascader__dropdown';
+    const mark = () => document.querySelectorAll(selector).forEach((menu) => menu.setAttribute("aria-busy", "true"));
+    const observer = new MutationObserver(mark);
+    observer.observe(document.body, { subtree: true, childList: true });
+    const finish = (event) => {
+      if (!event.isTrusted) return;
+      observer.disconnect();
+      document.querySelectorAll(selector).forEach((menu) => menu.removeAttribute("aria-busy"));
+      document.removeEventListener("input", finish, true);
+      document.removeEventListener("click", finish, true);
+    };
+    document.addEventListener("input", finish, true);
+    document.addEventListener("click", finish, true);
+    mark();
+  });
   const menus = '.ant-select-dropdown:visible, .ant-cascader-menus:visible, .ant-picker-dropdown:visible, .ant-calendar-picker-container:visible, .el-select-dropdown:visible, .el-cascader__dropdown:visible, .el-picker-panel:visible';
   const menusClosed = async () => assert.equal(await page.locator(menus).count(), 0, "Opened component menus must close again");
   const encoded = (value) => Array.isArray(value) ? JSON.stringify(value) : value;
@@ -135,15 +151,17 @@ try {
     }
     await check(library, "degree manual choice during option loading stops automation", async () => {
       const snapshot = await fixture(library);
+      await holdOptionsUntilUserEdit();
       const pending = action(snapshot, fieldFor(snapshot, "学历"), "硕士");
       const option = page.locator(".ant-select-dropdown-menu-item:visible, .ant-select-item-option:visible, .el-select-dropdown__item:visible").filter({ hasText: /^本科$/ }).first();
-      await option.click({ force: true });
+      await option.click();
       const result = await pending;
       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
       assert.equal(await stateValue("degree"), "本科");
     });
     await check(library, "location manual path choice stops automation", async () => {
       const snapshot = await fixture(library);
+      await holdOptionsUntilUserEdit();
       const pending = action(snapshot, fieldFor(snapshot, "所在地"), JSON.stringify(["广东省", "深圳市", "南山区"]));
       const options = () => page.locator(".ant-cascader-menu-item:visible, .el-cascader-node:visible");
       await options().filter({ hasText: /^广东省$/ }).first().click();
@@ -166,6 +184,7 @@ try {
     });
     await check(library, "school manual search during inspection is preserved", async () => {
       const snapshot = await fixture(library);
+      await holdOptionsUntilUserEdit();
       const pending = inspect(snapshot, fieldFor(snapshot, "学校"), { query: "星海" });
       const search = page.locator('[data-fixture-field="school"] input:not([readonly])').first();
       await page.waitForFunction(() => [...document.querySelectorAll('[data-fixture-field="school"] input')].some((input) => input.value === "星海"));

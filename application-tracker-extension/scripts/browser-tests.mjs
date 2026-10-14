@@ -299,5 +299,14 @@ try {
     assert.equal(result.status, "verified"); assert.equal(result.retries, 1);
     assert.equal(await page.locator("#degree").getAttribute("data-attempts"), "2");
   });
+  await check("a native radio group reads its internal prompt without absorbing the option labels", async () => {
+    const s = await fixture('<div><span>是否接受调剂</span><label><input type="radio" name="a">是</label><label><input type="radio" name="a">否</label></div>');
+    assert.equal(s.fields.length, 1);
+    assert.equal(s.fields[0].label, "是否接受调剂");
+    assert.equal(s.fields[0].labelSource, "nearby");
+    assert.equal(s.fields[0].supported, true);
+    const result = await action(s, s.fields[0], "是");
+    assert.equal(result.status, "verified");
+  });
   console.log(`Browser cases passed: ${passed}`);
 } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }

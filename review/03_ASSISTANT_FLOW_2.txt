@@ -1,290 +1,337 @@
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/assistant.js (continued)
-SHA256: a907328620686212d6b0a53a0178fde4145b5d63bdd723462c5463bf85cc63a4
-L0658 | $("saveResults").addEventListener("click", () => {
-L0659 |   if (busy || !session) return;
-L0660 |   const latest = new Map();
-L0661 |   for (const result of session.results) if (result.status === "verified" && !result.undone) latest.set(result.fieldId, result);
-L0662 |   showLearning([...latest.values()].map((result) => ({ ...session.plan.find((item) => item.fieldId === result.fieldId), ...result })));
-L0663 |   $("learnPreview").scrollIntoView({ behavior: "smooth" });
-L0664 | });
-L0665 | chrome.tabs.onActivated.addListener(run(tabNotice));
-L0666 | chrome.tabs.onUpdated.addListener((id, change) => {
-L0667 |   if (id === targetId && (change.url || change.status === "loading") && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("目标页面已变化，请重新识别当前步骤。"); }
-L0668 | });
-L0669 | chrome.storage.onChanged.addListener((changes, area) => {
-L0670 |   if (area === "local" && changes[AI_SETTINGS_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("AI 设置已更新，请重新识别以使用新设置。"); }
-L0671 |   if (area === "local" && changes[PROFILE_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("个人信息已更新，请重新识别以使用最新资料。"); }
-L0672 |   if (area === "local" && changes[MEMORY_KEY] && session?.memoryVersion) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("问答记忆已更新，请更新问题以使用最新答案。"); }
-L0673 |   if (area === "local" && changes[STORAGE_KEY]) void recordCard.render();
-L0674 | });
-L0675 | run(async () => {
-L0676 |   windowId = (await chrome.windows.getCurrent()).id;
-L0677 |   const data = await chrome.storage.session.get(targetKey());
-L0678 |   targetId = data[targetKey()];
-L0679 |   session = await loadSession(windowId);
-L0680 |   if (session?.tabId !== targetId) session = null;
-L0681 |   facts = factsFromProfile(await getProfile(), session?.language || "zh");
-L0682 |   if (session?.snapshot) {
-L0683 |     try { await checkTarget(session.snapshot); } catch { session.stale = true; }
-L0684 |     if (session.schemaVersion !== SESSION_VERSION || versionOf(await getMemories()) !== session.memoryVersion) session.stale = true;
-L0685 |     if (versionOf(await getProfile()) !== session.profileVersion) session.stale = true;
-L0686 |     const settings = await getAiSettings();
-L0687 |     if (versionOf(settings) !== session.settingsVersion) session.stale = true;
-L0688 |     session.aiEnabled = settings.enabled && !!settings.apiKey;
-L0689 |     if (!session.stale && !session.recordDraft) void recordCard.prepare(session.snapshot, settings);
-L0690 |     if (session.pending && !session.stale) {
-L0691 |       const pending = session.pending;
-L0692 |       const item = session.plan.find((p) => p.fieldId === pending.fieldId);
-L0693 |       try {
-L0694 |         const result = await fieldAction(session.snapshot, item, "operation-result", { operationId: pending.operationId });
-L0695 |         if (!pending.undo && (result.status === "verified" || canUndo(result))) {
-L0696 |           if (!session.results.some((entry) => entry.operationId === pending.operationId)) session.results.push({ ...result, ...pending });
-L0697 |           item.value = result.after; item.status = "filled"; item.selected = false;
-L0698 |         } else if (pending.undo && pending.undoOf && result.status === "verified") {
-L0699 |           const entry = session.results.find((entry) => entry.operationId === pending.undoOf);
-L0700 |           if (entry) { entry.undone = true; entry.undoReason = result.reason; item.value = entry.before || ""; item.status = item.value ? "filled" : "review"; }
-L0701 |           else session.stale = true;
-L0702 |         } else session.stale = true;
-L0703 |       } catch { session.stale = true; }
-L0704 |       session.pending = null;
-L0705 |       await persist();
-L0706 |       tell("已恢复上次结果，请核对后继续；未确认的操作不会自动重试。");
-L0707 |     }
-L0708 |   }
-L0709 |   if (!targetId) await bindCurrent();
-L0710 |   else { render(); setBusy(false); await tabNotice(); }
-L0711 | })();
-L0712 | 
-L0713 | let checkingChanges = false;
-L0714 | setInterval(async () => {
-L0715 |   if (busy || checkingChanges || !session?.snapshot || session.stale || document.hidden) return;
-L0716 |   checkingChanges = true;
-L0717 |   const checkedSession = session;
-L0718 |   const checkedSnapshot = session.snapshot;
-L0719 |   try {
-L0720 |     const changes = await pageChanges(checkedSnapshot);
-L0721 |     if (busy || session !== checkedSession || session.snapshot !== checkedSnapshot) return;
-L0722 |     const changeSignature = JSON.stringify(changes);
-L0723 |     if ((changes.added || changes.changed.length) && session.changeSignature !== changeSignature) {
-L0724 |       clearDraftConfirmation();
-L0725 |       session.changeSignature = changeSignature;
-L0726 |       for (const item of session.plan) if (changes.changed.includes(item.fieldId) && item.status !== "filled") {
-L0727 |         item.selected = false; item.supported = false; item.status = "unsupported"; item.reason = "字段已变化，请重新识别";
-L0728 |       }
-L0729 |       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点“更新”查看后再统一确认。`);
-L0730 |       render();
-L0731 |     }
-L0732 |   } catch {
-L0733 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
-L0734 |       clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell("目标页面已变化，请重新识别。");
-L0735 |     }
-L0736 |   }
-L0737 |   finally { checkingChanges = false; }
-L0738 | }, 2500);
-L0739 | window.addEventListener("pagehide", () => { clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel(); });
+SHA256: dc638015dd0112a31a19a457d8c56cab91a50e0ef6c34e11068a6631898d335f
+L0620 |     if (!session?.snapshot || session.stale) return;
+L0621 |     const item = session.plan.find((candidate) => candidate.fieldId === draftButton.closest("[data-id]")?.dataset.id);
+L0622 |     if (!item) return;
+L0623 |     if (draftButton.hasAttribute("data-draft-cancel")) { clearDraftConfirmation(); render(); return; }
+L0624 |     if (draftButton.hasAttribute("data-draft-send")) await sendDraft(item);
+L0625 |     else await confirmDraft(item);
+L0626 |     return;
+L0627 |   }
+L0628 |   const toggle = event.target.closest("[data-group-toggle]");
+L0629 |   if (toggle && session) {
+L0630 |     const id = toggle.dataset.groupToggle;
+L0631 |     const opened = new Set(session.openGroups || ["attention"]);
+L0632 |     if (opened.has(id)) opened.delete(id); else opened.add(id);
+L0633 |     session.openGroups = [...opened]; session.showAll = false;
+L0634 |     render(); await persist(); return;
+L0635 |   }
+L0636 |   if (event.target.closest("[data-more-toggle]") && session) {
+L0637 |     session.attentionMore = !session.attentionMore;
+L0638 |     if (!session.attentionMore) session.showAll = false;
+L0639 |     render(); await persist(); return;
+L0640 |   }
+L0641 |   const source = event.target.closest("[data-source-toggle]");
+L0642 |   if (source && session) {
+L0643 |     const card = source.closest("[data-id]");
+L0644 |     const opened = new Set(session.sourceOpen || []);
+L0645 |     if (opened.has(card.dataset.id)) opened.delete(card.dataset.id); else opened.add(card.dataset.id);
+L0646 |     session.sourceOpen = [...opened]; card.classList.toggle("source-open", opened.has(card.dataset.id));
+L0647 |     await persist(); return;
+L0648 |   }
+L0649 |   if (!event.target.matches("[data-locate]")) return;
+L0650 |   const item = session.plan.find((p) => p.fieldId === event.target.closest("[data-id]").dataset.id);
+L0651 |   await chrome.tabs.update(targetId, { active: true });
+L0652 |   await fieldAction(session.snapshot, item, "locate");
+L0653 | }));
+L0654 | $("questions").addEventListener("keydown", (event) => {
+L0655 |   if (event.target.matches("[data-source-toggle]") && ["Enter", " "].includes(event.key)) { event.preventDefault(); event.target.click(); }
+L0656 | });
+L0657 | $("resultList").addEventListener("click", run(async (event) => {
+L0658 |   const button = event.target.closest("[data-result-locate]");
+L0659 |   if (!button || busy || !session?.snapshot) return;
+L0660 |   const item = session.plan.find((p) => p.fieldId === button.dataset.resultLocate);
+L0661 |   if (!item) return;
+L0662 |   await chrome.tabs.update(targetId, { active: true });
+L0663 |   await fieldAction(session.snapshot, item, "locate");
+L0664 | }));
+L0665 | $("saveResults").addEventListener("click", () => {
+L0666 |   if (busy || !session) return;
+L0667 |   const latest = new Map();
+L0668 |   for (const result of session.results) if (result.status === "verified" && !result.undone) latest.set(result.fieldId, result);
+L0669 |   showLearning([...latest.values()].map((result) => ({ ...session.plan.find((item) => item.fieldId === result.fieldId), ...result })));
+L0670 |   $("learnPreview").scrollIntoView({ behavior: "smooth" });
+L0671 | });
+L0672 | chrome.tabs.onActivated.addListener(run(tabNotice));
+L0673 | chrome.tabs.onUpdated.addListener((id, change) => {
+L0674 |   if (id === targetId && (change.url || change.status === "loading") && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("目标页面已变化，请重新识别当前步骤。"); }
+L0675 | });
+L0676 | chrome.storage.onChanged.addListener((changes, area) => {
+L0677 |   if (area === "local" && changes[AI_SETTINGS_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("AI 设置已更新，请重新识别以使用新设置。"); }
+L0678 |   if (area === "local" && changes[PROFILE_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("个人信息已更新，请重新识别以使用最新资料。"); }
+L0679 |   if (area === "local" && changes[MEMORY_KEY] && session?.memoryVersion) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("问答记忆已更新，请更新问题以使用最新答案。"); }
+L0680 |   if (area === "local" && changes[STORAGE_KEY]) void recordCard.render();
+L0681 | });
+L0682 | run(async () => {
+L0683 |   windowId = (await chrome.windows.getCurrent()).id;
+L0684 |   const data = await chrome.storage.session.get(targetKey());
+L0685 |   targetId = data[targetKey()];
+L0686 |   session = await loadSession(windowId);
+L0687 |   if (session?.tabId !== targetId) session = null;
+L0688 |   facts = factsFromProfile(await getProfile(), session?.language || "zh");
+L0689 |   if (session?.snapshot) {
+L0690 |     try { await checkTarget(session.snapshot); } catch { session.stale = true; }
+L0691 |     if (session.schemaVersion !== SESSION_VERSION || versionOf(await getMemories()) !== session.memoryVersion) session.stale = true;
+L0692 |     if (versionOf(await getProfile()) !== session.profileVersion) session.stale = true;
+L0693 |     const settings = await getAiSettings();
+L0694 |     if (versionOf(settings) !== session.settingsVersion) session.stale = true;
+L0695 |     session.aiEnabled = settings.enabled && !!settings.apiKey;
+L0696 |     if (!session.stale && !session.recordDraft) void recordCard.prepare(session.snapshot, settings);
+L0697 |     if (session.pending && !session.stale) {
+L0698 |       const pending = session.pending;
+L0699 |       const item = session.plan.find((p) => p.fieldId === pending.fieldId);
+L0700 |       try {
+L0701 |         const result = await fieldAction(session.snapshot, item, "operation-result", { operationId: pending.operationId });
+L0702 |         if (!pending.undo && (result.status === "verified" || canUndo(result))) {
+L0703 |           if (!session.results.some((entry) => entry.operationId === pending.operationId)) session.results.push({ ...result, ...pending });
+L0704 |           item.value = result.after; item.status = "filled"; item.selected = false;
+L0705 |         } else if (pending.undo && pending.undoOf && result.status === "verified") {
+L0706 |           const entry = session.results.find((entry) => entry.operationId === pending.undoOf);
+L0707 |           if (entry) { entry.undone = true; entry.undoReason = result.reason; item.value = entry.before || ""; item.status = item.value ? "filled" : "review"; }
+L0708 |           else session.stale = true;
+L0709 |         } else session.stale = true;
+L0710 |       } catch { session.stale = true; }
+L0711 |       session.pending = null;
+L0712 |       await persist();
+L0713 |       tell("已恢复上次结果，请核对后继续；未确认的操作不会自动重试。");
+L0714 |     }
+L0715 |   }
+L0716 |   if (!targetId) await bindCurrent();
+L0717 |   else { render(); setBusy(false); await tabNotice(); }
+L0718 | })();
+L0719 | 
+L0720 | let checkingChanges = false;
+L0721 | setInterval(async () => {
+L0722 |   if (busy || checkingChanges || !session?.snapshot || session.stale || document.hidden) return;
+L0723 |   checkingChanges = true;
+L0724 |   const checkedSession = session;
+L0725 |   const checkedSnapshot = session.snapshot;
+L0726 |   try {
+L0727 |     const changes = await pageChanges(checkedSnapshot);
+L0728 |     if (busy || session !== checkedSession || session.snapshot !== checkedSnapshot) return;
+L0729 |     const changeSignature = JSON.stringify(changes);
+L0730 |     if ((changes.added || changes.changed.length) && session.changeSignature !== changeSignature) {
+L0731 |       clearDraftConfirmation();
+L0732 |       session.changeSignature = changeSignature;
+L0733 |       for (const item of session.plan) if (changes.changed.includes(item.fieldId) && item.status !== "filled") {
+L0734 |         item.selected = false; item.supported = false; item.status = "unsupported"; item.reason = "字段已变化，请重新识别";
+L0735 |       }
+L0736 |       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点“更新”查看后再统一确认。`);
+L0737 |       render();
+L0738 |     }
+L0739 |   } catch {
+L0740 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
+L0741 |       clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell("目标页面已变化，请重新识别。");
+L0742 |     }
+L0743 |   }
+L0744 |   finally { checkingChanges = false; }
+L0745 | }, 2500);
+L0746 | window.addEventListener("pagehide", () => { clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel(); });
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/recordCard.js
-SHA256: 4b9776298f05e7059aea161904886a18ded5af48748ab0c2395d1117d393d918
+SHA256: 0a97c75a623b64cbef8924955b05e5b4e661e3ce5b2edf7050161cde4dbc6fb6
 L0001 | import { STATUSES } from "../constants.js";
 L0002 | import { buildRecordDraft, recentJobChoices, recordStatus } from "../assistant/recordDraft.js";
 L0003 | import { checkTarget } from "../assistant/session.js";
-L0004 | import { collectJobSignals } from "../jobInfo/collectSignals.js";
-L0005 | import { extractJobInfo } from "../jobInfo/extractJobInfo.js";
-L0006 | import { requestJobInfo, shouldRequestJobInfo } from "../jobInfo/aiJobInfo.js";
-L0007 | import { loadRecentJobs, rememberJob } from "../jobInfo/recentJobs.js";
-L0008 | import { getRecords, saveNewRecord } from "../storage.js";
-L0009 | 
-L0010 | const text = (value) => typeof value === "string" ? value.trim() : "";
-L0011 | const escape = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-L0012 | 
-L0013 | export function createRecordCard({ container, getSession, persist, isBusy, setBusy, tell }) {
-L0014 |   let preparation = 0, rendering = 0, saving = false, aborter, shownDuplicateConfirmation = null;
-L0015 |   const current = (session, snapshot, url) => getSession() === session && session.snapshot === snapshot && snapshot.url === url && !session.stale;
-L0016 |   const persistSafely = async (session = getSession(), saved = false) => {
-L0017 |     try { await persist(); return true; }
-L0018 |     catch {
-L0019 |       if (getSession() === session) {
-L0020 |         session.recordError = saved ? "已记录，恢复状态暂存失败" : "投递草稿暂存失败，关闭侧栏后可能丢失";
-L0021 |         tell(session.recordError);
-L0022 |       }
-L0023 |       return false;
-L0024 |     }
-L0025 |   };
-L0026 |   const statusName = (status) => STATUSES.find((item) => item.key === status)?.label || status;
-L0027 |   const duplicateConfirmation = (draft, duplicate) => JSON.stringify([
-L0028 |     text(draft.company), text(draft.role), text(draft.portalLink), duplicate.reason,
-L0029 |     duplicate.record.id || [duplicate.record.company, duplicate.record.role, duplicate.record.portalLink]
-L0030 |   ]);
-L0031 |   const invalidateDuplicateConfirmation = () => {
-L0032 |     shownDuplicateConfirmation = null;
-L0033 |     rendering++;
-L0034 |     const button = container.querySelector("#saveRecordAnyway");
-L0035 |     if (button) button.disabled = true;
-L0036 |   };
-L0037 | 
-L0038 |   function supplement(session, info, ai = false) {
-L0039 |     for (const key of ["company", "role", "base"]) {
-L0040 |       if (saving || session.recordSaved || session.recordEdited?.[key] || text(session.recordDraft[key]) || !text(info[key])) continue;
-L0041 |       if (!["high", "medium"].includes(ai ? info.confidence : info.confidence?.[key])) continue;
-L0042 |       session.recordDraft[key] = text(info[key]);
-L0043 |       if (key !== "base") session.recordDraft.origin[key] = ai ? "AI 识别，请核对" : text(info.source?.[key]);
-L0044 |     }
-L0045 |   }
-L0046 | 
-L0047 |   async function prepare(snapshot, settings) {
-L0048 |     const session = getSession(), run = ++preparation, url = snapshot?.url;
-L0049 |     aborter?.abort(); aborter = new AbortController();
-L0050 |     const signal = aborter.signal;
-L0051 |     if (!session || !snapshot || !current(session, snapshot, url)) return;
-L0052 |     if (session.recordDraft?.portalLink !== url) {
-L0053 |       invalidateDuplicateConfirmation();
-L0054 |       session.recordDraft = buildRecordDraft({ url, title: snapshot.title });
-L0055 |       session.recordEdited = {};
-L0056 |       session.recentJobs = [];
-L0057 |       delete session.recordSaved;
-L0058 |       delete session.recordInfo;
-L0059 |       delete session.recordError;
-L0060 |     }
-L0061 |     session.recordEdited ||= {};
-L0062 |     session.recordDraft.origin ||= { company: "", role: "" };
-L0063 |     const valid = () => run === preparation && current(session, snapshot, url) && !signal.aborted && !saving;
-L0064 |     await persistSafely();
-L0065 |     try {
-L0066 |       await checkTarget(snapshot);
-L0067 |       if (!valid()) return;
-L0068 |       const [response] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, frameIds: [0] }, func: collectJobSignals });
+L0004 | import { cleanPortalUrl } from "../model.js";
+L0005 | import { collectJobSignals } from "../jobInfo/collectSignals.js";
+L0006 | import { extractJobInfo } from "../jobInfo/extractJobInfo.js";
+L0007 | import { requestJobInfo, shouldRequestJobInfo } from "../jobInfo/aiJobInfo.js";
+L0008 | import { loadRecentJobs, rememberJob } from "../jobInfo/recentJobs.js";
+L0009 | import { getRecords, saveNewRecord } from "../storage.js";
+L0010 | 
+L0011 | const text = (value) => typeof value === "string" ? value.trim() : "";
+L0012 | const escape = (value) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+L0013 | 
+L0014 | export function createRecordCard({ container, getSession, persist, isBusy, setBusy, tell }) {
+L0015 |   let preparation = 0, rendering = 0, saving = false, aborter, shownDuplicateConfirmation = null;
+L0016 |   const current = (session, snapshot, url) => getSession() === session && session.snapshot === snapshot && snapshot.url === url && !session.stale;
+L0017 |   const persistSafely = async (session = getSession(), saved = false) => {
+L0018 |     try { await persist(); return true; }
+L0019 |     catch {
+L0020 |       if (getSession() === session) {
+L0021 |         session.recordError = saved ? "已记录，恢复状态暂存失败" : "投递草稿暂存失败，关闭侧栏后可能丢失";
+L0022 |         tell(session.recordError);
+L0023 |       }
+L0024 |       return false;
+L0025 |     }
+L0026 |   };
+L0027 |   const statusName = (status) => STATUSES.find((item) => item.key === status)?.label || status;
+L0028 |   const duplicateConfirmation = (draft, duplicate) => JSON.stringify([
+L0029 |     text(draft.company), text(draft.role), text(draft.portalLink), duplicate.reason,
+L0030 |     duplicate.record.id || [duplicate.record.company, duplicate.record.role, duplicate.record.portalLink]
+L0031 |   ]);
+L0032 |   const invalidateDuplicateConfirmation = () => {
+L0033 |     shownDuplicateConfirmation = null;
+L0034 |     rendering++;
+L0035 |     const button = container.querySelector("#saveRecordAnyway");
+L0036 |     if (button) button.disabled = true;
+L0037 |   };
+L0038 | 
+L0039 |   function supplement(session, info, ai = false) {
+L0040 |     for (const key of ["company", "role", "base"]) {
+L0041 |       if (saving || session.recordSaved || session.recordEdited?.[key] || text(session.recordDraft[key]) || !text(info[key])) continue;
+L0042 |       if (!["high", "medium"].includes(ai ? info.confidence : info.confidence?.[key])) continue;
+L0043 |       session.recordDraft[key] = text(info[key]);
+L0044 |       if (key !== "base") session.recordDraft.origin[key] = ai ? "AI 识别，请核对" : text(info.source?.[key]);
+L0045 |     }
+L0046 |   }
+L0047 | 
+L0048 |   async function prepare(snapshot, settings) {
+L0049 |     const session = getSession(), run = ++preparation, url = snapshot?.url;
+L0050 |     aborter?.abort(); aborter = new AbortController();
+L0051 |     const signal = aborter.signal;
+L0052 |     if (!session || !snapshot || !current(session, snapshot, url)) return;
+L0053 |     if (!session.recordDraft || cleanPortalUrl(session.recordDraft.portalLink) !== cleanPortalUrl(url)) {
+L0054 |       invalidateDuplicateConfirmation();
+L0055 |       session.recordDraft = buildRecordDraft({ url, title: snapshot.title });
+L0056 |       session.recordEdited = {};
+L0057 |       session.recentJobs = [];
+L0058 |       delete session.recordSaved;
+L0059 |       delete session.recordInfo;
+L0060 |       delete session.recordError;
+L0061 |     }
+L0062 |     session.recordDraft.portalLink = cleanPortalUrl(url);
+L0063 |     session.recordEdited ||= {};
+L0064 |     session.recordDraft.origin ||= { company: "", role: "" };
+L0065 |     const valid = () => run === preparation && current(session, snapshot, url) && !signal.aborted && !saving;
+L0066 |     await persistSafely();
+L0067 |     try {
+L0068 |       await checkTarget(snapshot);
 L0069 |       if (!valid()) return;
-L0070 |       const main = snapshot.frames.find((frame) => frame.frameId === 0);
-L0071 |       if (!main?.documentId || response?.documentId !== main.documentId) return;
-L0072 |       await checkTarget(snapshot);
-L0073 |       if (!valid()) return;
-L0074 |       const signals = response?.result || {};
-L0075 |       const info = extractJobInfo(signals);
-L0076 |       session.recordInfo = info;
-L0077 |       supplement(session, info);
-L0078 |       await rememberJob(chrome.storage.session, url, info);
-L0079 |       if (!valid()) return;
-L0080 |       let hostname = ""; try { hostname = new URL(url).hostname; } catch { /* Manual draft remains available. */ }
-L0081 |       const recent = await loadRecentJobs(chrome.storage.session);
-L0082 |       if (!valid()) return;
-L0083 |       session.recentJobs = recentJobChoices(recent, hostname);
-L0084 |       await persistSafely();
-L0085 |       void render();
-L0086 |       if (!shouldRequestJobInfo(settings, info)) return;
-L0087 |       const ai = await requestJobInfo(settings, signals, signal);
-L0088 |       if (!valid() || !ai || !["high", "medium"].includes(ai.confidence)) return;
-L0089 |       await checkTarget(snapshot);
-L0090 |       if (!valid()) return;
-L0091 |       supplement(session, ai, true);
-L0092 |       await persistSafely();
-L0093 |       void render();
-L0094 |     } catch {
-L0095 |       // Job extraction is optional and must never block the filling preview.
-L0096 |       if (valid()) { await persistSafely(); void render(); }
-L0097 |     }
-L0098 |   }
-L0099 | 
-L0100 |   async function render() {
-L0101 |     const session = getSession(), run = ++rendering;
-L0102 |     container.hidden = !session?.results?.length;
-L0103 |     if (container.hidden || !session.recordDraft) { shownDuplicateConfirmation = null; container.innerHTML = ""; return; }
-L0104 |     if (!saving && !session.recordSaved && ["recordCompany", "recordRole"].includes(container.ownerDocument?.activeElement?.id)) return;
-L0105 |     if (session.recordSaved) {
-L0106 |       shownDuplicateConfirmation = null;
-L0107 |       container.innerHTML = `<h2>提交后记一笔</h2><p>已记录 ✓ · <a href="../records/records.html" target="_blank">在列表中查看</a></p>${session.recordError ? `<p data-record-error role="status">${escape(session.recordError)}</p>` : ""}`;
-L0108 |       return;
-L0109 |     }
-L0110 |     let records = [];
-L0111 |     try { records = await getRecords(); } catch { /* Saving performs a fresh read and reports failures inline. */ }
-L0112 |     if (run !== rendering || getSession() !== session || session.recordSaved || !saving && ["recordCompany", "recordRole"].includes(container.ownerDocument?.activeElement?.id)) return;
-L0113 |     const draft = session.recordDraft;
-L0114 |     const duplicate = recordStatus(draft, records).duplicate;
-L0115 |     shownDuplicateConfirmation = duplicate ? duplicateConfirmation(draft, duplicate) : null;
-L0116 |     const disabled = saving || isBusy() ? "disabled" : "";
-L0117 |     const recent = !text(draft.role) && session.recentJobs?.length
-L0118 |       ? `<label>用最近看过的岗位<select id="recordRecent" ${disabled}><option value="">请选择最近识别的岗位</option>${session.recentJobs.map((job, index) => `<option value="${index}">${escape([job.company, job.role, job.base].filter(Boolean).join(" · "))}</option>`).join("")}</select></label>` : "";
-L0119 |     const action = duplicate
-L0120 |       ? `<p>已记录过：${escape(duplicate.record.company)} · ${escape(duplicate.record.role)}（${escape(statusName(duplicate.record.status))}） <a href="../records/records.html" target="_blank">查看</a></p><button id="saveRecordAnyway" type="button" ${disabled}>仍然记录</button>`
-L0121 |       : `<button id="saveRecord" type="button" ${disabled}>记录投递</button>`;
-L0122 |     container.innerHTML = `<h2>提交后记一笔</h2><label>公司<input id="recordCompany" value="${escape(draft.company)}" ${disabled}></label><label>岗位<input id="recordRole" value="${escape(draft.role)}" ${disabled}></label><p class="hint" data-record-origin>${escape([draft.origin?.company, draft.origin?.role].filter(Boolean).join(" · "))}</p>${recent}${action}<p data-record-error role="status" ${session.recordError ? "" : "hidden"}>${escape(session.recordError || "")}</p>`;
-L0123 |   }
-L0124 | 
-L0125 |   container.addEventListener("input", (event) => {
-L0126 |     const key = { recordCompany: "company", recordRole: "role" }[event.target.id];
-L0127 |     const session = getSession();
-L0128 |     if (!key || !session?.recordDraft || session.recordSaved || saving || isBusy()) return;
-L0129 |     invalidateDuplicateConfirmation();
-L0130 |     session.recordDraft[key] = event.target.value;
-L0131 |     session.recordEdited ||= {}; session.recordEdited[key] = true;
-L0132 |     session.recordDraft.origin ||= {}; session.recordDraft.origin[key] = "手动填写";
-L0133 |     delete session.recordError;
-L0134 |     const origin = container.querySelector("[data-record-origin]");
-L0135 |     if (origin) origin.textContent = [session.recordDraft.origin.company, session.recordDraft.origin.role].filter(Boolean).join(" · ");
-L0136 |     void persistSafely();
-L0137 |   });
-L0138 |   container.addEventListener("change", (event) => {
-L0139 |     const session = getSession();
-L0140 |     if (!session?.recordDraft || session.recordSaved || saving || isBusy()) return;
-L0141 |     if (event.target.id === "recordRecent" && event.target.value !== "") {
-L0142 |       const job = session.recentJobs?.[Number(event.target.value)];
-L0143 |       if (!job) return;
-L0144 |       invalidateDuplicateConfirmation();
-L0145 |       session.recordEdited ||= {};
-L0146 |       for (const key of ["company", "role", "base"]) {
-L0147 |         if (text(session.recordDraft[key]) || !text(job[key])) continue;
-L0148 |         session.recordDraft[key] = text(job[key]);
-L0149 |         session.recordEdited[key] = true;
-L0150 |         if (key !== "base") session.recordDraft.origin[key] = "最近岗位";
-L0151 |       }
-L0152 |       delete session.recordError;
-L0153 |       void persistSafely();
-L0154 |     }
-L0155 |     if (["recordRecent", "recordCompany", "recordRole"].includes(event.target.id)) void render();
-L0156 |   });
-L0157 |   container.addEventListener("click", (event) => {
-L0158 |     const button = event.target.closest("button");
-L0159 |     if (["saveRecord", "saveRecordAnyway"].includes(button?.id)) void save(button.id === "saveRecordAnyway");
-L0160 |   });
-L0161 | 
-L0162 |   async function save(force) {
-L0163 |     const session = getSession();
-L0164 |     if (!session?.recordDraft || session.recordSaved || saving || isBusy()) return;
-L0165 |     if (session.stale) { session.recordError = "页面已变化，请重新识别后再记录"; void render(); return; }
-L0166 |     const snapshot = session.snapshot, url = snapshot?.url;
-L0167 |     const confirmedDuplicate = shownDuplicateConfirmation;
-L0168 |     const draft = structuredClone(session.recordDraft);
-L0169 |     draft.company = text(draft.company); draft.role = text(draft.role);
-L0170 |     const initial = recordStatus(draft, []);
-L0171 |     if (Object.keys(initial.errors).length) { session.recordError = Object.values(initial.errors).join("；"); void render(); return; }
-L0172 |     saving = true;
-L0173 |     container.querySelectorAll("input, select, button").forEach((control) => { control.disabled = true; });
-L0174 |     setBusy(true);
-L0175 |     void render();
-L0176 |     try {
-L0177 |       const { duplicate, errors } = recordStatus(draft, await getRecords());
-L0178 |       if (!current(session, snapshot, url)) { session.recordError = "页面已变化，请重新识别后再记录"; return; }
-L0179 |       if (Object.keys(errors).length) { session.recordError = Object.values(errors).join("；"); return; }
-L0180 |       if (duplicate && (!force || confirmedDuplicate !== duplicateConfirmation(draft, duplicate))) { session.recordError = "已记录过，请核对后再选择「仍然记录」"; return; }
-L0181 |       await checkTarget(snapshot);
-L0182 |       if (!current(session, snapshot, url)) { session.recordError = "页面已变化，请重新识别后再记录"; return; }
-L0183 |       const saved = await saveNewRecord(draft);
-L0184 |       session.recordSaved = { id: saved.id, at: saved.createdAt || new Date().toISOString() };
-L0185 |       if (getSession() !== session) return;
-L0186 |       if (session.stale) session.recordError = "已记录；页面已变化，请重新识别";
-L0187 |       else delete session.recordError;
-L0188 |       if (await persistSafely(session, true)) tell(session.stale ? "投递已记录；页面已变化，请重新识别" : "投递已记录");
-L0189 |     } catch (error) {
-L0190 |       if (getSession() === session) session.recordError = `保存失败：${error.message}`;
-L0191 |     } finally {
-L0192 |       saving = false;
-L0193 |       setBusy(false);
-L0194 |       void render();
-L0195 |     }
-L0196 |   }
-L0197 | 
-L0198 |   function cancel() { preparation++; aborter?.abort(); }
-L0199 |   return { prepare, render, cancel };
-L0200 | }
+L0070 |       const [response] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, frameIds: [0] }, func: collectJobSignals });
+L0071 |       if (!valid()) return;
+L0072 |       const main = snapshot.frames.find((frame) => frame.frameId === 0);
+L0073 |       if (!main?.documentId || response?.documentId !== main.documentId) return;
+L0074 |       await checkTarget(snapshot);
+L0075 |       if (!valid()) return;
+L0076 |       const signals = response?.result || {};
+L0077 |       const info = extractJobInfo(signals);
+L0078 |       session.recordInfo = info;
+L0079 |       supplement(session, info);
+L0080 |       await rememberJob(chrome.storage.session, url, info);
+L0081 |       if (!valid()) return;
+L0082 |       let hostname = ""; try { hostname = new URL(url).hostname; } catch { /* Manual draft remains available. */ }
+L0083 |       const recent = await loadRecentJobs(chrome.storage.session);
+L0084 |       if (!valid()) return;
+L0085 |       session.recentJobs = recentJobChoices(recent, hostname);
+L0086 |       await persistSafely();
+L0087 |       void render();
+L0088 |       if (!shouldRequestJobInfo(settings, info)) return;
+L0089 |       const ai = await requestJobInfo(settings, signals, signal);
+L0090 |       if (!valid() || !ai || !["high", "medium"].includes(ai.confidence)) return;
+L0091 |       await checkTarget(snapshot);
+L0092 |       if (!valid()) return;
+L0093 |       supplement(session, ai, true);
+L0094 |       await persistSafely();
+L0095 |       void render();
+L0096 |     } catch {
+L0097 |       // Job extraction is optional and must never block the filling preview.
+L0098 |       if (valid()) { await persistSafely(); void render(); }
+L0099 |     }
+L0100 |   }
+L0101 | 
+L0102 |   async function render() {
+L0103 |     const session = getSession(), run = ++rendering;
+L0104 |     container.hidden = !session?.results?.length;
+L0105 |     if (container.hidden || !session.recordDraft) { shownDuplicateConfirmation = null; container.innerHTML = ""; return; }
+L0106 |     if (!saving && !session.recordSaved && ["recordCompany", "recordRole"].includes(container.ownerDocument?.activeElement?.id)) return;
+L0107 |     if (session.recordSaved) {
+L0108 |       shownDuplicateConfirmation = null;
+L0109 |       container.innerHTML = `<h2>提交后记一笔</h2><p>已记录 ✓ · <a href="../records/records.html" target="_blank">在列表中查看</a></p>${session.recordError ? `<p data-record-error role="status">${escape(session.recordError)}</p>` : ""}`;
+L0110 |       return;
+L0111 |     }
+L0112 |     let records = [];
+L0113 |     try { records = await getRecords(); } catch { /* Saving performs a fresh read and reports failures inline. */ }
+L0114 |     if (run !== rendering || getSession() !== session || session.recordSaved || !saving && ["recordCompany", "recordRole"].includes(container.ownerDocument?.activeElement?.id)) return;
+L0115 |     const draft = session.recordDraft;
+L0116 |     const duplicate = recordStatus(draft, records).duplicate;
+L0117 |     shownDuplicateConfirmation = duplicate ? duplicateConfirmation(draft, duplicate) : null;
+L0118 |     const disabled = saving || isBusy() ? "disabled" : "";
+L0119 |     const recent = !text(draft.role) && session.recentJobs?.length
+L0120 |       ? `<label>用最近看过的岗位<select id="recordRecent" ${disabled}><option value="">请选择最近识别的岗位</option>${session.recentJobs.map((job, index) => `<option value="${index}">${escape([job.company, job.role, job.base].filter(Boolean).join(" · "))}</option>`).join("")}</select></label>` : "";
+L0121 |     const action = duplicate
+L0122 |       ? `<p>已记录过：${escape(duplicate.record.company)} · ${escape(duplicate.record.role)}（${escape(statusName(duplicate.record.status))}） <a href="../records/records.html" target="_blank">查看</a></p><button id="saveRecordAnyway" type="button" ${disabled}>仍然记录</button>`
+L0123 |       : `<button id="saveRecord" type="button" ${disabled}>记录投递</button>`;
+L0124 |     container.innerHTML = `<h2>提交后记一笔</h2><label>公司<input id="recordCompany" value="${escape(draft.company)}" ${disabled}></label><label>岗位<input id="recordRole" value="${escape(draft.role)}" ${disabled}></label><p class="hint" data-record-origin>${escape([draft.origin?.company, draft.origin?.role].filter(Boolean).join(" · "))}</p>${recent}${action}<p data-record-error role="status" ${session.recordError ? "" : "hidden"}>${escape(session.recordError || "")}</p>`;
+L0125 |   }
+L0126 | 
+L0127 |   container.addEventListener("input", (event) => {
+L0128 |     const key = { recordCompany: "company", recordRole: "role" }[event.target.id];
+L0129 |     const session = getSession();
+L0130 |     if (!key || !session?.recordDraft || session.recordSaved || saving || isBusy()) return;
+L0131 |     invalidateDuplicateConfirmation();
+L0132 |     session.recordDraft[key] = event.target.value;
+L0133 |     session.recordEdited ||= {}; session.recordEdited[key] = true;
+L0134 |     session.recordDraft.origin ||= {}; session.recordDraft.origin[key] = "手动填写";
+L0135 |     delete session.recordError;
+L0136 |     const origin = container.querySelector("[data-record-origin]");
+L0137 |     if (origin) origin.textContent = [session.recordDraft.origin.company, session.recordDraft.origin.role].filter(Boolean).join(" · ");
+L0138 |     void persistSafely();
+L0139 |   });
+L0140 |   container.addEventListener("change", (event) => {
+L0141 |     const session = getSession();
+L0142 |     if (!session?.recordDraft || session.recordSaved || saving || isBusy()) return;
+L0143 |     if (event.target.id === "recordRecent" && event.target.value !== "") {
+L0144 |       const job = session.recentJobs?.[Number(event.target.value)];
+L0145 |       if (!job) return;
+L0146 |       invalidateDuplicateConfirmation();
+L0147 |       session.recordEdited ||= {};
+L0148 |       for (const key of ["company", "role", "base"]) {
+L0149 |         if (text(session.recordDraft[key]) || !text(job[key])) continue;
+L0150 |         session.recordDraft[key] = text(job[key]);
+L0151 |         session.recordEdited[key] = true;
+L0152 |         if (key !== "base") session.recordDraft.origin[key] = "最近岗位";
+L0153 |       }
+L0154 |       delete session.recordError;
+L0155 |       void persistSafely();
+L0156 |     }
+L0157 |     if (["recordRecent", "recordCompany", "recordRole"].includes(event.target.id)) void render();
+L0158 |   });
+L0159 |   container.addEventListener("click", (event) => {
+L0160 |     const button = event.target.closest("button");
+L0161 |     if (["saveRecord", "saveRecordAnyway"].includes(button?.id)) void save(button.id === "saveRecordAnyway");
+L0162 |   });
+L0163 | 
+L0164 |   async function save(force) {
+L0165 |     const session = getSession();
+L0166 |     if (!session?.recordDraft || session.recordSaved || saving || isBusy()) return;
+L0167 |     if (session.stale) { session.recordError = "页面已变化，请重新识别后再记录"; void render(); return; }
+L0168 |     const snapshot = session.snapshot, url = snapshot?.url;
+L0169 |     const confirmedDuplicate = shownDuplicateConfirmation;
+L0170 |     const draft = structuredClone(session.recordDraft);
+L0171 |     draft.company = text(draft.company); draft.role = text(draft.role);
+L0172 |     const initial = recordStatus(draft, []);
+L0173 |     if (Object.keys(initial.errors).length) { session.recordError = Object.values(initial.errors).join("；"); void render(); return; }
+L0174 |     saving = true;
+L0175 |     container.querySelectorAll("input, select, button").forEach((control) => { control.disabled = true; });
+L0176 |     setBusy(true);
+L0177 |     void render();
+L0178 |     try {
+L0179 |       const { duplicate, errors } = recordStatus(draft, await getRecords());
+L0180 |       if (!current(session, snapshot, url)) { session.recordError = "页面已变化，请重新识别后再记录"; return; }
+L0181 |       if (Object.keys(errors).length) { session.recordError = Object.values(errors).join("；"); return; }
+L0182 |       if (duplicate && (!force || confirmedDuplicate !== duplicateConfirmation(draft, duplicate))) { session.recordError = "已记录过，请核对后再选择「仍然记录」"; return; }
+L0183 |       await checkTarget(snapshot);
+L0184 |       if (!current(session, snapshot, url)) { session.recordError = "页面已变化，请重新识别后再记录"; return; }
+L0185 |       const saved = await saveNewRecord(draft);
+L0186 |       session.recordSaved = { id: saved.id, at: saved.createdAt || new Date().toISOString() };
+L0187 |       if (getSession() !== session) return;
+L0188 |       if (session.stale) session.recordError = "已记录；页面已变化，请重新识别";
+L0189 |       else delete session.recordError;
+L0190 |       if (await persistSafely(session, true)) tell(session.stale ? "投递已记录；页面已变化，请重新识别" : "投递已记录");
+L0191 |     } catch (error) {
+L0192 |       if (getSession() === session) session.recordError = `保存失败：${error.message}`;
+L0193 |     } finally {
+L0194 |       saving = false;
+L0195 |       setBusy(false);
+L0196 |       void render();
+L0197 |     }
+L0198 |   }
+L0199 | 
+L0200 |   function cancel() { preparation++; aborter?.abort(); }
+L0201 |   return { prepare, render, cancel };
+L0202 | }

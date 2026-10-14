@@ -452,7 +452,8 @@ async function handleImport(event) {
   try {
     assertXlsxLoaded();
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    // Excel date serials avoid SheetJS's historical timezone offset entirely.
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
     const imported = workbookToImportedRecords(workbook, (sheet) => XLSX.utils.sheet_to_json(sheet, { defval: "" }));
     if (!confirm(`将按 Excel 可见表导入 ${imported.length} 条记录，并覆盖当前本地记录。导入前会保存完整恢复点，确认继续？`)) return;
     if (baseline.length > 0) downloadRecordsAsXlsx(baseline, buildPreImportBackupFilename(toDateInputValue()));

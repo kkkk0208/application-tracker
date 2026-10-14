@@ -5,7 +5,7 @@ import { extractJobInfo, sortRecentJobs } from "../jobInfo/extractJobInfo.js";
 import { rememberJob, loadRecentJobs } from "../jobInfo/recentJobs.js";
 import { requestJobInfo } from "../jobInfo/aiJobInfo.js";
 import { findPotentialDuplicate } from "../duplicates.js";
-import { emptyRecordDraft, validateRecordForSave } from "../model.js";
+import { cleanPortalUrl, emptyRecordDraft, validateRecordForSave } from "../model.js";
 import { detectSourceFromUrl } from "../sourceDetection.js";
 import { getProfile, getRecords, saveNewRecord, getAiSettings } from "../storage.js";
 import { toDateInputValue } from "../dateUtils.js";
@@ -44,7 +44,7 @@ async function init() {
   try {
     const tab = await getTargetPageTab();
     targetPageTab = tab;
-    draft.portalLink = tab?.url || "";
+    draft.portalLink = cleanPortalUrl(tab?.url || "");
     draft.pageTitle = tab?.title || "";
     draft.source = detectSourceFromUrl(draft.portalLink);
     if (tab?.id) {

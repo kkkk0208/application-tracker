@@ -1,7 +1,7 @@
 
 ========================================================================
 FILE: application-tracker-extension/scripts/browser-tests.mjs
-SHA256: 1c9fefa7c5685ae60bf470f7be0dbd3ca23702bf60cb1b00c56553dc8b316b18
+SHA256: 6f5ccf1204298e0c2e4cbcadbcffad0460d031c931a5f2f95b0f5fb5b88e3aa6
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { readFile, mkdir } from "node:fs/promises";
@@ -303,12 +303,21 @@ L0298 |     const result = await action(s, s.fields[0], "Master’s degree");
 L0299 |     assert.equal(result.status, "verified"); assert.equal(result.retries, 1);
 L0300 |     assert.equal(await page.locator("#degree").getAttribute("data-attempts"), "2");
 L0301 |   });
-L0302 |   console.log(`Browser cases passed: ${passed}`);
-L0303 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+L0302 |   await check("a native radio group reads its internal prompt without absorbing the option labels", async () => {
+L0303 |     const s = await fixture('<div><span>是否接受调剂</span><label><input type="radio" name="a">是</label><label><input type="radio" name="a">否</label></div>');
+L0304 |     assert.equal(s.fields.length, 1);
+L0305 |     assert.equal(s.fields[0].label, "是否接受调剂");
+L0306 |     assert.equal(s.fields[0].labelSource, "nearby");
+L0307 |     assert.equal(s.fields[0].supported, true);
+L0308 |     const result = await action(s, s.fields[0], "是");
+L0309 |     assert.equal(result.status, "verified");
+L0310 |   });
+L0311 |   console.log(`Browser cases passed: ${passed}`);
+L0312 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 
 ========================================================================
 FILE: application-tracker-extension/scripts/choice-browser-tests.mjs
-SHA256: f7e78c3f18ca79232e25b0da6ddb3a25779cc5c2b7c41df6a91483e307681421
+SHA256: 10cc4f9081981738ca9c1c6ae086032ece1468cc78cf4814a120aa8027cb3020
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { createRequire } from "node:module";
@@ -470,16 +479,32 @@ L0158 |     assert.equal(unnamed.labelSource, "none");
 L0159 |     assert.match(unnamed.nearbyText, /PUBLIC_NONE/);
 L0160 |     assert.ok(!unnamed.nearbyText.includes("PRIVATE"));
 L0161 |   });
-L0162 |   assert.deepEqual(errors, []);
-L0163 |   console.log(`Choice and privacy browser cases passed: ${passed}`);
-L0164 | } finally {
-L0165 |   await browser.close();
-L0166 |   await new Promise((resolve) => server.close(resolve));
-L0167 | }
+L0162 |   for (const label of ["是否同意外派", "是否同意轮岗", "是否同意参加夜班值守", "Do you agree to work in Hong Kong?"]) {
+L0163 |     await check(`business agreement remains fillable: ${label}`, async () => {
+L0164 |       const choices = label.startsWith("Do") ? ["Yes", "No"] : ["同意", "不同意"];
+L0165 |       const snapshot = await fixture(group("radio", label, choices));
+L0166 |       const field = snapshot.fields[0];
+L0167 |       assert.equal(field.supported, true, field.reason);
+L0168 |       const result = await action(snapshot, field, choices[0]);
+L0169 |       assert.equal(result.status, "verified"); assert.equal(result.after, choices[0]);
+L0170 |     });
+L0171 |   }
+L0172 |   await check("legal agreement and a single acceptance checkbox stay manual", async () => {
+L0173 |     for (const html of [group("radio", "是否同意外派并授权共享资料", ["同意", "不同意"]), '<label>我同意参加轮岗<input type="checkbox"></label>']) {
+L0174 |       const snapshot = await fixture(html);
+L0175 |       assert.equal(snapshot.fields[0].supported, false);
+L0176 |     }
+L0177 |   });
+L0178 |   assert.deepEqual(errors, []);
+L0179 |   console.log(`Choice and privacy browser cases passed: ${passed}`);
+L0180 | } finally {
+L0181 |   await browser.close();
+L0182 |   await new Promise((resolve) => server.close(resolve));
+L0183 | }
 
 ========================================================================
 FILE: application-tracker-extension/scripts/component-browser-tests.mjs
-SHA256: d35097d89e5c7d3731b771ab014bb9132f39f56b46497b941ab98adc7d8f470f
+SHA256: 86bd1f27af193298e0c1cdc43dcc06286538974bd96befe81cdf619000d3d16e
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { readFile } from "node:fs/promises";
@@ -541,162 +566,181 @@ L0058 |   }
 L0059 |   const action = (snapshot, field, value, extra = {}) => tracked(page.evaluate(pageBridge, { action: "fill", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, operationId: crypto.randomUUID(), value, ...extra }));
 L0060 |   const inspect = (snapshot, field, extra = {}) => tracked(page.evaluate(pageBridge, { action: "inspect-options", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId, ...extra }));
 L0061 |   const stateValue = (id) => page.evaluate((key) => window.fixtureValues[key], id);
-L0062 |   const menus = '.ant-select-dropdown:visible, .ant-cascader-menus:visible, .ant-picker-dropdown:visible, .ant-calendar-picker-container:visible, .el-select-dropdown:visible, .el-cascader__dropdown:visible, .el-picker-panel:visible';
-L0063 |   const menusClosed = async () => assert.equal(await page.locator(menus).count(), 0, "Opened component menus must close again");
-L0064 |   const encoded = (value) => Array.isArray(value) ? JSON.stringify(value) : value;
-L0065 |   const normalizedEmpty = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0);
-L0066 |   async function check(library, name, fn) {
-L0067 |     if (selectedCase && !name.includes(selectedCase)) return;
-L0068 |     try { await fn(); passed++; console.log(`PASS ${library}: ${name}`); }
-L0069 |     catch (error) {
-L0070 |       const message = `${library}: ${name}: ${error.message}`;
-L0071 |       failures.push(message); console.error(`FAIL ${message}`);
-L0072 |       if (debug) console.log(JSON.stringify(await page.evaluate(() => ({
-L0073 |         values: window.fixtureValues,
-L0074 |         inputs: [...document.querySelectorAll("input")].map((input) => ({ value: input.value, placeholder: input.placeholder, className: input.className })),
-L0075 |         menus: [...document.querySelectorAll(".ant-select-dropdown,.ant-cascader-menus,.ant-picker-dropdown,.ant-calendar-picker-container,.el-select-dropdown,.el-cascader__dropdown,.el-picker-panel")].filter((element) => element.getClientRects().length).map((element) => element.outerHTML.slice(0, 18000))
-L0076 |       })), null, 2));
-L0077 |     }
-L0078 |     finally { await Promise.allSettled([...outstanding]); }
-L0079 |   }
-L0080 | 
-L0081 |   const controls = [
-L0082 |     { id: "degree", label: "学历", kind: "custom-select", value: "硕士" },
-L0083 |     { id: "school", label: "学校", kind: "custom-select", value: "星海大学" },
-L0084 |     { id: "location", label: "所在地", kind: "cascader", value: ["广东省", "深圳市", "南山区"] },
-L0085 |     { id: "date", label: "日期", kind: "date", value: "2027-06-15" },
-L0086 |     { id: "month", label: "月份", kind: "date", value: "2027-08" },
-L0087 |     { id: "range", label: "任职时间", kind: "date", value: ["2027-06-01", "2027-08-31"] },
-L0088 |     { id: "gender", label: "性别", kind: "radio", value: "女" },
-L0089 |     { id: "languages", label: "语言", kind: "checkboxes", value: ["中文", "英语"] }
-L0090 |   ];
-L0091 |   for (const library of ["antd3", "antd5", "element"].filter((value) => !selectedLibrary || selectedLibrary === value)) {
-L0092 |     if (scanOnly) {
-L0093 |       const snapshot = await fixture(library);
-L0094 |       console.log(JSON.stringify({ library, fields: snapshot.fields }, null, 2));
-L0095 |       continue;
-L0096 |     }
-L0097 |     for (const control of controls) {
-L0098 |       await check(library, `${control.id} opens, selects, retains and ${control.kind === "radio" ? "reports unavailable empty undo" : "undoes"}`, async () => {
-L0099 |         const snapshot = await fixture(library);
-L0100 |         const field = fieldFor(snapshot, control.label);
-L0101 |         assert.equal(field.kind, control.kind);
-L0102 |         const result = await action(snapshot, field, encoded(control.value));
-L0103 |         assert.equal(result.status, "verified", JSON.stringify(result));
-L0104 |         assert.deepEqual(await stateValue(control.id), control.value, "Framework state must retain the chosen value");
-L0105 |         await menusClosed();
-L0106 |         const undo = await action(snapshot, field, result.before, { action: "undo", expected: result.after });
-L0107 |         if (control.kind === "radio") {
-L0108 |           // These real controlled groups expose no public clear action. A DOM
-L0109 |           // checked mutation alone would falsely claim success over React/Vue.
-L0110 |           assert.equal(undo.code, "UNDO_UNSUPPORTED", JSON.stringify(undo));
-L0111 |           assert.ok(undo.reason);
-L0112 |           assert.deepEqual(await stateValue(control.id), control.value, "An unavailable undo must preserve framework state");
-L0113 |           const selectedLabels = await page.locator(`[data-fixture-field="${control.id}"] input:checked`).evaluateAll((nodes) => nodes.map((node) => node.closest("label").innerText.trim()));
-L0114 |           assert.deepEqual(selectedLabels, [control.value], "An unavailable undo must also preserve the selected DOM control");
-L0115 |         } else {
-L0116 |           assert.equal(undo.status, "verified", JSON.stringify(undo));
-L0117 |           assert.ok(normalizedEmpty(await stateValue(control.id)), "Undo must clear both framework state and displayed value");
-L0118 |         }
-L0119 |         await menusClosed();
-L0120 |       });
-L0121 |     }
-L0122 |     for (const control of controls.filter((control) => ["degree", "school"].includes(control.id))) {
-L0123 |       await check(library, `${control.id} inspection restores closed menu and search text`, async () => {
-L0124 |         const snapshot = await fixture(library);
-L0125 |         const field = fieldFor(snapshot, control.label);
-L0126 |         const result = await inspect(snapshot, field, control.id === "school" ? { query: "星海" } : {});
-L0127 |         assert.equal(result.status, "inspected", JSON.stringify(result));
-L0128 |         assert.equal(result.restored, true, JSON.stringify(result));
-L0129 |         assert.ok(result.options.some((option) => option.text === control.value));
-L0130 |         assert.ok(normalizedEmpty(await stateValue(control.id)));
-L0131 |         await menusClosed();
-L0132 |         const searchValues = await page.locator(`[data-fixture-field="${control.id}"] input:not([readonly])`).evaluateAll((nodes) => nodes.map((node) => node.value));
-L0133 |         assert.ok(searchValues.every((value) => value === ""), "Inspection must restore the original empty search query");
-L0134 |       });
-L0135 |     }
-L0136 |     await check(library, "degree manual choice during option loading stops automation", async () => {
-L0137 |       const snapshot = await fixture(library);
-L0138 |       const pending = action(snapshot, fieldFor(snapshot, "学历"), "硕士");
-L0139 |       const option = page.locator(".ant-select-dropdown-menu-item:visible, .ant-select-item-option:visible, .el-select-dropdown__item:visible").filter({ hasText: /^本科$/ }).first();
-L0140 |       await option.click({ force: true });
-L0141 |       const result = await pending;
-L0142 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
-L0143 |       assert.equal(await stateValue("degree"), "本科");
-L0144 |     });
-L0145 |     await check(library, "location manual path choice stops automation", async () => {
-L0146 |       const snapshot = await fixture(library);
-L0147 |       const pending = action(snapshot, fieldFor(snapshot, "所在地"), JSON.stringify(["广东省", "深圳市", "南山区"]));
-L0148 |       const options = () => page.locator(".ant-cascader-menu-item:visible, .el-cascader-node:visible");
-L0149 |       await options().filter({ hasText: /^广东省$/ }).first().click();
-L0150 |       const result = await pending;
-L0151 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
-L0152 |       await options().filter({ hasText: /^广州市$/ }).first().click();
-L0153 |       await options().filter({ hasText: /^天河区$/ }).first().click();
-L0154 |       assert.deepEqual(await stateValue("location"), ["广东省", "广州市", "天河区"]);
-L0155 |     });
-L0156 |     await check(library, "date manual clear during verification is preserved", async () => {
-L0157 |       const snapshot = await fixture(library);
-L0158 |       const pending = action(snapshot, fieldFor(snapshot, "日期"), "2027-06-15");
-L0159 |       await page.waitForFunction(() => window.fixtureValues.date === "2027-06-15");
-L0160 |       const block = page.locator('[data-fixture-field="date"]');
-L0161 |       await block.locator(".ant-calendar-picker, .ant-picker, .el-date-editor").first().hover();
-L0162 |       await block.locator(".ant-calendar-picker-clear, .ant-picker-clear, .el-icon-circle-close").first().click();
-L0163 |       const result = await pending;
-L0164 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
-L0165 |       assert.ok(normalizedEmpty(await stateValue("date")), "The user's manual clear must remain intact");
-L0166 |     });
-L0167 |     await check(library, "school manual search during inspection is preserved", async () => {
-L0168 |       const snapshot = await fixture(library);
-L0169 |       const pending = inspect(snapshot, fieldFor(snapshot, "学校"), { query: "星海" });
-L0170 |       const search = page.locator('[data-fixture-field="school"] input:not([readonly])').first();
-L0171 |       await page.waitForFunction(() => [...document.querySelectorAll('[data-fixture-field="school"] input')].some((input) => input.value === "星海"));
-L0172 |       await search.fill("用户自己搜索");
-L0173 |       const result = await pending;
-L0174 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
-L0175 |       assert.equal(await search.inputValue(), "用户自己搜索");
-L0176 |       assert.ok(normalizedEmpty(await stateValue("school")));
-L0177 |     });
-L0178 |   }
-L0179 | 
-L0180 |   if (!selectedLibrary || selectedLibrary === "my97") {
-L0181 |     if (scanOnly) console.log(JSON.stringify({ library: "my97", fields: (await fixture("my97")).fields }, null, 2));
-L0182 |     else {
-L0183 |       for (const control of [
-L0184 |         { id: "date", label: "日期", value: "2027-06-15", expected: "2027-06-15" },
-L0185 |         { id: "month", label: "月份", value: "2027-08", expected: "2027-08" },
-L0186 |         { id: "chineseMonth", label: "中文月份", value: "2027-08", expected: "2027年08月" }
-L0187 |       ]) {
-L0188 |         await check("my97", `${control.id} formats, retains and undoes`, async () => {
-L0189 |           const snapshot = await fixture("my97");
-L0190 |           const field = fieldFor(snapshot, control.label);
-L0191 |           assert.equal(field.adapter, "my97-date");
-L0192 |           const result = await action(snapshot, field, control.value);
-L0193 |           assert.equal(result.status, "verified", JSON.stringify(result));
-L0194 |           assert.equal(await stateValue(control.id), control.expected);
-L0195 |           const undo = await action(snapshot, field, "", { action: "undo", expected: result.after });
-L0196 |           assert.equal(undo.status, "verified", JSON.stringify(undo));
-L0197 |           assert.equal(await stateValue(control.id), "");
-L0198 |         });
-L0199 |       }
-L0200 |       await check("my97", "manual change during verification is preserved", async () => {
-L0201 |         const snapshot = await fixture("my97");
-L0202 |         const field = fieldFor(snapshot, "月份");
-L0203 |         const pending = action(snapshot, field, "2027-08");
-L0204 |         await page.waitForFunction(() => document.getElementById("month").value === "2027-08");
-L0205 |         await page.locator("#month").fill("2028-02");
-L0206 |         const result = await pending;
-L0207 |         assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
-L0208 |         assert.equal(await stateValue("month"), "2028-02");
-L0209 |       });
-L0210 |     }
-L0211 |   }
-L0212 |   if (!scanOnly) console.log(`Component browser cases passed: ${passed}; failed: ${failures.length}`);
-L0213 | } finally {
-L0214 |   if (browser) await browser.close();
-L0215 |   await new Promise((resolve) => server.close(resolve));
-L0216 | }
-L0217 | if (failures.length) process.exitCode = 1;
+L0062 |   const holdOptionsUntilUserEdit = () => page.evaluate(() => {
+L0063 |     const selector = '.ant-select-dropdown,.ant-cascader-menus,.el-select-dropdown,.el-cascader__dropdown';
+L0064 |     const mark = () => document.querySelectorAll(selector).forEach((menu) => menu.setAttribute("aria-busy", "true"));
+L0065 |     const observer = new MutationObserver(mark);
+L0066 |     observer.observe(document.body, { subtree: true, childList: true });
+L0067 |     const finish = (event) => {
+L0068 |       if (!event.isTrusted) return;
+L0069 |       observer.disconnect();
+L0070 |       document.querySelectorAll(selector).forEach((menu) => menu.removeAttribute("aria-busy"));
+L0071 |       document.removeEventListener("input", finish, true);
+L0072 |       document.removeEventListener("click", finish, true);
+L0073 |     };
+L0074 |     document.addEventListener("input", finish, true);
+L0075 |     document.addEventListener("click", finish, true);
+L0076 |     mark();
+L0077 |   });
+L0078 |   const menus = '.ant-select-dropdown:visible, .ant-cascader-menus:visible, .ant-picker-dropdown:visible, .ant-calendar-picker-container:visible, .el-select-dropdown:visible, .el-cascader__dropdown:visible, .el-picker-panel:visible';
+L0079 |   const menusClosed = async () => assert.equal(await page.locator(menus).count(), 0, "Opened component menus must close again");
+L0080 |   const encoded = (value) => Array.isArray(value) ? JSON.stringify(value) : value;
+L0081 |   const normalizedEmpty = (value) => value == null || value === "" || (Array.isArray(value) && value.length === 0);
+L0082 |   async function check(library, name, fn) {
+L0083 |     if (selectedCase && !name.includes(selectedCase)) return;
+L0084 |     try { await fn(); passed++; console.log(`PASS ${library}: ${name}`); }
+L0085 |     catch (error) {
+L0086 |       const message = `${library}: ${name}: ${error.message}`;
+L0087 |       failures.push(message); console.error(`FAIL ${message}`);
+L0088 |       if (debug) console.log(JSON.stringify(await page.evaluate(() => ({
+L0089 |         values: window.fixtureValues,
+L0090 |         inputs: [...document.querySelectorAll("input")].map((input) => ({ value: input.value, placeholder: input.placeholder, className: input.className })),
+L0091 |         menus: [...document.querySelectorAll(".ant-select-dropdown,.ant-cascader-menus,.ant-picker-dropdown,.ant-calendar-picker-container,.el-select-dropdown,.el-cascader__dropdown,.el-picker-panel")].filter((element) => element.getClientRects().length).map((element) => element.outerHTML.slice(0, 18000))
+L0092 |       })), null, 2));
+L0093 |     }
+L0094 |     finally { await Promise.allSettled([...outstanding]); }
+L0095 |   }
+L0096 | 
+L0097 |   const controls = [
+L0098 |     { id: "degree", label: "学历", kind: "custom-select", value: "硕士" },
+L0099 |     { id: "school", label: "学校", kind: "custom-select", value: "星海大学" },
+L0100 |     { id: "location", label: "所在地", kind: "cascader", value: ["广东省", "深圳市", "南山区"] },
+L0101 |     { id: "date", label: "日期", kind: "date", value: "2027-06-15" },
+L0102 |     { id: "month", label: "月份", kind: "date", value: "2027-08" },
+L0103 |     { id: "range", label: "任职时间", kind: "date", value: ["2027-06-01", "2027-08-31"] },
+L0104 |     { id: "gender", label: "性别", kind: "radio", value: "女" },
+L0105 |     { id: "languages", label: "语言", kind: "checkboxes", value: ["中文", "英语"] }
+L0106 |   ];
+L0107 |   for (const library of ["antd3", "antd5", "element"].filter((value) => !selectedLibrary || selectedLibrary === value)) {
+L0108 |     if (scanOnly) {
+L0109 |       const snapshot = await fixture(library);
+L0110 |       console.log(JSON.stringify({ library, fields: snapshot.fields }, null, 2));
+L0111 |       continue;
+L0112 |     }
+L0113 |     for (const control of controls) {
+L0114 |       await check(library, `${control.id} opens, selects, retains and ${control.kind === "radio" ? "reports unavailable empty undo" : "undoes"}`, async () => {
+L0115 |         const snapshot = await fixture(library);
+L0116 |         const field = fieldFor(snapshot, control.label);
+L0117 |         assert.equal(field.kind, control.kind);
+L0118 |         const result = await action(snapshot, field, encoded(control.value));
+L0119 |         assert.equal(result.status, "verified", JSON.stringify(result));
+L0120 |         assert.deepEqual(await stateValue(control.id), control.value, "Framework state must retain the chosen value");
+L0121 |         await menusClosed();
+L0122 |         const undo = await action(snapshot, field, result.before, { action: "undo", expected: result.after });
+L0123 |         if (control.kind === "radio") {
+L0124 |           // These real controlled groups expose no public clear action. A DOM
+L0125 |           // checked mutation alone would falsely claim success over React/Vue.
+L0126 |           assert.equal(undo.code, "UNDO_UNSUPPORTED", JSON.stringify(undo));
+L0127 |           assert.ok(undo.reason);
+L0128 |           assert.deepEqual(await stateValue(control.id), control.value, "An unavailable undo must preserve framework state");
+L0129 |           const selectedLabels = await page.locator(`[data-fixture-field="${control.id}"] input:checked`).evaluateAll((nodes) => nodes.map((node) => node.closest("label").innerText.trim()));
+L0130 |           assert.deepEqual(selectedLabels, [control.value], "An unavailable undo must also preserve the selected DOM control");
+L0131 |         } else {
+L0132 |           assert.equal(undo.status, "verified", JSON.stringify(undo));
+L0133 |           assert.ok(normalizedEmpty(await stateValue(control.id)), "Undo must clear both framework state and displayed value");
+L0134 |         }
+L0135 |         await menusClosed();
+L0136 |       });
+L0137 |     }
+L0138 |     for (const control of controls.filter((control) => ["degree", "school"].includes(control.id))) {
+L0139 |       await check(library, `${control.id} inspection restores closed menu and search text`, async () => {
+L0140 |         const snapshot = await fixture(library);
+L0141 |         const field = fieldFor(snapshot, control.label);
+L0142 |         const result = await inspect(snapshot, field, control.id === "school" ? { query: "星海" } : {});
+L0143 |         assert.equal(result.status, "inspected", JSON.stringify(result));
+L0144 |         assert.equal(result.restored, true, JSON.stringify(result));
+L0145 |         assert.ok(result.options.some((option) => option.text === control.value));
+L0146 |         assert.ok(normalizedEmpty(await stateValue(control.id)));
+L0147 |         await menusClosed();
+L0148 |         const searchValues = await page.locator(`[data-fixture-field="${control.id}"] input:not([readonly])`).evaluateAll((nodes) => nodes.map((node) => node.value));
+L0149 |         assert.ok(searchValues.every((value) => value === ""), "Inspection must restore the original empty search query");
+L0150 |       });
+L0151 |     }
+L0152 |     await check(library, "degree manual choice during option loading stops automation", async () => {
+L0153 |       const snapshot = await fixture(library);
+L0154 |       await holdOptionsUntilUserEdit();
+L0155 |       const pending = action(snapshot, fieldFor(snapshot, "学历"), "硕士");
+L0156 |       const option = page.locator(".ant-select-dropdown-menu-item:visible, .ant-select-item-option:visible, .el-select-dropdown__item:visible").filter({ hasText: /^本科$/ }).first();
+L0157 |       await option.click();
+L0158 |       const result = await pending;
+L0159 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0160 |       assert.equal(await stateValue("degree"), "本科");
+L0161 |     });
+L0162 |     await check(library, "location manual path choice stops automation", async () => {
+L0163 |       const snapshot = await fixture(library);
+L0164 |       await holdOptionsUntilUserEdit();
+L0165 |       const pending = action(snapshot, fieldFor(snapshot, "所在地"), JSON.stringify(["广东省", "深圳市", "南山区"]));
+L0166 |       const options = () => page.locator(".ant-cascader-menu-item:visible, .el-cascader-node:visible");
+L0167 |       await options().filter({ hasText: /^广东省$/ }).first().click();
+L0168 |       const result = await pending;
+L0169 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0170 |       await options().filter({ hasText: /^广州市$/ }).first().click();
+L0171 |       await options().filter({ hasText: /^天河区$/ }).first().click();
+L0172 |       assert.deepEqual(await stateValue("location"), ["广东省", "广州市", "天河区"]);
+L0173 |     });
+L0174 |     await check(library, "date manual clear during verification is preserved", async () => {
+L0175 |       const snapshot = await fixture(library);
+L0176 |       const pending = action(snapshot, fieldFor(snapshot, "日期"), "2027-06-15");
+L0177 |       await page.waitForFunction(() => window.fixtureValues.date === "2027-06-15");
+L0178 |       const block = page.locator('[data-fixture-field="date"]');
+L0179 |       await block.locator(".ant-calendar-picker, .ant-picker, .el-date-editor").first().hover();
+L0180 |       await block.locator(".ant-calendar-picker-clear, .ant-picker-clear, .el-icon-circle-close").first().click();
+L0181 |       const result = await pending;
+L0182 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0183 |       assert.ok(normalizedEmpty(await stateValue("date")), "The user's manual clear must remain intact");
+L0184 |     });
+L0185 |     await check(library, "school manual search during inspection is preserved", async () => {
+L0186 |       const snapshot = await fixture(library);
+L0187 |       await holdOptionsUntilUserEdit();
+L0188 |       const pending = inspect(snapshot, fieldFor(snapshot, "学校"), { query: "星海" });
+L0189 |       const search = page.locator('[data-fixture-field="school"] input:not([readonly])').first();
+L0190 |       await page.waitForFunction(() => [...document.querySelectorAll('[data-fixture-field="school"] input')].some((input) => input.value === "星海"));
+L0191 |       await search.fill("用户自己搜索");
+L0192 |       const result = await pending;
+L0193 |       assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0194 |       assert.equal(await search.inputValue(), "用户自己搜索");
+L0195 |       assert.ok(normalizedEmpty(await stateValue("school")));
+L0196 |     });
+L0197 |   }
+L0198 | 
+L0199 |   if (!selectedLibrary || selectedLibrary === "my97") {
+L0200 |     if (scanOnly) console.log(JSON.stringify({ library: "my97", fields: (await fixture("my97")).fields }, null, 2));
+L0201 |     else {
+L0202 |       for (const control of [
+L0203 |         { id: "date", label: "日期", value: "2027-06-15", expected: "2027-06-15" },
+L0204 |         { id: "month", label: "月份", value: "2027-08", expected: "2027-08" },
+L0205 |         { id: "chineseMonth", label: "中文月份", value: "2027-08", expected: "2027年08月" }
+L0206 |       ]) {
+L0207 |         await check("my97", `${control.id} formats, retains and undoes`, async () => {
+L0208 |           const snapshot = await fixture("my97");
+L0209 |           const field = fieldFor(snapshot, control.label);
+L0210 |           assert.equal(field.adapter, "my97-date");
+L0211 |           const result = await action(snapshot, field, control.value);
+L0212 |           assert.equal(result.status, "verified", JSON.stringify(result));
+L0213 |           assert.equal(await stateValue(control.id), control.expected);
+L0214 |           const undo = await action(snapshot, field, "", { action: "undo", expected: result.after });
+L0215 |           assert.equal(undo.status, "verified", JSON.stringify(undo));
+L0216 |           assert.equal(await stateValue(control.id), "");
+L0217 |         });
+L0218 |       }
+L0219 |       await check("my97", "manual change during verification is preserved", async () => {
+L0220 |         const snapshot = await fixture("my97");
+L0221 |         const field = fieldFor(snapshot, "月份");
+L0222 |         const pending = action(snapshot, field, "2027-08");
+L0223 |         await page.waitForFunction(() => document.getElementById("month").value === "2027-08");
+L0224 |         await page.locator("#month").fill("2028-02");
+L0225 |         const result = await pending;
+L0226 |         assert.equal(result.code, "USER_EDITED", JSON.stringify(result));
+L0227 |         assert.equal(await stateValue("month"), "2028-02");
+L0228 |       });
+L0229 |     }
+L0230 |   }
+L0231 |   if (!scanOnly) console.log(`Component browser cases passed: ${passed}; failed: ${failures.length}`);
+L0232 | } finally {
+L0233 |   if (browser) await browser.close();
+L0234 |   await new Promise((resolve) => server.close(resolve));
+L0235 | }
+L0236 | if (failures.length) process.exitCode = 1;
 
 ========================================================================
 FILE: application-tracker-extension/scripts/data-ui-tests.mjs
@@ -936,7 +980,7 @@ L0049 | if (failures.length) process.exitCode = 1;
 
 ========================================================================
 FILE: application-tracker-extension/scripts/extension-tests.mjs
-SHA256: 5a8ef0e1d1ab91e045b6b4bf2e5a0e24c7b2d6a51395a33a2520ecd824d4a269
+SHA256: 1ac7265383b43b79240e6ff709f437b6b98d30bcbb3c320a12f9071a55cd0445
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { mkdtemp, cp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
@@ -995,270 +1039,274 @@ L0055 |     await chrome.storage.local.set({ "applicationTracker.profile": profi
 L0056 |     await chrome.storage.session.set({ [`applicationTracker.assistant.target.${ids.windowId}`]: ids.tabId });
 L0057 |   }, { ids, profile: originalProfile });
 L0058 |   const panel = await context.newPage();
-L0059 |   const errors = []; panel.on("pageerror", (error) => errors.push(error.message));
-L0060 |   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
-L0061 |   const createRecords = (page, prefix) => page.evaluate(async (prefix) => {
-L0062 |     const { saveNewRecord } = await import(chrome.runtime.getURL("src/storage.js"));
-L0063 |     return Promise.all(Array.from({ length: 8 }, (_, index) => saveNewRecord({ company: `${prefix}-${index}`, role: "测试岗位", source: "company_portal", portalLink: "https://example.com/apply", appliedDate: "2026-09-21", status: "applied" })));
-L0064 |   }, prefix);
-L0065 |   const [leftRecords] = await Promise.all([createRecords(panel, "panel"), createRecords(recordsPage, "records")]);
-L0066 |   await Promise.all([
-L0067 |     panel.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { status: "oa" }); }, leftRecords[0].id),
-L0068 |     recordsPage.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { notes: "另一页面的更新" }); }, leftRecords[0].id)
-L0069 |   ]);
-L0070 |   const queuedRecords = await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).getRecords());
-L0071 |   assert.equal(queuedRecords.length, 16);
-L0072 |   assert.equal(new Set(queuedRecords.map((record) => record.id)).size, 16);
-L0073 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).status, "oa");
-L0074 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).notes, "另一页面的更新");
-L0075 |   console.log("PASS real background queue preserves concurrent writes and independent patches across extension pages");
-L0076 |   await panel.locator("#prepare").click();
-L0077 |   await panel.locator("#questions .question").first().waitFor();
-L0078 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
-L0079 |   assert.equal(await panel.locator("#questions .question").count(), 6);
-L0080 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
-L0081 |   assert.match(await panel.locator("#fill").textContent(), /5/);
-L0082 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
-L0083 |   const introduction = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: "自我介绍的答案", exact: true }) });
-L0084 |   assert.equal(await introduction.locator("[data-answer]").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
-L0085 |   assert.equal(await introduction.locator("[data-selected]").isChecked(), true, "An existing personal narrative belongs in the one-confirmation batch with AI disabled");
-L0086 |   for (const selector of ["#name", "#email", "#school", "#intro", "#awards"]) assert.equal(await target.locator(selector).inputValue(), "", "Preparing the preview must not write to the application form");
-L0087 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
-L0088 |   console.log("PASS real extension previews five local answers including personal narrative across both frames without writing before confirmation");
-L0089 |   await target.locator("#email").fill("user-change@example.com");
-L0090 |   const versionCheck = await panel.evaluate(async (windowId) => {
-L0091 |     const { versionOf } = await import(chrome.runtime.getURL("src/assistant/planner.js"));
-L0092 |     const { getMemories, loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
-L0093 |     return { planned: (await loadSession(windowId)).memoryVersion, stored: versionOf(await getMemories()) };
-L0094 |   }, ids.windowId);
-L0095 |   assert.equal(versionCheck.planned, versionCheck.stored, "Chrome storage round-trip must preserve the memory version after migration");
-L0096 |   await panel.locator("#fill").click();
-L0097 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.querySelectorAll("#resultList .result-row").length === 5);
-L0098 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
-L0099 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
-L0100 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
-L0101 |   assert.equal(await target.locator("#intro").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
-L0102 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
-L0103 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
-L0104 |   console.log("PASS one confirmation writes and verifies all previewed answers while preserving manual webpage edits");
-L0105 |   const profileAfter = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.profile"))["applicationTracker.profile"]);
-L0106 |   assert.deepEqual(profileAfter, originalProfile);
-L0107 |   const memories = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.assistant.memories.v2"))["applicationTracker.assistant.memories.v2"]);
-L0108 |   assert.equal(memories.length, 1); assert.equal(memories[0].confirmed, false);
-L0109 |   console.log("PASS fill never edits profile or automatically promotes learned answers");
-L0110 |   await panel.locator("#undo").click();
-L0111 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && [...document.querySelectorAll("#resultList .result-row p")].filter((node) => node.textContent === "已撤销").length === 4);
-L0112 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
-L0113 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
-L0114 |   assert.equal(await target.locator("#intro").inputValue(), "");
-L0115 |   console.log("PASS extension undo restores only assistant-written fields");
-L0116 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
-L0117 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
-L0118 |   await panel.setViewportSize({ width: 420, height: 1000 }); await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
-L0119 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-L0120 |   await panel.setViewportSize({ width: 320, height: 900 });
-L0121 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-L0122 |   console.log("PASS side panel layout fits 320px and 420px widths");
-L0123 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor();
-L0124 |   assert.equal(await panel.locator("#questions .question").count(), 6);
-L0125 |   console.log("PASS extension session restores after closing/reopening its document");
-L0126 |   await target.reload();
-L0127 |   await panel.waitForFunction(() => document.getElementById("fill").disabled);
-L0128 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
-L0129 |   console.log("PASS navigation invalidates the old fill plan");
-L0130 | 
-L0131 |   // An inactive extension tab executes the real popup document while preserving
-L0132 |   // the active application tab, then is destroyed to model popup dismissal.
-L0133 |   const openPopupDocument = async () => {
-L0134 |     await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
-L0135 |     const opened = context.waitForEvent("page");
-L0136 |     await worker.evaluate((url) => chrome.tabs.create({ url, active: false }), `chrome-extension://${extensionId}/src/popup/popup.html`);
-L0137 |     const popup = await opened;
-L0138 |     popup.on("pageerror", (error) => errors.push(error.message));
-L0139 |     await popup.waitForLoadState();
-L0140 |     await popup.waitForFunction(() => !!document.querySelector('[name="portalLink"]').value);
-L0141 |     return popup;
-L0142 |   };
-L0143 |   let popup = await openPopupDocument();
-L0144 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
-L0145 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0146 |   assert.equal(await popup.locator('[data-job-source="company"]').textContent(), "网页标题");
-L0147 |   await popup.locator('[name="company"]').fill("草稿测试公司");
-L0148 |   assert.equal(await popup.locator('[data-job-source="company"]').isVisible(), false);
-L0149 |   await popup.locator('[name="role"]').fill("草稿测试岗位");
-L0150 |   await popup.locator('[name="notes"]').fill("最后一次输入后立即关闭");
-L0151 |   await popup.close();
-L0152 |   popup = await openPopupDocument();
-L0153 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
-L0154 |   assert.equal(await popup.locator('[name="role"]').inputValue(), "草稿测试岗位");
-L0155 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "最后一次输入后立即关闭");
-L0156 |   assert.match(await popup.locator("#saveMessage").textContent(), /恢复/);
-L0157 |   await popup.close();
-L0158 |   await target.goto(origin + "/apply?jobId=another-role");
-L0159 |   popup = await openPopupDocument();
-L0160 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0161 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "");
-L0162 |   await popup.close();
-L0163 |   await target.goto(origin + "/apply");
-L0164 |   popup = await openPopupDocument();
-L0165 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
-L0166 |   await popup.locator("#clearDraft").click();
-L0167 |   await popup.waitForFunction(() => document.getElementById("saveMessage").textContent.includes("已清空草稿"));
-L0168 |   await popup.close();
-L0169 |   popup = await openPopupDocument();
-L0170 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0171 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0059 |   const preparePage = async () => {
+L0060 |     if (!await panel.locator("#prepare").isVisible() && !await panel.locator("#menu").isVisible()) await panel.locator("#menuButton").click();
+L0061 |     await panel.locator("#prepare").click();
+L0062 |   };
+L0063 |   const errors = []; panel.on("pageerror", (error) => errors.push(error.message));
+L0064 |   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
+L0065 |   const createRecords = (page, prefix) => page.evaluate(async (prefix) => {
+L0066 |     const { saveNewRecord } = await import(chrome.runtime.getURL("src/storage.js"));
+L0067 |     return Promise.all(Array.from({ length: 8 }, (_, index) => saveNewRecord({ company: `${prefix}-${index}`, role: "测试岗位", source: "company_portal", portalLink: "https://example.com/apply", appliedDate: "2026-09-21", status: "applied" })));
+L0068 |   }, prefix);
+L0069 |   const [leftRecords] = await Promise.all([createRecords(panel, "panel"), createRecords(recordsPage, "records")]);
+L0070 |   await Promise.all([
+L0071 |     panel.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { status: "oa" }); }, leftRecords[0].id),
+L0072 |     recordsPage.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { notes: "另一页面的更新" }); }, leftRecords[0].id)
+L0073 |   ]);
+L0074 |   const queuedRecords = await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).getRecords());
+L0075 |   assert.equal(queuedRecords.length, 16);
+L0076 |   assert.equal(new Set(queuedRecords.map((record) => record.id)).size, 16);
+L0077 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).status, "oa");
+L0078 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).notes, "另一页面的更新");
+L0079 |   console.log("PASS real background queue preserves concurrent writes and independent patches across extension pages");
+L0080 |   await preparePage();
+L0081 |   await panel.locator("#questions .question").first().waitFor();
+L0082 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0083 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0084 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
+L0085 |   assert.match(await panel.locator("#fill").textContent(), /5/);
+L0086 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0087 |   const introduction = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: "自我介绍的答案", exact: true }) });
+L0088 |   assert.equal(await introduction.locator("[data-answer]").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
+L0089 |   assert.equal(await introduction.locator("[data-selected]").isChecked(), true, "An existing personal narrative belongs in the one-confirmation batch with AI disabled");
+L0090 |   for (const selector of ["#name", "#email", "#school", "#intro", "#awards"]) assert.equal(await target.locator(selector).inputValue(), "", "Preparing the preview must not write to the application form");
+L0091 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0092 |   console.log("PASS real extension previews five local answers including personal narrative across both frames without writing before confirmation");
+L0093 |   await target.locator("#email").fill("user-change@example.com");
+L0094 |   const versionCheck = await panel.evaluate(async (windowId) => {
+L0095 |     const { versionOf } = await import(chrome.runtime.getURL("src/assistant/planner.js"));
+L0096 |     const { getMemories, loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0097 |     return { planned: (await loadSession(windowId)).memoryVersion, stored: versionOf(await getMemories()) };
+L0098 |   }, ids.windowId);
+L0099 |   assert.equal(versionCheck.planned, versionCheck.stored, "Chrome storage round-trip must preserve the memory version after migration");
+L0100 |   await panel.locator("#fill").click();
+L0101 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.querySelectorAll("#resultList .result-row").length === 5);
+L0102 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
+L0103 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
+L0104 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0105 |   assert.equal(await target.locator("#intro").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
+L0106 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
+L0107 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
+L0108 |   console.log("PASS one confirmation writes and verifies all previewed answers while preserving manual webpage edits");
+L0109 |   const profileAfter = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.profile"))["applicationTracker.profile"]);
+L0110 |   assert.deepEqual(profileAfter, originalProfile);
+L0111 |   const memories = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.assistant.memories.v2"))["applicationTracker.assistant.memories.v2"]);
+L0112 |   assert.equal(memories.length, 1); assert.equal(memories[0].confirmed, false);
+L0113 |   console.log("PASS fill never edits profile or automatically promotes learned answers");
+L0114 |   await panel.locator("#undo").click();
+L0115 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && [...document.querySelectorAll("#resultList .result-row p")].filter((node) => node.textContent === "已撤销").length === 4);
+L0116 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
+L0117 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0118 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0119 |   console.log("PASS extension undo restores only assistant-written fields");
+L0120 |   await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0121 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0122 |   await panel.setViewportSize({ width: 420, height: 1000 }); await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
+L0123 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0124 |   await panel.setViewportSize({ width: 320, height: 900 });
+L0125 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0126 |   console.log("PASS side panel layout fits 320px and 420px widths");
+L0127 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor();
+L0128 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0129 |   console.log("PASS extension session restores after closing/reopening its document");
+L0130 |   await target.reload();
+L0131 |   await panel.waitForFunction(() => document.getElementById("fill").disabled);
+L0132 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
+L0133 |   console.log("PASS navigation invalidates the old fill plan");
+L0134 | 
+L0135 |   // An inactive extension tab executes the real popup document while preserving
+L0136 |   // the active application tab, then is destroyed to model popup dismissal.
+L0137 |   const openPopupDocument = async () => {
+L0138 |     await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
+L0139 |     const opened = context.waitForEvent("page");
+L0140 |     await worker.evaluate((url) => chrome.tabs.create({ url, active: false }), `chrome-extension://${extensionId}/src/popup/popup.html`);
+L0141 |     const popup = await opened;
+L0142 |     popup.on("pageerror", (error) => errors.push(error.message));
+L0143 |     await popup.waitForLoadState();
+L0144 |     await popup.waitForFunction(() => !!document.querySelector('[name="portalLink"]').value);
+L0145 |     return popup;
+L0146 |   };
+L0147 |   let popup = await openPopupDocument();
+L0148 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0149 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0150 |   assert.equal(await popup.locator('[data-job-source="company"]').textContent(), "网页标题");
+L0151 |   await popup.locator('[name="company"]').fill("草稿测试公司");
+L0152 |   assert.equal(await popup.locator('[data-job-source="company"]').isVisible(), false);
+L0153 |   await popup.locator('[name="role"]').fill("草稿测试岗位");
+L0154 |   await popup.locator('[name="notes"]').fill("最后一次输入后立即关闭");
+L0155 |   await popup.close();
+L0156 |   popup = await openPopupDocument();
+L0157 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
+L0158 |   assert.equal(await popup.locator('[name="role"]').inputValue(), "草稿测试岗位");
+L0159 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "最后一次输入后立即关闭");
+L0160 |   assert.match(await popup.locator("#saveMessage").textContent(), /恢复/);
+L0161 |   await popup.close();
+L0162 |   await target.goto(origin + "/apply?jobId=another-role");
+L0163 |   popup = await openPopupDocument();
+L0164 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0165 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "");
+L0166 |   await popup.close();
+L0167 |   await target.goto(origin + "/apply");
+L0168 |   popup = await openPopupDocument();
+L0169 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
+L0170 |   await popup.locator("#clearDraft").click();
+L0171 |   await popup.waitForFunction(() => document.getElementById("saveMessage").textContent.includes("已清空草稿"));
 L0172 |   await popup.close();
-L0173 |   console.log("PASS real popup document restores after destruction, isolates job IDs and honors explicit clearing");
-L0174 |   await target.evaluate(() => { document.title = "填写简历"; });
-L0175 |   popup = await openPopupDocument();
-L0176 |   await popup.locator("#recentJobBox").waitFor({ state: "visible" });
-L0177 |   const currentLink = await popup.locator('[name="portalLink"]').inputValue();
-L0178 |   await popup.locator("#recentJob").selectOption("0");
-L0179 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0180 |   assert.equal(await popup.locator('[data-job-source="role"]').textContent(), "最近岗位");
-L0181 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), currentLink);
-L0182 |   const recent = await worker.evaluate(async () => (await chrome.storage.session.get("applicationTracker.recentJobs"))["applicationTracker.recentJobs"]);
-L0183 |   assert.equal(recent.length, 1);
-L0184 |   assert.equal(new URL(recent[0].url).search, "");
-L0185 |   await popup.close();
-L0186 |   await target.reload();
-L0187 |   console.log("PASS real popup offers recent jobs on application pages and preserves the current application link");
-L0188 | 
-L0189 |   // Exercise the native download/file-input and MV3 message/storage path, which
-L0190 |   // the DOM tests' Chrome API adapter cannot verify.
-L0191 |   const memoryPage = await context.newPage();
-L0192 |   memoryPage.on("pageerror", (error) => errors.push(error.message));
-L0193 |   await memoryPage.goto(`chrome-extension://${extensionId}/src/memory/memory.html`);
-L0194 |   await memoryPage.locator(".memory-card").first().waitFor();
-L0195 |   const apiKeyFixture = "fixture-key-must-never-be-exported";
-L0196 |   await memoryPage.evaluate(async (apiKey) => {
-L0197 |     const { saveAiSettings } = await import(chrome.runtime.getURL("src/storage.js"));
-L0198 |     await saveAiSettings({ enabled: false, apiKey, model: "gpt-5-mini" });
-L0199 |   }, apiKeyFixture);
-L0200 |   const downloaded = memoryPage.waitForEvent("download");
-L0201 |   await memoryPage.locator("#exportBackup").click();
-L0202 |   const download = await downloaded;
-L0203 |   const backupPath = path.join(temporary, "downloaded-fixture-backup.json");
-L0204 |   await download.saveAs(backupPath);
-L0205 |   const backupText = await readFile(backupPath, "utf8");
-L0206 |   const downloadedBackup = JSON.parse(backupText);
-L0207 |   assert.match(download.suggestedFilename(), /^application-tracker-backup-\d{4}-\d{2}-\d{2}\.json$/);
-L0208 |   assert.equal(downloadedBackup.schemaVersion, 3);
-L0209 |   assert.equal(downloadedBackup.data.records.length, 16);
-L0210 |   assert.equal(downloadedBackup.data.memories.length, 1);
-L0211 |   assert.equal(downloadedBackup.data.profile.email, originalProfile.email);
-L0212 |   assert.ok(!backupText.includes(apiKeyFixture) && !backupText.includes('"apiKey"'));
-L0213 |   const readBackupState = () => memoryPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storageClient.js"))).requestStorageMutation({ operation: "backup.export" }));
-L0214 |   await memoryPage.evaluate(async () => {
-L0215 |     const { saveNewRecord, saveProfile, getProfile } = await import(chrome.runtime.getURL("src/storage.js"));
-L0216 |     const { getMemories, saveMemory } = await import(chrome.runtime.getURL("src/assistant/store.js"));
-L0217 |     await saveNewRecord({ company: "导出后新增的公司", role: "恢复测试岗位", source: "company_portal", portalLink: "https://example.com/after-backup", appliedDate: "2026-09-21", status: "applied" });
-L0218 |     await saveProfile({ ...await getProfile(), email: "changed-before-restore@example.com" });
-L0219 |     const memory = (await getMemories())[0];
-L0220 |     await saveMemory({ ...memory, answer: "导入前更新的答案" });
-L0221 |   });
-L0222 |   const beforeImport = await readBackupState();
-L0223 |   assert.equal(beforeImport.data.records.length, 17);
-L0224 |   await memoryPage.locator("#importBackup").setInputFiles(backupPath);
-L0225 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
-L0226 |   await memoryPage.locator("#restoreMode").selectOption("replace");
-L0227 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled && document.getElementById("restoreDescription").textContent.includes("替换全部"));
-L0228 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 16 条投递/);
-L0229 |   assert.deepEqual((await readBackupState()).data, beforeImport.data, "A real backup preview must not write data");
-L0230 |   await memoryPage.locator("#confirmRestore").click();
-L0231 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
-L0232 |   assert.deepEqual((await readBackupState()).data, downloadedBackup.data);
-L0233 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
-L0234 |   await memoryPage.locator("#restoreRecovery").waitFor({ state: "visible" });
-L0235 |   await memoryPage.locator("#restoreRecovery").click();
-L0236 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
-L0237 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 17 条投递/);
-L0238 |   await memoryPage.locator("#confirmRestore").click();
-L0239 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
-L0240 |   assert.deepEqual((await readBackupState()).data, beforeImport.data);
-L0241 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
-L0242 |   console.log("PASS real backup download, file preview, replacement and recovery round-trip preserve data and exclude API credentials");
-L0243 | 
-L0244 |   // A host permission allows DOM inspection, but it does not grant the distinct
-L0245 |   // captureVisibleTab privilege. Programmatic activation and opening the popup
-L0246 |   // document above deliberately do not simulate a user extension-action grant.
-L0247 |   await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
-L0248 |   const deniedCapture = await panel.evaluate(async (tabId) => {
-L0249 |     const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
-L0250 |     const { captureVisualContext } = await import(chrome.runtime.getURL("src/assistant/visualCapture.js"));
-L0251 |     const snapshot = await scanPage(tabId);
-L0252 |     try {
-L0253 |       await captureVisualContext(snapshot);
-L0254 |       return { captured: true };
-L0255 |     } catch (error) {
-L0256 |       return { captured: false, code: error.code, message: error.message };
-L0257 |     }
-L0258 |   }, ids.tabId);
-L0259 |   assert.equal(deniedCapture.captured, false);
-L0260 |   assert.equal(deniedCapture.code, "VISUAL_PERMISSION");
-L0261 |   assert.match(deniedCapture.message, /重新点击扩展图标/);
-L0262 |   assert.match(deniedCapture.message, /继续使用网页文字识别/);
-L0263 |   const savedState = await panel.evaluate(async () => JSON.stringify({ local: await chrome.storage.local.get(null), session: await chrome.storage.session.get(null) }));
-L0264 |   assert.equal(savedState.includes("data:image/"), false, "A denied screenshot must not leave image data in extension storage");
-L0265 |   console.log("PASS real screenshot permission denial explains recovery and preserves the text-recognition fallback without storing images");
-L0266 | 
-L0267 |   const aiPage = await context.newPage();
-L0268 |   aiPage.on("pageerror", (error) => errors.push(error.message));
-L0269 |   const priorAiSettings = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
-L0270 |   await aiPage.goto(`chrome-extension://${extensionId}/src/ai/ai.html`);
-L0271 |   await aiPage.waitForFunction(() => document.querySelector('[name="apiKey"]').value === "fixture-key-must-never-be-exported");
-L0272 |   assert.equal(await aiPage.locator('[name="visionEnabled"]').isChecked(), false);
-L0273 |   await aiPage.locator('[name="visionEnabled"]').check();
-L0274 |   await aiPage.locator('button[type="submit"]').click();
-L0275 |   await aiPage.locator("#message").waitFor({ state: "visible" });
-L0276 |   await aiPage.reload();
-L0277 |   await aiPage.waitForFunction(() => document.querySelector('[name="visionEnabled"]').checked);
-L0278 |   const optedIn = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
-L0279 |   assert.equal(optedIn.visionEnabled, true);
-L0280 |   assert.equal(optedIn.enabled, false, "Screenshot opt-in must not independently enable AI calls");
-L0281 |   assert.equal(optedIn.model, priorAiSettings.model);
-L0282 |   assert.equal(optedIn.apiKey, priorAiSettings.apiKey);
-L0283 |   await aiPage.locator('[name="visionEnabled"]').uncheck();
-L0284 |   await aiPage.locator('button[type="submit"]').click();
-L0285 |   await aiPage.locator("#message").waitFor({ state: "visible" });
-L0286 |   assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]), priorAiSettings);
-L0287 |   await aiPage.close();
-L0288 |   console.log("PASS real AI settings screen persists screenshot opt-in and opt-out without enabling AI or changing the model and key");
-L0289 |   await target.goto(origin + "/cross");
-L0290 |   await target.frameLocator("iframe").locator("#website").waitFor();
-L0291 |   await panel.locator("#prepare").click();
-L0292 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("1/2"));
-L0293 |   const crossOrigin = `http://localhost:${server.address().port}`;
-L0294 |   assert.equal(await panel.getByRole("button", { name: `允许读取内嵌表单（localhost:${server.address().port}）`, exact: true }).count(), 1);
-L0295 |   const crossState = await panel.evaluate(async (windowId) => {
-L0296 |     const { loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
-L0297 |     const saved = await loadSession(windowId);
-L0298 |     return { failedFrames: saved.snapshot.failedFrames, fields: saved.snapshot.fields.length, permissions: await chrome.permissions.getAll() };
-L0299 |   }, ids.windowId);
-L0300 |   assert.equal(crossState.failedFrames.length, 1);
-L0301 |   assert.equal(crossState.failedFrames[0].origin, crossOrigin);
-L0302 |   assert.ok(crossState.failedFrames[0].frameId > 0);
-L0303 |   assert.equal(crossState.fields, 5);
-L0304 |   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
-L0305 |   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
-L0306 |   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
-L0307 |   assert.deepEqual(errors, []);
-L0308 |   console.log("Extension end-to-end cases passed: 14");
-L0309 | } catch (error) {
-L0310 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
-L0311 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
-L0312 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
-L0313 |   }
-L0314 |   throw error;
-L0315 | } finally {
-L0316 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
-L0317 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
-L0318 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
-L0319 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
-L0320 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-L0321 |   }
-L0322 | }
+L0173 |   popup = await openPopupDocument();
+L0174 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0175 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0176 |   await popup.close();
+L0177 |   console.log("PASS real popup document restores after destruction, isolates job IDs and honors explicit clearing");
+L0178 |   await target.evaluate(() => { document.title = "填写简历"; });
+L0179 |   popup = await openPopupDocument();
+L0180 |   await popup.locator("#recentJobBox").waitFor({ state: "visible" });
+L0181 |   const currentLink = await popup.locator('[name="portalLink"]').inputValue();
+L0182 |   await popup.locator("#recentJob").selectOption("0");
+L0183 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0184 |   assert.equal(await popup.locator('[data-job-source="role"]').textContent(), "最近岗位");
+L0185 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), currentLink);
+L0186 |   const recent = await worker.evaluate(async () => (await chrome.storage.session.get("applicationTracker.recentJobs"))["applicationTracker.recentJobs"]);
+L0187 |   assert.equal(recent.length, 2);
+L0188 |   assert.deepEqual(recent.map((job) => new URL(job.url).search).sort(), ["", "?jobId=another-role"]);
+L0189 |   await popup.close();
+L0190 |   await target.reload();
+L0191 |   console.log("PASS real popup offers recent jobs on application pages and preserves the current application link");
+L0192 | 
+L0193 |   // Exercise the native download/file-input and MV3 message/storage path, which
+L0194 |   // the DOM tests' Chrome API adapter cannot verify.
+L0195 |   const memoryPage = await context.newPage();
+L0196 |   memoryPage.on("pageerror", (error) => errors.push(error.message));
+L0197 |   await memoryPage.goto(`chrome-extension://${extensionId}/src/memory/memory.html`);
+L0198 |   await memoryPage.locator(".memory-card").first().waitFor();
+L0199 |   const apiKeyFixture = "fixture-key-must-never-be-exported";
+L0200 |   await memoryPage.evaluate(async (apiKey) => {
+L0201 |     const { saveAiSettings } = await import(chrome.runtime.getURL("src/storage.js"));
+L0202 |     await saveAiSettings({ enabled: false, apiKey, model: "gpt-5-mini" });
+L0203 |   }, apiKeyFixture);
+L0204 |   const downloaded = memoryPage.waitForEvent("download");
+L0205 |   await memoryPage.locator("#exportBackup").click();
+L0206 |   const download = await downloaded;
+L0207 |   const backupPath = path.join(temporary, "downloaded-fixture-backup.json");
+L0208 |   await download.saveAs(backupPath);
+L0209 |   const backupText = await readFile(backupPath, "utf8");
+L0210 |   const downloadedBackup = JSON.parse(backupText);
+L0211 |   assert.match(download.suggestedFilename(), /^application-tracker-backup-\d{4}-\d{2}-\d{2}\.json$/);
+L0212 |   assert.equal(downloadedBackup.schemaVersion, 3);
+L0213 |   assert.equal(downloadedBackup.data.records.length, 16);
+L0214 |   assert.equal(downloadedBackup.data.memories.length, 1);
+L0215 |   assert.equal(downloadedBackup.data.profile.email, originalProfile.email);
+L0216 |   assert.ok(!backupText.includes(apiKeyFixture) && !backupText.includes('"apiKey"'));
+L0217 |   const readBackupState = () => memoryPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storageClient.js"))).requestStorageMutation({ operation: "backup.export" }));
+L0218 |   await memoryPage.evaluate(async () => {
+L0219 |     const { saveNewRecord, saveProfile, getProfile } = await import(chrome.runtime.getURL("src/storage.js"));
+L0220 |     const { getMemories, saveMemory } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0221 |     await saveNewRecord({ company: "导出后新增的公司", role: "恢复测试岗位", source: "company_portal", portalLink: "https://example.com/after-backup", appliedDate: "2026-09-21", status: "applied" });
+L0222 |     await saveProfile({ ...await getProfile(), email: "changed-before-restore@example.com" });
+L0223 |     const memory = (await getMemories())[0];
+L0224 |     await saveMemory({ ...memory, answer: "导入前更新的答案" });
+L0225 |   });
+L0226 |   const beforeImport = await readBackupState();
+L0227 |   assert.equal(beforeImport.data.records.length, 17);
+L0228 |   await memoryPage.locator("#importBackup").setInputFiles(backupPath);
+L0229 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
+L0230 |   await memoryPage.locator("#restoreMode").selectOption("replace");
+L0231 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled && document.getElementById("restoreDescription").textContent.includes("替换全部"));
+L0232 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 16 条投递/);
+L0233 |   assert.deepEqual((await readBackupState()).data, beforeImport.data, "A real backup preview must not write data");
+L0234 |   await memoryPage.locator("#confirmRestore").click();
+L0235 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
+L0236 |   assert.deepEqual((await readBackupState()).data, downloadedBackup.data);
+L0237 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
+L0238 |   await memoryPage.locator("#restoreRecovery").waitFor({ state: "visible" });
+L0239 |   await memoryPage.locator("#restoreRecovery").click();
+L0240 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
+L0241 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 17 条投递/);
+L0242 |   await memoryPage.locator("#confirmRestore").click();
+L0243 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
+L0244 |   assert.deepEqual((await readBackupState()).data, beforeImport.data);
+L0245 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
+L0246 |   console.log("PASS real backup download, file preview, replacement and recovery round-trip preserve data and exclude API credentials");
+L0247 | 
+L0248 |   // A host permission allows DOM inspection, but it does not grant the distinct
+L0249 |   // captureVisibleTab privilege. Programmatic activation and opening the popup
+L0250 |   // document above deliberately do not simulate a user extension-action grant.
+L0251 |   await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
+L0252 |   const deniedCapture = await panel.evaluate(async (tabId) => {
+L0253 |     const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0254 |     const { captureVisualContext } = await import(chrome.runtime.getURL("src/assistant/visualCapture.js"));
+L0255 |     const snapshot = await scanPage(tabId);
+L0256 |     try {
+L0257 |       await captureVisualContext(snapshot);
+L0258 |       return { captured: true };
+L0259 |     } catch (error) {
+L0260 |       return { captured: false, code: error.code, message: error.message };
+L0261 |     }
+L0262 |   }, ids.tabId);
+L0263 |   assert.equal(deniedCapture.captured, false);
+L0264 |   assert.equal(deniedCapture.code, "VISUAL_PERMISSION");
+L0265 |   assert.match(deniedCapture.message, /重新点击扩展图标/);
+L0266 |   assert.match(deniedCapture.message, /继续使用网页文字识别/);
+L0267 |   const savedState = await panel.evaluate(async () => JSON.stringify({ local: await chrome.storage.local.get(null), session: await chrome.storage.session.get(null) }));
+L0268 |   assert.equal(savedState.includes("data:image/"), false, "A denied screenshot must not leave image data in extension storage");
+L0269 |   console.log("PASS real screenshot permission denial explains recovery and preserves the text-recognition fallback without storing images");
+L0270 | 
+L0271 |   const aiPage = await context.newPage();
+L0272 |   aiPage.on("pageerror", (error) => errors.push(error.message));
+L0273 |   const priorAiSettings = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
+L0274 |   await aiPage.goto(`chrome-extension://${extensionId}/src/ai/ai.html`);
+L0275 |   await aiPage.waitForFunction(() => document.querySelector('[name="apiKey"]').value === "fixture-key-must-never-be-exported");
+L0276 |   assert.equal(await aiPage.locator('[name="visionEnabled"]').isChecked(), false);
+L0277 |   await aiPage.locator('[name="visionEnabled"]').check();
+L0278 |   await aiPage.locator('button[type="submit"]').click();
+L0279 |   await aiPage.locator("#message").waitFor({ state: "visible" });
+L0280 |   await aiPage.reload();
+L0281 |   await aiPage.waitForFunction(() => document.querySelector('[name="visionEnabled"]').checked);
+L0282 |   const optedIn = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
+L0283 |   assert.equal(optedIn.visionEnabled, true);
+L0284 |   assert.equal(optedIn.enabled, false, "Screenshot opt-in must not independently enable AI calls");
+L0285 |   assert.equal(optedIn.model, priorAiSettings.model);
+L0286 |   assert.equal(optedIn.apiKey, priorAiSettings.apiKey);
+L0287 |   await aiPage.locator('[name="visionEnabled"]').uncheck();
+L0288 |   await aiPage.locator('button[type="submit"]').click();
+L0289 |   await aiPage.locator("#message").waitFor({ state: "visible" });
+L0290 |   assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]), priorAiSettings);
+L0291 |   await aiPage.close();
+L0292 |   console.log("PASS real AI settings screen persists screenshot opt-in and opt-out without enabling AI or changing the model and key");
+L0293 |   await target.goto(origin + "/cross");
+L0294 |   await target.frameLocator("iframe").locator("#website").waitFor();
+L0295 |   await preparePage();
+L0296 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("1/2"));
+L0297 |   const crossOrigin = `http://localhost:${server.address().port}`;
+L0298 |   assert.equal(await panel.getByRole("button", { name: `允许读取内嵌表单（localhost:${server.address().port}）`, exact: true }).count(), 1);
+L0299 |   const crossState = await panel.evaluate(async (windowId) => {
+L0300 |     const { loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0301 |     const saved = await loadSession(windowId);
+L0302 |     return { failedFrames: saved.snapshot.failedFrames, fields: saved.snapshot.fields.length, permissions: await chrome.permissions.getAll() };
+L0303 |   }, ids.windowId);
+L0304 |   assert.equal(crossState.failedFrames.length, 1);
+L0305 |   assert.equal(crossState.failedFrames[0].origin, crossOrigin);
+L0306 |   assert.ok(crossState.failedFrames[0].frameId > 0);
+L0307 |   assert.equal(crossState.fields, 5);
+L0308 |   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
+L0309 |   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
+L0310 |   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
+L0311 |   assert.deepEqual(errors, []);
+L0312 |   console.log("Extension end-to-end cases passed: 14");
+L0313 | } catch (error) {
+L0314 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
+L0315 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
+L0316 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
+L0317 |   }
+L0318 |   throw error;
+L0319 | } finally {
+L0320 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
+L0321 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+L0322 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
+L0323 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
+L0324 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+L0325 |   }
+L0326 | }
 
 ========================================================================
 FILE: application-tracker-extension/scripts/job-info-browser-tests.mjs
@@ -1450,41 +1498,3 @@ L0020 | const THRESHOLDS = { questionText: 0.95, section: 0.9, repeats: 1, contr
 L0021 | 
 L0022 | const server = createServer(async (req, res) => {
 L0023 |   const name = decodeURIComponent(new URL(req.url, "http://localhost").pathname).slice(1);
-L0024 |   if (!/^[\w.-]+\.html$/.test(name)) { res.writeHead(404).end(); return; }
-L0025 |   try { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(await readFile(path.join(dir, name))); } catch { res.writeHead(404).end(); }
-L0026 | });
-L0027 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-L0028 | const origin = `http://127.0.0.1:${server.address().port}`;
-L0029 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
-L0030 | const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
-L0031 | await context.route("**/*", (route) => route.request().url().startsWith(origin) ? route.continue() : route.abort());
-L0032 | const page = await context.newPage();
-L0033 | 
-L0034 | const norm = (v) => String(v ?? "").normalize("NFKC").replace(/[\s*＊:：]/g, "").toLowerCase();
-L0035 | const GENERIC = /^(请输入|请选择|请填写|请选择日期|选择日期|未命名问题|pleaseenter|pleaseselect|select|choose)$/;
-L0036 | const sameSection = (a, b) => { const x = norm(a), y = norm(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
-L0037 | const CONTROL_OK = {
-L0038 |   text: (f) => ["text"].includes(f.kind),
-L0039 |   textarea: (f) => f.kind === "textarea",
-L0040 |   select: (f) => ["select", "custom-select"].includes(f.kind),
-L0041 |   "select-2level": (f) => ["select", "custom-select"].includes(f.kind),
-L0042 |   "select+text": (f) => ["select", "custom-select", "text"].includes(f.kind),
-L0043 |   date: (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
-L0044 |   "date-range": (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
-L0045 |   cascader: (f) => f.kind === "cascader" || /cascader/i.test(f.adapter || ""),
-L0046 |   radio: (f) => f.kind === "radio",
-L0047 |   checkbox: (f) => ["checkboxes", "checkbox"].includes(f.kind),
-L0048 |   "popup-chooser": (f) => !f.supported ? !!f.reason : !!f.adapter
-L0049 | };
-L0050 | let failed = false;
-L0051 | const files = (await readdir(dir)).filter((f) => f.endsWith(".expected.json")).sort();
-L0052 | for (const file of files) {
-L0053 |   const expected = JSON.parse(await readFile(path.join(dir, file), "utf8"));
-L0054 |   await page.goto(`${origin}/${expected.fixture}`);
-L0055 |   const scan = await page.evaluate(pageBridge, { action: "scan" });
-L0056 |   const fields = [...scan.fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-L0057 |   const questions = expected.questions.filter((q) => !["none", "file"].includes(q.control));
-L0058 |   const count = (list, key) => list.reduce((m, x) => m.set(key(x), (m.get(key(x)) || 0) + 1), new Map());
-L0059 |   const expText = count(questions, (q) => norm(q.question));
-L0060 |   const gotText = count(fields, (f) => norm(f.question || f.label));
-L0061 |   let textHit = 0; for (const [k, n] of expText) textHit += Math.min(n, gotText.get(k) || 0);

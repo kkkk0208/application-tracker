@@ -24,7 +24,8 @@ export function finalizePreview(plan, previous = []) {
     const choice = Object.hasOwn(item, "selectionExplicit") ? item : same ? previousItem : null;
     const selectionExplicit = choice?.selectionExplicit === true;
     const optedOut = selectionExplicit && choice.selected === false;
-    return { ...item, selectionExplicit, selected: isFillable(item) && !optedOut };
+    const reviewOptIn = item.requiresSelection === true && !item.edited && !selectionExplicit;
+    return { ...item, selectionExplicit, selected: isFillable(item) && !optedOut && !reviewOptIn };
   });
 }
 

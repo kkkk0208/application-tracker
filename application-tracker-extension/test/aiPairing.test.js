@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { acceptPairs, BLOCKED_LABEL, buildCatalog, buildPairingPayload, PAIRING_FORMAT, pairingCandidates, requestPairing, splitName } from "../src/assistant/aiPairing.js";
 import { factsFromProfile, MEMORY_SCOPE_VERSION, preparePlan, scopeFor } from "../src/assistant/planner.js";
+import { finalizePreview } from "../src/assistant/preview.js";
 
 // The eight former recognition tests from assistant.test.js are migrated here:
 // labels/canonical names and no values -> metadata privacy test;
@@ -371,4 +372,19 @@ test("splitting date parts validates the whole source date and cannot invent a m
   const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value: "2020-02-29" }];
   const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart: "day", options: [{ text: "29" }] })], source);
   assert.equal(accept([pair(item, source[0].id)], [item], source).accepted[0].answer, "29");
+});
+
+test("rephrased open prose can reuse a confirmed memory but requires a fresh selection", () => {
+  const [item] = planFor([field("请举例说明你是如何解决问题的", { kind: "textarea", type: "textarea" })]);
+  const remembered = memory({ question: "分享一个克服困难的经历", answer: "已确认的解决问题经历" });
+  const raw = { pairs: [{ fieldId: item.fieldId, source: "memory", factId: null, memoryId: remembered.id, transform: "none" }] };
+  const result = acceptPairs(raw, [item], facts, [remembered], { url, language: "zh", batchIds: new Set([item.fieldId]) });
+  assert.equal(result.errors.length, 0);
+  const matched = { ...item, selected: true, selectionExplicit: true, ...result.accepted[0] };
+  assert.equal(finalizePreview([matched])[0].selected, false);
+  assert.equal(finalizePreview([{ ...matched, selectionExplicit: true, selected: true }])[0].selected, true);
+  for (const change of [{ confirmed: false }, { language: "en" }, { entityId: "education.master" }, { question: "期望薪资" }]) {
+    const rejected = acceptPairs(raw, [item], facts, [{ ...remembered, ...change }], { url, language: "zh", batchIds: new Set([item.fieldId]) });
+    assert.equal(rejected.accepted.length, 0);
+  }
 });

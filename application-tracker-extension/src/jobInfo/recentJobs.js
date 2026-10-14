@@ -1,4 +1,4 @@
-import { sanitizeJobUrl } from "./extractJobInfo.js";
+import { cleanPortalUrl, getPortalUrl } from "../model.js";
 
 export const RECENT_JOBS_KEY = "applicationTracker.recentJobs";
 
@@ -7,14 +7,14 @@ export async function rememberJob(sessionStorage, pageUrl, info) {
   if (!pageUrl || !info) return;
   const trusted = (key) => ["high", "medium"].includes(info.confidence?.[key]) && info[key];
   if (!trusted("company") && !trusted("role")) return;
-  const url = sanitizeJobUrl(pageUrl);
+  const url = getPortalUrl(cleanPortalUrl(pageUrl));
   if (!url) return;
   const jobs = await loadRecentJobs(sessionStorage);
   const entry = {
     company: trusted("company") || "", role: trusted("role") || "", base: trusted("base") || "",
     url, host: new URL(url).hostname, capturedAt: Date.now(), source: info.source
   };
-  await sessionStorage.set({ [RECENT_JOBS_KEY]: [entry, ...jobs.filter((job) => job.url !== url)].slice(0, 20) });
+  await sessionStorage.set({ [RECENT_JOBS_KEY]: [entry, ...jobs.filter((job) => job.url !== url || job.role !== entry.role)].slice(0, 20) });
 }
 
 export async function loadRecentJobs(sessionStorage) {

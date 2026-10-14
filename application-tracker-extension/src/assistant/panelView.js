@@ -25,7 +25,7 @@ export function buildPanelView(plan = [], results = [], facts = []) {
     sections.set(name, (sections.get(name) || 0) + 1);
   }
   return { groups, counts: { fill: previewStats(plan).selected, attention: groups.attention.length,
-    skip: groups.web.length + groups.optional.length + groups.filled.length },
+    skip: groups.web.length + groups.optional.length + (results.length ? 0 : groups.filled.length) },
     readySections: [...sections].map(([name, count]) => ({ name, count })) };
 }
 

@@ -99,6 +99,10 @@ try {
     window.chrome = { permissions: { request: (request) => testApi("permissions.request", { request, userGesture: navigator.userActivation.isActive }) }, storage: { local: area("local"), session: area("session"), onChanged: window.__storageEvent }, windows: { getCurrent: async () => ({ id: 1 }), get: async () => ({ id: 1, focused: true }), onFocusChanged: event() }, tabs: { get: (id) => testApi("tabs.get", id), query: (query) => testApi("tabs.query", query), captureVisibleTab: (id, options) => testApi("tabs.capture", { id, options }), update: (id, props) => testApi("tabs.update", { id, props }), onActivated: event(), onUpdated: event(), onRemoved: event() }, webNavigation: { getAllFrames: () => testApi("frames") }, scripting: { executeScript: (args) => testApi("script", { target: args.target, functionName: args.func.name, request: args.args?.[0] }) }, runtime: { sendMessage: (message) => testApi("message", message) } };
   });
   const errors = []; panel.on("pageerror", (e) => errors.push(e.message));
+  const preparePage = async () => {
+    if (!await panel.locator("#prepare").isVisible() && !await panel.locator("#menu").isVisible()) await panel.locator("#menuButton").click();
+    await panel.locator("#prepare").click();
+  };
   const expandQuestions = async () => {
     const button = panel.locator("#showAll");
     if (await button.isVisible() && (await button.textContent()).trim() === "展开全部题目") await button.click();
@@ -107,7 +111,7 @@ try {
     await panel.locator(await panel.locator("#refresh").isVisible() ? "#refresh" : "#prepare").click();
   };
   await panel.goto(origin + "/src/sidepanel/assistant.html");
-  await panel.locator("#prepare").click();
+  await preparePage();
   await panel.locator("#questions .question").first().waitFor();
   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.equal(await panel.locator("#questions .question").count(), 6);
@@ -176,7 +180,7 @@ try {
   assert.equal(await target.locator("#intro").inputValue(), "");
   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
   console.log("PASS UI undo restores only assistant-written fields");
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
   await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
@@ -231,7 +235,7 @@ try {
       }) };
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
   });
-  await panel.locator("#prepare").click();
+  await preparePage();
   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   const degree = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^学位/ }) });
   const location = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^学校所在地/ }) });
@@ -435,7 +439,7 @@ try {
   await visionFixture();
   await writeStorage("local", { "applicationTracker.profile": visualProfile, "applicationTracker.aiSettings": visualSettings });
   await panel.locator("#language").selectOption("zh");
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.equal(captureCalls, 1);
   assert.equal(visualRequests.length, 1, await panel.locator("#visionStatus").textContent());
   const imagePayload = visualRequests[0];
@@ -482,7 +486,7 @@ try {
 
   await visionFixture();
   await writeStorage("local", { "applicationTracker.aiSettings": { ...visualSettings, visionEnabled: false } });
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   await expandQuestions();
   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
   assert.equal(await panel.locator("#visionStatus").isVisible(), false);
@@ -495,7 +499,7 @@ try {
   await visionFixture();
   await writeStorage("local", { "applicationTracker.aiSettings": visualSettings });
   activeTabId = 2;
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   await expandQuestions();
   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
   assert.match(await panel.locator("#visionStatus").textContent(), /继续使用文字识别/);
@@ -505,7 +509,7 @@ try {
   console.log("PASS UI an unrelated active tab prevents capture and falls back to the bound form's text preview");
 
   rejectVisual = true;
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   await expandQuestions();
   assert.equal(captureCalls, 2); assert.equal(visualRequests.length, 2);
   assert.match(await panel.locator("#visionStatus").textContent(), /继续使用文字识别.*400/);
@@ -518,7 +522,7 @@ try {
   await visionFixture();
   await target.locator("section").first().evaluate((section) => section.insertAdjacentHTML("beforeend", '<label>专业<input id="major"></label>'));
   await writeStorage("local", { "applicationTracker.profile": { ...visualProfile, bachelorMajorZh: "本科专业", masterMajorZh: "硕士专业" } });
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
   const unresolvedMajor = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^专业$/ }) });
   assert.equal(await unresolvedMajor.locator("[data-answer]").inputValue(), "");
@@ -530,7 +534,7 @@ try {
   await writeStorage("local", { "applicationTracker.aiSettings": { enabled: false } });
   await target.goto(origin + "/apply");
   childPermissionDenied = true;
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.match(await panel.locator("#coverage").textContent(), /1\/2/);
   assert.equal(permissionRequests.length, 0, "Scanning must not request permissions automatically");
   const permissionButton = panel.getByRole("button", { name: "允许读取内嵌表单（embedded.example）", exact: true });
@@ -547,18 +551,18 @@ try {
   console.log("PASS UI requests only the failed iframe origin during a user click, preserves denied preview and rescans after grant");
 
   await target.setContent('<!doctype html><title>其他页面</title><label>邮箱<input id="uncertain-email"></label>');
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.match(await panel.locator("#pageTypeNotice").textContent(), /尚未确定页面类型/);
   assert.equal(await panel.locator("[data-selected]:checked").count(), 1);
   assert.equal(await target.locator("#uncertain-email").inputValue(), "");
   await target.setContent('<!doctype html><title>岗位详情</title><div class="job-description">工作职责：负责日常财务分析和报表编制。</div><label>邮箱<input id="job-email"></label>');
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.equal(await panel.locator("[data-selected]:checked").count(), 1);
   assert.equal(await target.locator("#job-email").inputValue(), "");
   console.log("PASS UI keeps detected controls available on unknown or job-like pages and writes nothing before confirmation");
 
   await target.setContent('<!doctype html><title>信息表</title><input id="placeholder-question" placeholder="您的补充说明"><input id="unknown-question">');
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.equal(await panel.locator("[data-label-warning]").count(), 2);
   assert.ok((await panel.locator("[data-label-warning]").allTextContents()).every((text) => text === "题目未识别"));
   console.log("PASS UI marks placeholder-only and unlabeled questions for review");
@@ -571,13 +575,14 @@ try {
         input.setCustomValidity(reject && input.value ? "Synthetic validation rejection" : "");
       });
     }, { reject, clear });
-    await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+    await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
     await expandQuestions();
     await panel.locator("#clearSelection").click();
     await panel.getByRole("checkbox", { name: "选中姓名", exact: true }).check();
   };
   const completePanelAction = async (id) => {
-    await panel.locator(id).click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+    if (id === "#prepare") await preparePage(); else await panel.locator(id).click();
+    await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   };
   const sessionKey = "applicationTracker.assistant.session.1";
   await failedWriteFixture();
@@ -878,6 +883,57 @@ try {
   assert.ok(storage.session[sessionKey].recordSaved?.id);
   assert.equal(storage.local["applicationTracker.records"].at(-1).role, "人工岗位");
   console.log("PASS UI freezes record saving, rejects duplicate clicks and keeps a committed save marked successful when navigation precedes its response");
+  await panel.unroute("https://api.openai.com/v1/responses");
+  const aliasLabel = "请举例说明你是如何解决问题的", broadLabel = "你如何处理工作中信息不完整的情况？";
+  const openMemory = { id: "open-memory-review", question: "分享一个克服困难的经历", answer: "已确认的解决问题经历", language: "zh", entityId: "self", scope: "global", confirmed: true, updatedAt: "2026-10-14T00:00:00Z" };
+  let broadDraftRequests = 0;
+  await panel.route("https://api.openai.com/v1/responses", async (route) => {
+    const payload = route.request().postDataJSON(), batch = JSON.parse(payload.input[1].content), format = payload.text.format.name;
+    let output;
+    if (format === "application_field_pairing") {
+      assert.ok(!JSON.stringify(batch).includes(openMemory.answer));
+      output = { pairs: batch.fields.map((field) => ({ fieldId: field.fieldId, source: field.label === aliasLabel ? "memory" : "none", memoryId: field.label === aliasLabel ? openMemory.id : null, factId: null, transform: "none" })) };
+    } else if (format === "application_suggestions") {
+      broadDraftRequests++;
+      assert.equal(batch.fields.length, 1); assert.equal(batch.fields[0].label, broadLabel);
+      assert.ok(batch.facts.length); assert.equal(Object.hasOwn(batch, "url"), false);
+      assert.ok(!JSON.stringify(batch).includes(profile.email));
+      output = { items: [{ fieldId: batch.fields[0].fieldId, entityId: "self", kind: "draft", factIds: [batch.facts[0].id], text: "经确认资料整理的长文本草稿。", optionId: null }] };
+    } else output = { company: null, role: null, base: null, confidence: "low" };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+  });
+  await writeStorage("local", { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: true, apiKey: "fixture-key", model: "fixture-model", visionEnabled: false }, "applicationTracker.assistant.memories.v2": [openMemory] });
+  await target.setContent(`<!doctype html><title>申请表</title><label>${aliasLabel}<textarea id="alias-memory"></textarea></label><label>${broadLabel}<textarea id="broad-text"></textarea></label>`);
+  await completePanelAction("#prepare"); await expandQuestions();
+  const alias = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: aliasLabel + "的答案", exact: true }) });
+  assert.equal(await alias.locator("[data-answer]").inputValue(), openMemory.answer);
+  assert.equal(await alias.locator("[data-selected]").isChecked(), false);
+  assert.equal(await panel.locator("#fill").isDisabled(), true);
+  assert.equal(await target.locator("#alias-memory").inputValue(), "");
+  await alias.locator("[data-selected]").check(); await completePanelAction("#fill");
+  assert.equal(await target.locator("#alias-memory").inputValue(), openMemory.answer);
+  assert.equal(await target.locator("#broad-text").inputValue(), "");
+  assert.equal(await panel.locator("#countSkip").textContent(), "不填 1");
+  assert.equal(await panel.locator("#barActions #prepare").count(), 0);
+  console.log("PASS UI rephrased prose memory stays unselected until checked, and filled answers leave the skip count");
+  const broad = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: broadLabel + "的答案", exact: true }) });
+  await broad.locator("[data-draft]").click(); await broad.locator("[data-draft-confirmation]").waitFor();
+  assert.equal(broadDraftRequests, 0);
+  await broad.locator("[data-draft-cancel]").click(); assert.equal(broadDraftRequests, 0);
+  await broad.locator("[data-draft]").click(); await broad.locator("[data-draft-confirmation]").waitFor();
+  await broad.locator("[data-draft-send]").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  assert.equal(broadDraftRequests, 1);
+  assert.equal(await broad.locator("[data-answer]").inputValue(), "经确认资料整理的长文本草稿。");
+  assert.equal(await target.locator("#broad-text").inputValue(), "");
+  await completePanelAction("#fill"); assert.equal(await target.locator("#broad-text").inputValue(), "经确认资料整理的长文本草稿。");
+  await writeStorage("local", { "applicationTracker.profile": { email: profile.email } });
+  await target.setContent('<!doctype html><title>申请表</title><label>请说明你的解决问题思路<textarea id="no-draft-facts"></textarea></label>');
+  await completePanelAction("#prepare"); await expandQuestions();
+  assert.equal(await panel.locator("[data-draft]").count(), 1);
+  assert.equal(await panel.locator("[data-draft]").isDisabled(), true);
+  assert.match(await panel.locator("#questions").textContent(), /暂无可引用资料/);
+  assert.equal(broadDraftRequests, 1);
+  console.log("PASS UI an arbitrary long-text question sends only its confirmed fact batch and waits for fill confirmation");
   assert.deepEqual(errors, []);
-  console.log("UI integration cases passed: 43 (Chrome API adapter and local AI stub; not live-model validation)");
+  console.log("UI integration cases passed: 45 (Chrome API adapter and local AI stub; not live-model validation)");
 } finally { await browser.close(); await new Promise((r) => server.close(r)); }

@@ -1,7 +1,7 @@
 import { getProfile, getAiSettings } from "../storage.js";
 import { PROFILE_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY, STORAGE_KEY } from "../constants.js";
 import { factsFromProfile, preparePlan, validateValue, versionOf, scopeFor } from "../assistant/planner.js";
-import { buildDraftBatch, requestDraft } from "../assistant/ai.js";
+import { buildDraftBatch, requestDraft, canDraftQuestion } from "../assistant/ai.js";
 import { buildCatalog, pairingCandidates, requestPairing, acceptPairs } from "../assistant/aiPairing.js";
 import { scanPage, checkTarget, fieldAction, pageChanges, inspectOptions } from "../assistant/session.js";
 import { getMemories, saveMemory, loadSession, saveSession, MEMORY_KEY } from "../assistant/store.js";
@@ -91,7 +91,7 @@ function setBusy(value, phase = "review") {
   if (session) session.phase = phase;
   for (const id of ["prepare", "useCurrent", "language", "learn", "refresh", "saveLearned", "saveResults", "selectAll", "clearSelection", "showAll"]) $(id).disabled = value;
   document.querySelectorAll("[data-answer], [data-selected], [data-binding], [data-locate], [data-result-locate], [data-group-toggle], [data-learn-check], [data-learn-answer], [data-learn-scope], [data-frame-origin]").forEach((input) => { input.disabled = value || input.dataset.unavailable === "true"; });
-  document.querySelectorAll("[data-draft], [data-draft-send], [data-draft-cancel]").forEach((input) => { input.disabled = value || session?.stale; });
+  document.querySelectorAll("[data-draft], [data-draft-send], [data-draft-cancel]").forEach((input) => { input.disabled = value || session?.stale || input.dataset.draftUnavailable === "true"; });
   document.querySelectorAll("#recordCompany, #recordRole, #recordRecent, #saveRecord, #saveRecordAnyway").forEach((input) => { input.disabled = value || session?.stale; });
   $("cancel").hidden = !value || phase === "saving";
   $("cancel").disabled = false;
@@ -102,8 +102,8 @@ function refreshSummary() {
   const stats = previewStats(plan);
   const view = buildPanelView(plan, session?.results || [], facts);
   const prepared = !!session?.snapshot && !session.stale;
-  $(prepared ? "barActions" : "start").appendChild($("prepare"));
-  $("prepare").textContent = prepared ? "重新识别" : "识别本页";
+  $(prepared ? "menu" : "start").appendChild($("prepare"));
+  $("prepare").textContent = prepared ? "重新识别（放弃修改）" : "识别本页";
   $("prepare").classList.toggle("primary", !prepared);
   $("start").hidden = prepared;
   $("refresh").hidden = !prepared;
@@ -120,7 +120,7 @@ function refreshSummary() {
   $("showAll").hidden = !prepared || !plan.length;
   $("showAll").disabled = busy || session?.stale;
   $("showAll").textContent = session?.showAll ? "恢复默认收起" : "展开全部题目";
-  document.querySelectorAll("[data-draft], [data-draft-send], [data-draft-cancel]").forEach((button) => { button.disabled = busy || session?.stale; });
+  document.querySelectorAll("[data-draft], [data-draft-send], [data-draft-cancel]").forEach((button) => { button.disabled = busy || session?.stale || button.dataset.draftUnavailable === "true"; });
 }
 function render() {
   $("targetTitle").textContent = session?.snapshot?.title || "在申请页面打开助手";
@@ -158,7 +158,13 @@ function render() {
     const needsBinding = !bindingGroups.has(id) && items.some((p) => /^(education|experience)\./.test(p.entityId));
     if (needsBinding) bindingGroups.add(id);
     const entities = [...new Set(facts.filter((f) => /^(education|experience)\./.test(f.entityId)).map((f) => f.entityId))];
-    const binding = needsBinding ? `<details class="binding" ${items.some((p) => p.entityId.includes("unknown")) ? "open" : ""}><summary>对应：${escape(entityLabel(items[0].entityId))}</summary><select aria-label="此分组对应的经历" data-binding="${escape(id)}" ${busy ? "disabled" : ""}><option value="">自动判断</option>${entities.map((e) => `<option value="${escape(e)}" ${session.bindings?.[id] === e ? "selected" : ""}>${escape(entityLabel(e))}</option>`).join("")}</select></details>` : "";
+    const bindingName = (entity) => {
+      const names = facts.filter((fact) => fact.entityId === entity && /\.(?:company|role|university)(?:\.(?:zh|en))?$/.test(fact.id)).map((fact) => fact.value).filter(Boolean);
+      return [entityLabel(entity), ...new Set(names)].join(" · ");
+    };
+    const unresolved = items.some((p) => p.entityId.includes("unknown"));
+    const bindingPrompt = items[0].entityId.startsWith("experience.") ? "请选择是哪段实习" : "请选择对应教育经历";
+    const binding = needsBinding ? `<details class="binding" ${unresolved ? "open" : ""}><summary>对应：${escape(session.bindings?.[id] ? bindingName(session.bindings[id]) : entityLabel(items[0].entityId))}</summary><select aria-label="此分组对应的经历" data-binding="${escape(id)}" ${busy ? "disabled" : ""}><option value="">${unresolved ? bindingPrompt : "使用当前识别的对应经历"}</option>${entities.map((e) => `<option value="${escape(e)}" ${session.bindings?.[id] === e ? "selected" : ""}>${escape(bindingName(e))}</option>`).join("")}</select></details>` : "";
     return `<section class="subgroup"><div class="subgroup-header"><h3>${escape(name)}</h3>${binding}</div>${items.map(renderItem).join("")}</section>`;
     }).join("");
   };
@@ -197,9 +203,10 @@ function renderItem(item) {
   else input = `<input class="answer" data-answer ${disabled} type="${!item.dateRange && item.kind !== "cascader" && ["date", "month", "email", "number"].includes(item.type) ? item.type : "text"}" aria-label="${escape(item.label)}的答案" placeholder="${item.dateRange ? '两个日期，如 [&quot;2022-09&quot;,&quot;2026-06&quot;]' : item.kind === "cascader" ? '路径，如 [&quot;广东省&quot;,&quot;深圳市&quot;]' : "补充本次答案"}" value="${escape(item.answer)}">`;
   const labelWarning = ["placeholder", "none"].includes(item.labelSource) ? '<span class="badge" data-label-warning>题目未识别</span>' : "";
   const draft = /AI\s*草稿/.test(item.source || "");
-  const draftAvailable = session?.aiEnabled && !!buildDraftBatch(item, facts, session.snapshot, session.language);
+  const draftAvailable = session?.aiEnabled && canDraftQuestion(item);
+  const draftHasFacts = draftAvailable && !!buildDraftBatch(item, facts, session.snapshot, session.language);
   const confirmation = draftConfirmation?.session === session && draftConfirmation.fieldId === item.fieldId ? draftConfirmation : null;
-  const draftControls = draftAvailable ? `<button type="button" class="text-button" data-draft ${busy || session.stale ? "disabled" : ""}>AI 写草稿</button>${confirmation ? `<div class="draft-confirmation" data-draft-confirmation><p class="hint">将发送：这道题、岗位描述，以及 ${confirmation.batch.facts.length} 项资料：${escape(confirmation.batch.facts.map((fact) => fact.label).join("、"))}</p><button type="button" data-draft-send ${busy || session.stale ? "disabled" : ""}>发送</button> <button type="button" data-draft-cancel ${busy || session.stale ? "disabled" : ""}>取消</button></div>` : ""}` : "";
+  const draftControls = draftAvailable ? `<button type="button" class="text-button" data-draft data-draft-unavailable="${!draftHasFacts}" ${busy || session.stale || !draftHasFacts ? "disabled" : ""}>AI 写草稿</button>${!draftHasFacts ? '<p class="hint">暂无可引用资料，请先补充个人信息。</p>' : ""}${confirmation ? `<div class="draft-confirmation" data-draft-confirmation><p class="hint">将发送：这道题、岗位描述，以及 ${confirmation.batch.facts.length} 项资料：${escape(confirmation.batch.facts.map((fact) => fact.label).join("、"))}</p><button type="button" data-draft-send ${busy || session.stale ? "disabled" : ""}>发送</button> <button type="button" data-draft-cancel ${busy || session.stale ? "disabled" : ""}>取消</button></div>` : ""}` : "";
   return `<article class="question ${item.status === "review" ? "needs-review" : ""} ${session?.sourceOpen?.includes(item.fieldId) ? "source-open" : ""}" data-id="${escape(item.fieldId)}"><div class="question-head">${unavailable ? "" : `<input aria-label="选中${escape(item.label)}" type="checkbox" data-selected data-unavailable="${unselectable}" ${item.selected ? "checked" : ""} ${unselectable || busy ? "disabled" : ""}>`}<label data-source-toggle role="button" tabindex="0">${escape(item.label)}${item.constraints.required ? " *" : ""}</label><span class="status ${item.status}" ${item.status === "review" || draft ? "" : "hidden"}>${draft ? "草稿" : labels[item.status]}</span>${labelWarning}<button data-locate ${disabled}>定位</button></div>${input}${draftControls}<p class="source">${escape(item.source || item.reason)}</p>${item.visualEvidence ? `<p class="source">截图辅助：${escape(item.visualEvidence)}</p>` : ""}${item.optionError ? `<p class="source">选项读取：${escape(item.optionError)}</p>` : ""}<p class="source" data-error>${escape(item.answer ? validateValue(item, item.answer) : "")}</p></article>`;
 }
 function renderResults() {

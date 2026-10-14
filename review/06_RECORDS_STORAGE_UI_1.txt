@@ -866,7 +866,7 @@ L0033 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/excel.js
-SHA256: e03577404e1e3c924d262b45e2d59f1989c28ba6cfd1c296108b47d4e52dfac9
+SHA256: ce534f5fe7f7ccbd568f06aa22be74eab4240ec6b50b3013ccffc4e5ee3ac604
 L0001 | import { normalizeImportedRecord, updateRecord } from "./model.js";
 L0002 | import { validateRecords } from "./backup.js";
 L0003 | import { SOURCES, STATUSES } from "./constants.js";
@@ -1038,31 +1038,38 @@ L0168 |   return option.key;
 L0169 | }
 L0170 | 
 L0171 | function importedDate(value) {
-L0172 |   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
-L0173 |   if (typeof value === "number" && Number.isFinite(value)) return new Date((Math.floor(value) - 25569) * 86400000).toISOString().slice(0, 10);
-L0174 |   const formatted = text(value).match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-L0175 |   return formatted ? `${formatted[1]}-${formatted[2].padStart(2, "0")}-${formatted[3].padStart(2, "0")}` : text(value);
-L0176 | }
-L0177 | 
-L0178 | function parseDisplayHistory(value) {
-L0179 |   if (!value) return [];
-L0180 |   return value.split(" -> ").map((entry) => {
-L0181 |     const match = entry.match(/^(\S+)\s+(.+)$/);
-L0182 |     if (!match) throw new Error("进度时间线格式不正确，请使用导出时的日期和状态格式");
-L0183 |     return { date: match[1], status: keyFor(STATUSES, match[2], "进度时间线") };
-L0184 |   });
-L0185 | }
-L0186 | 
-L0187 | function formatStatusHistory(statusHistory) {
-L0188 |   if (!Array.isArray(statusHistory)) return "";
-L0189 |   return statusHistory
-L0190 |     .map((item) => `${item.date || ""} ${labelFor(STATUSES, item.status)}`)
-L0191 |     .join(" -> ");
+L0172 |   if (value instanceof Date && !Number.isNaN(value.getTime())) {
+L0173 |     // SheetJS cellDates returns a time near local midnight, and in China/Hong Kong
+L0174 |     // it is a few minutes early (historical +08:05:43 offset), e.g. 23:54:17 the
+L0175 |     // day before. toISOString() then lost a day. Round to the nearest local day.
+L0176 |     if (!value.getUTCHours() && !value.getUTCMinutes() && !value.getUTCSeconds() && !value.getUTCMilliseconds()) return value.toISOString().slice(0, 10);
+L0177 |     const nearest = new Date(value.getFullYear(), value.getMonth(), value.getDate() + (value.getHours() >= 12 ? 1 : 0));
+L0178 |     return `${nearest.getFullYear()}-${String(nearest.getMonth() + 1).padStart(2, "0")}-${String(nearest.getDate()).padStart(2, "0")}`;
+L0179 |   }
+L0180 |   if (typeof value === "number" && Number.isFinite(value)) return new Date((Math.floor(value) - 25569) * 86400000).toISOString().slice(0, 10);
+L0181 |   const formatted = text(value).match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+L0182 |   return formatted ? `${formatted[1]}-${formatted[2].padStart(2, "0")}-${formatted[3].padStart(2, "0")}` : text(value);
+L0183 | }
+L0184 | 
+L0185 | function parseDisplayHistory(value) {
+L0186 |   if (!value) return [];
+L0187 |   return value.split(" -> ").map((entry) => {
+L0188 |     const match = entry.match(/^(\S+)\s+(.+)$/);
+L0189 |     if (!match) throw new Error("进度时间线格式不正确，请使用导出时的日期和状态格式");
+L0190 |     return { date: match[1], status: keyFor(STATUSES, match[2], "进度时间线") };
+L0191 |   });
 L0192 | }
 L0193 | 
-L0194 | function labelFor(options, key) {
-L0195 |   return options.find((option) => option.key === key)?.label || key || "";
-L0196 | }
+L0194 | function formatStatusHistory(statusHistory) {
+L0195 |   if (!Array.isArray(statusHistory)) return "";
+L0196 |   return statusHistory
+L0197 |     .map((item) => `${item.date || ""} ${labelFor(STATUSES, item.status)}`)
+L0198 |     .join(" -> ");
+L0199 | }
+L0200 | 
+L0201 | function labelFor(options, key) {
+L0202 |   return options.find((option) => option.key === key)?.label || key || "";
+L0203 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/jobInfo/aiJobInfo.js
@@ -1359,8 +1366,8 @@ L0067 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/jobInfo/recentJobs.js
-SHA256: b27991dec1626f61bd805717b46d871b17b8f8e5e7d2a445829ffa03b024d3b4
-L0001 | import { sanitizeJobUrl } from "./extractJobInfo.js";
+SHA256: f3c7cf852da96b6fabd3ff1ebe7d2ffbd123bc6a12519149e0e6b82431ea1ba3
+L0001 | import { cleanPortalUrl, getPortalUrl } from "../model.js";
 L0002 | 
 L0003 | export const RECENT_JOBS_KEY = "applicationTracker.recentJobs";
 L0004 | 
@@ -1369,14 +1376,14 @@ L0006 | export async function rememberJob(sessionStorage, pageUrl, info) {
 L0007 |   if (!pageUrl || !info) return;
 L0008 |   const trusted = (key) => ["high", "medium"].includes(info.confidence?.[key]) && info[key];
 L0009 |   if (!trusted("company") && !trusted("role")) return;
-L0010 |   const url = sanitizeJobUrl(pageUrl);
+L0010 |   const url = getPortalUrl(cleanPortalUrl(pageUrl));
 L0011 |   if (!url) return;
 L0012 |   const jobs = await loadRecentJobs(sessionStorage);
 L0013 |   const entry = {
 L0014 |     company: trusted("company") || "", role: trusted("role") || "", base: trusted("base") || "",
 L0015 |     url, host: new URL(url).hostname, capturedAt: Date.now(), source: info.source
 L0016 |   };
-L0017 |   await sessionStorage.set({ [RECENT_JOBS_KEY]: [entry, ...jobs.filter((job) => job.url !== url)].slice(0, 20) });
+L0017 |   await sessionStorage.set({ [RECENT_JOBS_KEY]: [entry, ...jobs.filter((job) => job.url !== url || job.role !== entry.role)].slice(0, 20) });
 L0018 | }
 L0019 | 
 L0020 | export async function loadRecentJobs(sessionStorage) {
@@ -1386,7 +1393,7 @@ L0023 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/model.js
-SHA256: ba5f6fa92e046069f35684564c69122746b8c49724aad1e1d007154e6a61a4df
+SHA256: d21025ff3dad743e4383c804e6184b1ab2cffcca999af1fed3a451fdde4fb1d1
 L0001 | import { DEFAULT_STATUS, SOURCE_KEYS, STATUS_KEYS } from "./constants.js";
 L0002 | import { toDateInputValue } from "./dateUtils.js";
 L0003 | 
@@ -1419,122 +1426,152 @@ L0029 | }
 L0030 | 
 L0031 | export function createRecord(draft, now = new Date().toISOString()) {
 L0032 |   const normalized = normalizeDraft(draft);
-L0033 |   return {
-L0034 |     id: createId(),
-L0035 |     ...normalized,
-L0036 |     statusHistory: [{ status: normalized.status, date: now }],
-L0037 |     createdAt: now,
-L0038 |     updatedAt: now
-L0039 |   };
-L0040 | }
-L0041 | 
-L0042 | export function updateRecord(existing, changes, now = new Date().toISOString()) {
-L0043 |   const next = {
-L0044 |     ...existing,
-L0045 |     ...normalizeDraft({ ...existing, ...changes }),
-L0046 |     updatedAt: now
-L0047 |   };
-L0048 | 
-L0049 |   if (changes.status && changes.status !== existing.status) {
-L0050 |     next.statusHistory = [
-L0051 |       ...(Array.isArray(existing.statusHistory) ? existing.statusHistory : []),
-L0052 |       { status: changes.status, date: now }
-L0053 |     ];
-L0054 |   } else {
-L0055 |     next.statusHistory = Array.isArray(existing.statusHistory) ? existing.statusHistory : [];
-L0056 |   }
-L0057 | 
-L0058 |   return next;
-L0059 | }
-L0060 | 
-L0061 | export function validateRecordForSave(record) {
-L0062 |   const errors = {};
-L0063 |   if (!record.company?.trim()) errors.company = "请填写公司";
-L0064 |   if (!record.role?.trim()) errors.role = "请填写岗位";
-L0065 |   if (!record.portalLink?.trim()) errors.portalLink = "请填写 candidate portal link";
-L0066 |   else if (portalReferenceError(record.portalLink)) errors.portalLink = portalReferenceError(record.portalLink);
-L0067 |   if (!record.source?.trim()) errors.source = "请选择投递来源";
-L0068 |   if (!record.appliedDate?.trim()) errors.appliedDate = "请选择投递日期";
-L0069 |   if (!record.status?.trim()) errors.status = "请选择当前进度";
-L0070 |   return errors;
-L0071 | }
-L0072 | 
-L0073 | // A reference may be a web URL or plain text such as “微信内推”. Only web URLs
-L0074 | // are clickable; text references must survive export and recovery unchanged.
-L0075 | export function getPortalUrl(value) {
-L0076 |   const text = String(value ?? "").trim();
-L0077 |   if (!/^https?:\/\//i.test(text)) return "";
-L0078 |   try {
-L0079 |     const url = new URL(text);
-L0080 |     return /^https?:$/.test(url.protocol) ? url.href : "";
-L0081 |   } catch { return ""; }
-L0082 | }
-L0083 | 
-L0084 | function portalReferenceError(value) {
-L0085 |   const text = String(value ?? "").trim();
-L0086 |   if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) return "";
-L0087 |   return getPortalUrl(text) ? "" : "投递链接必须是有效的 http 或 https 地址；非链接来源请填写普通文字";
-L0088 | }
-L0089 | 
-L0090 | export function normalizeDraft(draft) {
-L0091 |   const normalized = {
-L0092 |     company: stringValue(draft.company),
-L0093 |     role: stringValue(draft.role),
-L0094 |     base: stringValue(draft.base),
-L0095 |     portalLink: stringValue(draft.portalLink),
-L0096 |     pageTitle: stringValue(draft.pageTitle),
-L0097 |     source: stringValue(draft.source),
-L0098 |     appliedDate: stringValue(draft.appliedDate),
-L0099 |     status: stringValue(draft.status || DEFAULT_STATUS),
-L0100 |     nextActionDate: stringValue(draft.nextActionDate),
-L0101 |     jdText: stringValue(draft.jdText),
-L0102 |     notes: stringValue(draft.notes)
-L0103 |   };
-L0104 | 
-L0105 |   const portalError = portalReferenceError(normalized.portalLink);
-L0106 |   if (portalError) throw new Error(portalError);
-L0107 | 
-L0108 |   if (normalized.status && !STATUS_KEYS.has(normalized.status)) {
-L0109 |     throw new Error(`Invalid status: ${normalized.status}`);
-L0110 |   }
-L0111 |   if (normalized.source && !SOURCE_KEYS.has(normalized.source)) {
-L0112 |     throw new Error(`Invalid source: ${normalized.source}`);
-L0113 |   }
-L0114 | 
-L0115 |   return normalized;
-L0116 | }
-L0117 | 
-L0118 | export function normalizeImportedRecord(row, now = new Date().toISOString()) {
-L0119 |   const normalized = normalizeDraft(row);
-L0120 |   const history = parseStatusHistory(row.statusHistory, normalized.status, now);
-L0121 |   return {
-L0122 |     id: stringValue(row.id) || createId(),
-L0123 |     ...normalized,
-L0124 |     statusHistory: history,
-L0125 |     createdAt: stringValue(row.createdAt) || now,
-L0126 |     updatedAt: stringValue(row.updatedAt) || now
-L0127 |   };
-L0128 | }
-L0129 | 
-L0130 | function parseStatusHistory(value, fallbackStatus, now) {
-L0131 |   if (!value) {
-L0132 |     return [{ status: fallbackStatus, date: now }];
-L0133 |   }
-L0134 |   const parsed = typeof value === "string" ? JSON.parse(value) : value;
-L0135 |   if (!Array.isArray(parsed)) {
-L0136 |     throw new Error("Invalid statusHistory: expected array");
-L0137 |   }
-L0138 |   for (const item of parsed) {
-L0139 |     if (!STATUS_KEYS.has(item.status)) {
-L0140 |       throw new Error(`Invalid status: ${item.status}`);
-L0141 |     }
-L0142 |   }
-L0143 |   return parsed;
-L0144 | }
-L0145 | 
-L0146 | function stringValue(value) {
-L0147 |   return value == null ? "" : String(value).trim();
-L0148 | }
+L0033 |   normalized.portalLink = cleanPortalUrl(normalized.portalLink);
+L0034 |   return {
+L0035 |     id: createId(),
+L0036 |     ...normalized,
+L0037 |     statusHistory: [{ status: normalized.status, date: now }],
+L0038 |     createdAt: now,
+L0039 |     updatedAt: now
+L0040 |   };
+L0041 | }
+L0042 | 
+L0043 | export function updateRecord(existing, changes, now = new Date().toISOString()) {
+L0044 |   const next = {
+L0045 |     ...existing,
+L0046 |     ...normalizeDraft({ ...existing, ...changes }),
+L0047 |     updatedAt: now
+L0048 |   };
+L0049 |   if (Object.hasOwn(changes, "portalLink")) next.portalLink = cleanPortalUrl(next.portalLink);
+L0050 | 
+L0051 |   if (changes.status && changes.status !== existing.status) {
+L0052 |     next.statusHistory = [
+L0053 |       ...(Array.isArray(existing.statusHistory) ? existing.statusHistory : []),
+L0054 |       { status: changes.status, date: now }
+L0055 |     ];
+L0056 |   } else {
+L0057 |     next.statusHistory = Array.isArray(existing.statusHistory) ? existing.statusHistory : [];
+L0058 |   }
+L0059 | 
+L0060 |   return next;
+L0061 | }
+L0062 | 
+L0063 | export function validateRecordForSave(record) {
+L0064 |   const errors = {};
+L0065 |   if (!record.company?.trim()) errors.company = "请填写公司";
+L0066 |   if (!record.role?.trim()) errors.role = "请填写岗位";
+L0067 |   if (!record.portalLink?.trim()) errors.portalLink = "请填写 candidate portal link";
+L0068 |   else if (portalReferenceError(record.portalLink)) errors.portalLink = portalReferenceError(record.portalLink);
+L0069 |   if (!record.source?.trim()) errors.source = "请选择投递来源";
+L0070 |   if (!record.appliedDate?.trim()) errors.appliedDate = "请选择投递日期";
+L0071 |   if (!record.status?.trim()) errors.status = "请选择当前进度";
+L0072 |   return errors;
+L0073 | }
+L0074 | 
+L0075 | // A reference may be a web URL or plain text such as “微信内推”. Only web URLs
+L0076 | // are clickable; text references must survive export and recovery unchanged.
+L0077 | export function getPortalUrl(value) {
+L0078 |   const text = String(value ?? "").trim();
+L0079 |   if (!/^https?:\/\//i.test(text)) return "";
+L0080 |   try {
+L0081 |     const url = new URL(text);
+L0082 |     return /^https?:$/.test(url.protocol) ? url.href : "";
+L0083 |   } catch { return ""; }
+L0084 | }
+L0085 | 
+L0086 | // Only real web addresses and unsafe address schemes are checked. Text such as
+L0087 | // "Referral: Alice", "Email: hr@example.com" or "mailto:…" stays plain text.
+L0088 | function portalReferenceError(value) {
+L0089 |   const text = String(value ?? "").trim();
+L0090 |   const unsafe = /^(?:javascript|data|vbscript|file|blob)\s*:/i.test(text);
+L0091 |   const brokenWeb = /^https?:/i.test(text) && !getPortalUrl(text);
+L0092 |   return unsafe || brokenWeb ? "投递链接必须是有效的 http 或 https 地址；非链接来源请填写普通文字" : "";
+L0093 | }
+L0094 | 
+L0095 | // Application links often carry login tickets or tracking. Keep business
+L0096 | // parameters and hash routes, drop credentials before a record is stored.
+L0097 | const PRIVATE_LINK_PARAMETER = /^(?:access[_-]?token|refresh[_-]?token|id[_-]?token|token|auth(?:orization)?|api[_-]?key|key|secret|password|session(?:id)?|session[_-]?id|sid|jsessionid|code|state|nonce|ticket|st|sign|signature|login(?:token|ticket|key))$|(?:^|[_-])(?:token|secret|password|ticket|signature)$/i;
+L0098 | const TRACKING_LINK_PARAMETER = /^(?:utm_.+|gclid|fbclid|msclkid|tracking)$/i;
+L0099 | export function cleanPortalUrl(value) {
+L0100 |   const href = getPortalUrl(value);
+L0101 |   if (!href) return String(value ?? "").trim();
+L0102 |   const url = new URL(href);
+L0103 |   for (const name of [...url.searchParams.keys()]) if (PRIVATE_LINK_PARAMETER.test(name) || TRACKING_LINK_PARAMETER.test(name)) url.searchParams.delete(name);
+L0104 |   url.username = ""; url.password = "";
+L0105 |   const hash = url.hash.slice(1);
+L0106 |   const cleanHashQuery = (query) => {
+L0107 |     const params = new URLSearchParams(query);
+L0108 |     for (const name of [...params.keys()]) if (PRIVATE_LINK_PARAMETER.test(name) || TRACKING_LINK_PARAMETER.test(name)) params.delete(name);
+L0109 |     return params.toString();
+L0110 |   };
+L0111 |   if (/^!?\//.test(hash)) {
+L0112 |     const at = hash.indexOf("?");
+L0113 |     const query = at < 0 ? "" : cleanHashQuery(hash.slice(at + 1));
+L0114 |     url.hash = (at < 0 ? hash : hash.slice(0, at)) + (query ? "?" + query : "");
+L0115 |   } else if (hash.includes("=")) url.hash = cleanHashQuery(hash.replace(/^\?/, ""));
+L0116 |   else url.hash = "";
+L0117 |   return url.href;
+L0118 | }
+L0119 | 
+L0120 | export function normalizeDraft(draft) {
+L0121 |   const normalized = {
+L0122 |     company: stringValue(draft.company),
+L0123 |     role: stringValue(draft.role),
+L0124 |     base: stringValue(draft.base),
+L0125 |     portalLink: stringValue(draft.portalLink),
+L0126 |     pageTitle: stringValue(draft.pageTitle),
+L0127 |     source: stringValue(draft.source),
+L0128 |     appliedDate: stringValue(draft.appliedDate),
+L0129 |     status: stringValue(draft.status || DEFAULT_STATUS),
+L0130 |     nextActionDate: stringValue(draft.nextActionDate),
+L0131 |     jdText: stringValue(draft.jdText),
+L0132 |     notes: stringValue(draft.notes)
+L0133 |   };
+L0134 | 
+L0135 |   const portalError = portalReferenceError(normalized.portalLink);
+L0136 |   if (portalError) throw new Error(portalError);
+L0137 | 
+L0138 |   if (normalized.status && !STATUS_KEYS.has(normalized.status)) {
+L0139 |     throw new Error(`Invalid status: ${normalized.status}`);
+L0140 |   }
+L0141 |   if (normalized.source && !SOURCE_KEYS.has(normalized.source)) {
+L0142 |     throw new Error(`Invalid source: ${normalized.source}`);
+L0143 |   }
+L0144 | 
+L0145 |   return normalized;
+L0146 | }
+L0147 | 
+L0148 | export function normalizeImportedRecord(row, now = new Date().toISOString()) {
+L0149 |   const normalized = normalizeDraft(row);
+L0150 |   const history = parseStatusHistory(row.statusHistory, normalized.status, now);
+L0151 |   return {
+L0152 |     id: stringValue(row.id) || createId(),
+L0153 |     ...normalized,
+L0154 |     statusHistory: history,
+L0155 |     createdAt: stringValue(row.createdAt) || now,
+L0156 |     updatedAt: stringValue(row.updatedAt) || now
+L0157 |   };
+L0158 | }
+L0159 | 
+L0160 | function parseStatusHistory(value, fallbackStatus, now) {
+L0161 |   if (!value) {
+L0162 |     return [{ status: fallbackStatus, date: now }];
+L0163 |   }
+L0164 |   const parsed = typeof value === "string" ? JSON.parse(value) : value;
+L0165 |   if (!Array.isArray(parsed)) {
+L0166 |     throw new Error("Invalid statusHistory: expected array");
+L0167 |   }
+L0168 |   for (const item of parsed) {
+L0169 |     if (!STATUS_KEYS.has(item.status)) {
+L0170 |       throw new Error(`Invalid status: ${item.status}`);
+L0171 |     }
+L0172 |   }
+L0173 |   return parsed;
+L0174 | }
+L0175 | 
+L0176 | function stringValue(value) {
+L0177 |   return value == null ? "" : String(value).trim();
+L0178 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/popup/popup.css
@@ -2040,7 +2077,7 @@ L0065 |
 
 ========================================================================
 FILE: application-tracker-extension/src/popup/popup.js
-SHA256: faf00280b84a99935c239865154c8da788cfeef1ec2298c16a4af924de0786f8
+SHA256: 2bb36adc38a8d39bfa5902bb0fdccd94a0b805be6fcb8f538105ad9678d60828
 L0001 | import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES } from "../constants.js";
 L0002 | import { buildApplicationInfoGroups } from "../applicationInfo.js";
 L0003 | import { collectJobSignals } from "../jobInfo/collectSignals.js";
@@ -2048,7 +2085,7 @@ L0004 | import { extractJobInfo, sortRecentJobs } from "../jobInfo/extractJobInf
 L0005 | import { rememberJob, loadRecentJobs } from "../jobInfo/recentJobs.js";
 L0006 | import { requestJobInfo } from "../jobInfo/aiJobInfo.js";
 L0007 | import { findPotentialDuplicate } from "../duplicates.js";
-L0008 | import { emptyRecordDraft, validateRecordForSave } from "../model.js";
+L0008 | import { cleanPortalUrl, emptyRecordDraft, validateRecordForSave } from "../model.js";
 L0009 | import { detectSourceFromUrl } from "../sourceDetection.js";
 L0010 | import { getProfile, getRecords, saveNewRecord, getAiSettings } from "../storage.js";
 L0011 | import { toDateInputValue } from "../dateUtils.js";
@@ -2087,7 +2124,7 @@ L0043 |
 L0044 |   try {
 L0045 |     const tab = await getTargetPageTab();
 L0046 |     targetPageTab = tab;
-L0047 |     draft.portalLink = tab?.url || "";
+L0047 |     draft.portalLink = cleanPortalUrl(tab?.url || "");
 L0048 |     draft.pageTitle = tab?.title || "";
 L0049 |     draft.source = detectSourceFromUrl(draft.portalLink);
 L0050 |     if (tab?.id) {
@@ -2689,126 +2726,3 @@ L0094 | .actions button,
 L0095 | .import-label,
 L0096 | .primary-action,
 L0097 | .secondary-action {
-L0098 |   font-weight: 700;
-L0099 | }
-L0100 | 
-L0101 | .primary-action {
-L0102 |   border-color: #166534;
-L0103 |   color: white;
-L0104 |   background: #166534;
-L0105 | }
-L0106 | 
-L0107 | .secondary-action {
-L0108 |   color: #1a73e8;
-L0109 | }
-L0110 | 
-L0111 | .toolbar {
-L0112 |   margin-bottom: 16px;
-L0113 | }
-L0114 | 
-L0115 | .application-info-header {
-L0116 |   display: flex;
-L0117 |   align-items: flex-start;
-L0118 |   justify-content: space-between;
-L0119 |   gap: 16px;
-L0120 |   margin-bottom: 16px;
-L0121 | }
-L0122 | 
-L0123 | .application-info-header p,
-L0124 | .application-info-empty p {
-L0125 |   margin: 6px 0 0;
-L0126 |   color: #475569;
-L0127 | }
-L0128 | 
-L0129 | .application-info-list {
-L0130 |   display: grid;
-L0131 |   grid-template-columns: repeat(2, minmax(0, 1fr));
-L0132 |   gap: 14px;
-L0133 | }
-L0134 | 
-L0135 | .application-info-group {
-L0136 |   display: grid;
-L0137 |   gap: 14px;
-L0138 | }
-L0139 | 
-L0140 | .application-info-card,
-L0141 | .application-info-empty {
-L0142 |   border: 1px solid #e2e8f0;
-L0143 |   border-radius: 8px;
-L0144 |   padding: 16px;
-L0145 |   background: white;
-L0146 | }
-L0147 | 
-L0148 | .application-info-card header {
-L0149 |   display: flex;
-L0150 |   align-items: center;
-L0151 |   justify-content: space-between;
-L0152 |   gap: 12px;
-L0153 |   margin-bottom: 12px;
-L0154 | }
-L0155 | 
-L0156 | .application-info-card h3,
-L0157 | .application-info-card h4 {
-L0158 |   margin: 0;
-L0159 | }
-L0160 | 
-L0161 | .application-info-card h4 {
-L0162 |   margin-top: 12px;
-L0163 |   font-size: 14px;
-L0164 | }
-L0165 | 
-L0166 | .application-info-card dl {
-L0167 |   display: grid;
-L0168 |   gap: 8px;
-L0169 |   margin: 0;
-L0170 | }
-L0171 | 
-L0172 | .application-info-card dl div {
-L0173 |   display: grid;
-L0174 |   grid-template-columns: 88px minmax(0, 1fr) auto;
-L0175 |   align-items: start;
-L0176 |   gap: 10px;
-L0177 | }
-L0178 | 
-L0179 | .application-info-card dt {
-L0180 |   color: #64748b;
-L0181 |   font-size: 13px;
-L0182 |   font-weight: 800;
-L0183 | }
-L0184 | 
-L0185 | .application-info-card dd {
-L0186 |   margin: 0;
-L0187 |   white-space: pre-wrap;
-L0188 |   overflow-wrap: anywhere;
-L0189 | }
-L0190 | 
-L0191 | .application-info-card button[data-action="copy-item"] {
-L0192 |   border: 1px solid #cbd5e1;
-L0193 |   padding: 5px 8px;
-L0194 |   color: #111827;
-L0195 |   font-size: 12px;
-L0196 |   background: white;
-L0197 | }
-L0198 | 
-L0199 | .bulk-toolbar {
-L0200 |   display: flex;
-L0201 |   align-items: center;
-L0202 |   gap: 10px;
-L0203 |   margin-bottom: 12px;
-L0204 |   border: 1px solid #bfdbfe;
-L0205 |   border-radius: 8px;
-L0206 |   padding: 10px;
-L0207 |   color: #1e3a8a;
-L0208 |   background: #eff6ff;
-L0209 | }
-L0210 | 
-L0211 | .bulk-toolbar select {
-L0212 |   border: 1px solid #93c5fd;
-L0213 |   border-radius: 6px;
-L0214 |   padding: 7px;
-L0215 |   font: inherit;
-L0216 |   background: white;
-L0217 | }
-L0218 | 
-L0219 | .danger-button {
-L0220 |   border-color: #fecaca;

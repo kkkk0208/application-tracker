@@ -35,6 +35,15 @@ export async function pageBridge(request) {
   const hasControl = (node) => !!(node.matches?.(CONTROL_SEL) || node.querySelector?.(CONTROL_SEL));
   const GENERIC_HINT = /^(请输入|请选择|请填写|请选择日期|选择日期|请输入内容|选择|输入|please (enter|select|choose)\b.*|select|choose|enter|checkbox-group|radio-group)$/i;
   const cleanQ = (t) => clean(t).replace(/^[*＊\s]+/, "").replace(/\s*[*＊]\s*$/, "").replace(/\s*[:：]\s*$/, "").replace(/\s*[*＊]\s*$/, "").trim();
+  // Scan and change checks visit every field. Cache within one read-only sweep
+  // so repeated-block detection stays linear; writes always re-read the DOM.
+  const sweepMemo = ["scan", "changes"].includes(request?.action) ? {} : null;
+  const memo = (kind, node, compute) => {
+    if (!sweepMemo || !node) return compute();
+    const cache = sweepMemo[kind] ||= new WeakMap();
+    if (cache.has(node)) return cache.get(node);
+    const value = compute(); cache.set(node, value); return value;
+  };
   function labelText(node) {
     if (!node) return "";
     const label = node.cloneNode(true);
@@ -102,6 +111,26 @@ export async function pageBridge(request) {
     }
     return "";
   }
+  function nearbyGroupQuestion(entry, box) {
+    // Only take visible prompt text before the first option, never option labels.
+    const first = entry.members?.[0];
+    if (first && box?.contains(first) && first !== box) {
+      const option = first.closest("label") || first;
+      let node = option;
+      while (node.parentElement && node.parentElement !== box) node = node.parentElement;
+      if (node.parentElement === box) {
+        const parts = [];
+        for (const child of box.childNodes) {
+          if (child === node) break;
+          if (child.nodeType === 3) parts.push(child.textContent);
+          else if (child.nodeType === 1 && visible(child) && !hasControl(child) && !child.matches("button,h1,h2,h3,h4,h5,h6")) parts.push(child.textContent);
+        }
+        const text = cleanQ(parts.join(" "));
+        if (text && text.length <= 60 && !GENERIC_HINT.test(text)) return text;
+      }
+    }
+    return "";
+  }
   const TITLE_CLASS = /(^|[-_\s])(module-title|form-tit|settitle|section-title|block-title|group-title|title|tit|heading|caption)($|[-_\s])/i;
   const classOf = (n) => typeof n.className === "string" ? n.className : n.className?.baseVal || "";
   function titleLike(node) {
@@ -112,6 +141,7 @@ export async function pageBridge(request) {
     return pool.sort((a, b) => a.length - b.length)[0] || "";
   }
   function sectionFor(el) {
+    return memo("section", el, () => {
     for (let node = el; node && node !== document.body; node = node.parentElement) {
       let steps = 0;
       for (let prev = node.previousElementSibling; prev && steps < 12; prev = prev.previousElementSibling, steps++) {
@@ -119,17 +149,34 @@ export async function pageBridge(request) {
       }
     }
     return "";
+    });
   }
   const signatureOf = (n) => n.tagName + "." + [...n.classList].filter((c) => !/active|open|hover|focus|error|checked|selected|first|last|^on$/i.test(c)).sort().join(".");
   function blockFor(el) {
-    const questionsFor = (node) => [...new Set([...node.querySelectorAll(CONTROL_SEL)].slice(0, 40).map((c) => questionFor(["radio", "checkbox"].includes(c.type) ? c.closest('.ant-radio-group,.ant-checkbox-group,.el-radio-group,.el-checkbox-group,[role="radiogroup"],[role="group"]') || containerFor(c) : c, ["radio", "checkbox"].includes(c.type)).text).filter(Boolean))].sort();
+    const questionsFor = (node) => memo("questions", node, () => {
+      const list = [...new Set([...node.querySelectorAll(CONTROL_SEL)].slice(0, 40).map((c) => questionFor(["radio", "checkbox"].includes(c.type) ? c.closest('.ant-radio-group,.ant-checkbox-group,.el-radio-group,.el-checkbox-group,[role="radiogroup"],[role="group"]') || containerFor(c) : c, ["radio", "checkbox"].includes(c.type)).text).filter(Boolean))].sort();
+      return { count: list.length, key: JSON.stringify(list) };
+    });
     for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
       const parent = node.parentElement; if (!parent) break;
-      const peers = [...parent.children].filter((c) => signatureOf(c) === signatureOf(node) && c.querySelector(CONTROL_SEL));
+      const own = memo("signature", node, () => signatureOf(node));
+      const peerGroups = memo("peerGroups", parent, () => {
+        const groups = new Map();
+        for (const child of parent.children) {
+          if (!memo("control", child, () => !!child.querySelector(CONTROL_SEL))) continue;
+          const key = memo("signature", child, () => signatureOf(child));
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(child);
+        }
+        return groups;
+      });
+      const peers = peerGroups.get(own) || [];
       if (peers.length < 2) continue;
+      // A single-question node can never be a repeated block; skip the peer work.
       const questions = questionsFor(node);
-      const repeating = peers.filter((peer) => JSON.stringify(questionsFor(peer)) === JSON.stringify(questions));
-      if (questions.length >= 2 && repeating.length >= 2) return { index: repeating.indexOf(node) + 1, key: idFor(parent) };
+      if (questions.count < 2) continue;
+      const repeating = peers.filter((peer) => questionsFor(peer).key === questions.key);
+      if (repeating.length >= 2) return { index: repeating.indexOf(node) + 1, key: idFor(parent) };
     }
     return { index: 1, key: "" };
   }
@@ -145,11 +192,16 @@ export async function pageBridge(request) {
     const group = el.closest('fieldset, [data-experience], [data-education], [class*="experience-item"], [class*="education-item"], [class*="relation-item"]');
     const section = el.closest('section, [role="group"], [class*="form-section"], [class*="complete-form"], form');
     const sectionTitle = sectionFor(group || el) || sectionFor(el) || clean(section?.querySelector("h1, h2, h3, legend, [data-section-label]")?.textContent);
+    const headingBefore = (node) => memo("headingBefore", node, () => {
+      for (let previous = node.previousElementSibling; previous; previous = previous.previousElementSibling) {
+        if (previous.matches('h1, h2, h3, h4, legend, [data-group-label]')) return clean(previous.textContent);
+        if (sweepMemo?.headingBefore?.has(previous)) return sweepMemo.headingBefore.get(previous);
+      }
+      return "";
+    });
     const nearestHeading = (() => {
       for (let node = el; node && node !== document.body; node = node.parentElement) {
-        for (let previous = node.previousElementSibling; previous; previous = previous.previousElementSibling) {
-          if (previous.matches('h1, h2, h3, h4, legend, [data-group-label]')) return clean(previous.textContent);
-        }
+        const heading = headingBefore(node); if (heading) return heading;
       }
       return "";
     })();
@@ -307,7 +359,8 @@ function formatDateValue(value, format = "", { allowDefaultDay = false } = {}) {
     const ctx = context(el);
     const groupBox = entry.members?.length > 1 ? entry.members.reduce((box, m) => { let b = box; while (b && !b.contains(m)) b = b.parentElement; return b; }, entry.members[0].parentElement) : null;
     const legend = entry.members?.length > 1 ? groupQuestion(entry) : "";
-    const asked = legend ? { text: legend, source: "legend" } : groupBox ? questionFor(groupBox, true) : questionFor(el);
+    const nearbyGroup = !legend && groupBox ? nearbyGroupQuestion(entry, groupBox) : "";
+    const asked = legend ? { text: legend, source: "legend" } : nearbyGroup ? { text: nearbyGroup, source: "nearby" } : groupBox ? questionFor(groupBox, true) : questionFor(el);
     const label = asked.text || (entry.members?.length > 1 ? "" : labelFor(el)) || "未命名问题";
     const input = el.matches("input, textarea, select") ? el : el.querySelector("input, textarea, select");
     const type = input?.type || entry.kind;
@@ -315,9 +368,10 @@ function formatDateValue(value, format = "", { allowDefaultDay = false } = {}) {
     const datePart = entry.datePart || (/^(year|年|年份)$/i.test(partHint) ? "year" : /^(month|月|月份)$/i.test(partHint) ? "month" : /^(day|日|日期中的日)$/i.test(partHint) ? "day" : "");
     const unsafe = ["password", "file", "hidden", "submit", "button", "reset"].includes(type) || /验证码|密码|captcha|verification code|one.time.password/i.test(label);
     const memberText = (m) => clean(m.matches("input") ? labelFor(m) : m.textContent);
-    const legal = /隐私|条款|声明|承诺|授权|签名|使用协议|用户协议|consent|privacy|terms|declaration|signature|authori[sz]ation/i;
+    const legal = /隐私|条款|声明|承诺|授权|签名|协议|consent|privacy|terms|declaration|signature|authori[sz]ation|agreement/i;
     const texts = [label, ...(entry.members || []).map(memberText)];
-    const businessAgreement = !texts.some((text) => legal.test(text)) && /(?:是否|能否).*(?:同意|接受).*(?:调剂|出差|加班|调动)|(?:agree|accept).*(?:relocat|business travel)/i.test(label);
+    const binaryOptions = (entry.members || []).length >= 2 && (entry.members || []).every((member) => /^(?:是|否|同意|不同意|接受|不接受|yes|no|agree|disagree|i agree|i disagree)$/i.test(memberText(member)));
+    const businessAgreement = !texts.some((text) => legal.test(text)) && binaryOptions && /(?:是否|能否|愿意|可以).*(?:同意|接受)|(?:do|would|can|will)\s+you\s+(?:agree|accept)/i.test(label);
     const consent = texts.some((text) => legal.test(text)) || (!businessAgreement && texts.some((text) => /同意|consent|agree|^(?:本人|我)?(?:已阅读并)?接受|^i (?:have read and )?accept/i.test(text)));
     const widget = ["date", "cascader", "custom-select"].includes(entry.kind);
     const disabled = Boolean(input?.disabled || (input?.readOnly && !widget) || el.matches('[aria-disabled="true"]'));
@@ -687,22 +741,30 @@ function optionMatch(options, value, { location = false } = {}) {
     if (!yearButton) throw problem("DATE_UNSUPPORTED", "此日期面板无法安全选择年份");
     await press(yearButton);
     const yearSelector = '.ant-calendar-year-panel-year,.ant-picker-year-panel .ant-picker-cell-inner,.year-table .cell';
+    const yearCells = () => [...panel().querySelectorAll(yearSelector)].filter(visible).filter((node) => /^\d{4}$/.test(clean(node.textContent)) && !node.closest('.disabled,.is-disabled,.ant-picker-cell-disabled'));
+    // Panels render asynchronously; on slower machines they appear after the click returns.
+    if (!await until(() => yearCells().length, { timeout: 1500, guard: scope.guard })) throw problem("DATE_UNSUPPORTED", "日期面板没有显示年份，请手动选择");
     for (let attempts = 0; attempts < 30; attempts++) {
-      const cells = [...panel().querySelectorAll(yearSelector)].filter(visible).filter((node) => /^\d{4}$/.test(clean(node.textContent)) && !node.closest('.disabled,.is-disabled,.ant-picker-cell-disabled'));
+      const cells = yearCells();
       const target = cells.find((node) => Number(clean(node.textContent)) === parts.year);
       if (target) { await press(target); break; }
       if (!cells.length || attempts === 29) throw problem("DATE_UNSUPPORTED", "年份超出日期面板可选择范围");
-      const previous = parts.year < Number(clean(cells[0].textContent));
+      const first = clean(cells[0].textContent);
+      const previous = parts.year < Number(first);
       await press(firstVisible(previous
         ? '.ant-calendar-year-panel-prev-decade-btn,.ant-picker-header-super-prev-btn,.el-date-picker__prev-btn.el-icon-d-arrow-left'
         : '.ant-calendar-year-panel-next-decade-btn,.ant-picker-header-super-next-btn,.el-date-picker__next-btn.el-icon-d-arrow-right'));
+      if (!await until(() => { const now = yearCells(); return now.length && clean(now[0].textContent) !== first; }, { timeout: 1500, guard: scope.guard })) throw problem("DATE_UNSUPPORTED", "日期面板没有翻到目标年份，请手动选择");
     }
     const monthSelector = '.ant-calendar-month-panel-month,.ant-picker-month-panel .ant-picker-cell-inner,.month-table .cell';
-    let months = [...panel().querySelectorAll(monthSelector)].filter(visible);
+    const monthCells = () => [...panel().querySelectorAll(monthSelector)].filter(visible);
+    const monthButtonFor = () => firstVisible('.ant-calendar-month-select,.ant-picker-month-btn') || [...panel().querySelectorAll('.el-date-picker__header-label')].filter(visible)[1];
+    await until(() => monthCells().length || monthButtonFor(), { timeout: 1500, guard: scope.guard });
+    let months = monthCells();
     if (!months.length) {
-      const monthButton = firstVisible('.ant-calendar-month-select,.ant-picker-month-btn') || [...panel().querySelectorAll('.el-date-picker__header-label')].filter(visible)[1];
-      await press(monthButton);
-      months = [...panel().querySelectorAll(monthSelector)].filter(visible);
+      await press(monthButtonFor());
+      await until(() => monthCells().length === 12, { timeout: 1500, guard: scope.guard });
+      months = monthCells();
     }
     if (months.length !== 12) throw problem("DATE_UNSUPPORTED", "日期面板的月份无法唯一识别");
     const monthCell = months[parts.month - 1].closest("td") || months[parts.month - 1];
@@ -710,7 +772,7 @@ function optionMatch(options, value, { location = false } = {}) {
     await press(months[parts.month - 1]);
     if (!/d/i.test(dateFormat(entry))) return;
     // A day can only be chosen after the panel has really switched to the target month.
-    if (!await until(() => ![...panel().querySelectorAll(monthSelector)].some(visible), { timeout: 600, guard: scope.guard })) throw problem("DATE_UNSUPPORTED", "日期面板没有切换到目标月份，请手动选择");
+    if (!await until(() => ![...panel().querySelectorAll(monthSelector)].some(visible), { timeout: 1500, guard: scope.guard })) throw problem("DATE_UNSUPPORTED", "日期面板没有切换到目标月份，请手动选择");
     const menu = panel();
     const cells = [...menu.querySelectorAll('.ant-calendar-date,.ant-picker-date-panel .ant-picker-cell-inner,.el-date-table td.available span')].filter(visible);
     const candidates = cells.filter((node) => {

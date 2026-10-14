@@ -1,7 +1,221 @@
 
 ========================================================================
-FILE: application-tracker-extension/test/fixtures/components/element.html (continued)
+FILE: application-tracker-extension/scripts/vision-browser-tests.mjs (continued)
+SHA256: 148892a5f2ce7191344951036a6d3937b81f8155d443966395704130431f3433
+L0025 | const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, deviceScaleFactor: 1 });
+L0026 | const errors = [];
+L0027 | page.on("pageerror", (error) => errors.push(error.message));
+L0028 | let passed = 0;
+L0029 | const gray = [232, 236, 233, 255];
+L0030 | async function fixture() {
+L0031 |   await page.goto(origin + "/fixture");
+L0032 |   await page.evaluate(() => {
+L0033 |     document.body.innerHTML = `<style>
+L0034 |       body { margin:0; background:#fff; min-height:1600px; font-family:sans-serif }
+L0035 |       h2 { position:absolute; left:40px; top:12px }
+L0036 |       .form-item { position:absolute; width:300px; height:70px }
+L0037 |       label { display:block; height:25px }
+L0038 |       input, textarea { box-sizing:border-box; appearance:none; border:0; width:240px; height:40px; background:#e00000; color:#fff }
+L0039 |       #ordinary-box { left:40px; top:80px } #secret-box { left:40px; top:180px }
+L0040 |       #filled-box { left:40px; top:280px } #hidden-box { display:none }
+L0041 |       #shadow { position:absolute; left:40px; top:380px }
+L0042 |       #frame { position:absolute; left:400px; top:100px; width:250px; height:180px; border:0 }
+L0043 |       #offscreen-box { left:40px; top:1300px } #covered-box { left:700px; top:100px }
+L0044 |       #cover { position:absolute; left:690px; top:80px; width:290px; height:120px; background:#fafafa; z-index:2 }
+L0045 |       #readonly-answer { position:absolute; left:400px; top:350px; width:240px; height:40px; background:#e00000 }
+L0046 |     </style><h2>申请信息</h2>
+L0047 |     <div id="ordinary-box" class="form-item"><label for="ordinary">学校名称</label><input id="ordinary"></div>
+L0048 |     <div id="secret-box" class="form-item"><label for="secret">密码</label><input id="secret" type="password" value="SYNTHETIC_PASSWORD_ONLY"></div>
+L0049 |     <div id="filled-box" class="form-item"><label for="filled">邮箱</label><input id="filled" value="synthetic@example.test"></div>
+L0050 |     <div id="hidden-box" class="form-item"><input id="hidden"></div>
+L0051 |     <div id="offscreen-box" class="form-item"><label for="offscreen">其他说明</label><input id="offscreen"></div>
+L0052 |     <div id="covered-box" class="form-item"><label for="covered">被挡住的字段</label><input id="covered"></div><div id="cover"></div>
+L0053 |     <div id="shadow"></div>
+L0054 |     <iframe id="frame" srcdoc="<style>body { margin:0; background:#e00000 }</style>PRIVATE_FRAME_TEST_ONLY"></iframe>
+L0055 |     <div id="readonly-answer" data-answer>PRIVATE_READONLY_TEST_ONLY</div>`;
+L0056 |     document.getElementById("shadow").attachShadow({ mode: "open" }).innerHTML = '<style>.form-item { width:300px; height:70px }input { display:block; width:240px; height:40px; border:0; background:#e00000 }</style><div class="form-item"><label>私人字段<input value="PRIVATE_SHADOW_TEST_ONLY"></label></div>';
+L0057 |   });
+L0058 |   await page.locator("#frame").waitFor();
+L0059 |   await page.waitForFunction(() => document.getElementById("frame").contentDocument?.readyState === "complete");
+L0060 |   return page.evaluate(pageBridge, { action: "scan" });
+L0061 | }
+L0062 | const layoutFor = (scan, extra = {}) => page.evaluate(pageBridge, { action: "visual-layout", token: scan.token, scanId: scan.scanId, url: scan.url, ...extra });
+L0063 | const marked = (layout) => layout.fields.map((field, index) => ({ fieldId: `doc:${field.localFieldId}`, marker: `V${index + 1}`, rect: field.rect }));
+L0064 | const imageSamples = (imageUrl, coordinates) => page.evaluate(async ({ imageUrl, coordinates }) => {
+L0065 |   const bitmap = await createImageBitmap(await (await fetch(imageUrl)).blob());
+L0066 |   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+L0067 |   const ctx = canvas.getContext("2d"); ctx.drawImage(bitmap, 0, 0);
+L0068 |   const samples = coordinates.map(([x, y]) => [...ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data]);
+L0069 |   const result = { width: bitmap.width, height: bitmap.height, samples };
+L0070 |   bitmap.close(); canvas.width = 1; canvas.height = 1;
+L0071 |   return result;
+L0072 | }, { imageUrl, coordinates });
+L0073 | const render = (rawImageUrl, layout) => page.evaluate(async ({ rawImageUrl, layout, fields }) => (await import("/src/assistant/visualCapture.js")).renderVisualCapture(rawImageUrl, layout, fields), { rawImageUrl, layout, fields: marked(layout) });
+L0074 | async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`); }
+L0075 | 
+L0076 | try {
+L0077 |   await check("visual geometry contains no field text or values and excludes filled, offscreen, covered and iframe fields", async () => {
+L0078 |     const scan = await fixture();
+L0079 |     const layout = await layoutFor(scan);
+L0080 |     const ids = new Set(layout.fields.map((field) => field.localFieldId));
+L0081 |     assert.equal(ids.has(scan.fields.find((field) => field.identity.id === "ordinary").fieldId), true);
+L0082 |     for (const id of ["secret", "filled", "offscreen", "covered"]) assert.equal(ids.has(scan.fields.find((field) => field.identity.id === id).fieldId), false, id);
+L0083 |     assert.equal(layout.fields.length, 1);
+L0084 |     assert.ok(layout.redactions.length >= 7);
+L0085 |     assert.doesNotMatch(JSON.stringify(layout), /SYNTHETIC|PRIVATE|synthetic@|学校|密码|iframe|input/);
+L0086 |   });
+L0087 |   await check("real Chrome pixels redact inputs, filled containers, iframe, open shadow controls and answer blocks before marking", async () => {
+L0088 |     const scan = await fixture();
+L0089 |     const layout = await layoutFor(scan);
+L0090 |     const raw = `data:image/png;base64,${(await page.screenshot({ type: "png" })).toString("base64")}`;
+L0091 |     const points = [[200, 135], [200, 235], [200, 335], [600, 240], [200, 415], [600, 370]];
+L0092 |     const original = await imageSamples(raw, points);
+L0093 |     assert.ok(original.samples.every((pixel) => JSON.stringify(pixel) !== JSON.stringify(gray)));
+L0094 |     const result = await render(raw, layout);
+L0095 |     assert.equal(result.scale, 1);
+L0096 |     const processed = await imageSamples(result.imageUrl, points);
+L0097 |     assert.ok(processed.samples.every((pixel) => JSON.stringify(pixel) === JSON.stringify(gray)), JSON.stringify(processed.samples));
+L0098 |     assert.notEqual(result.imageUrl, raw);
+L0099 |     const marker = await imageSamples(result.imageUrl, [[41, 107], [900, 500]]);
+L0100 |     assert.deepEqual(marker.samples, [[22, 93, 216, 255], [255, 255, 255, 255]]);
+L0101 |     assert.equal(await page.locator("#secret").inputValue(), "SYNTHETIC_PASSWORD_ONLY");
+L0102 |     assert.equal(await page.locator("#ordinary").inputValue(), "");
+L0103 |   });
+L0104 |   await check("large real screenshots scale to 1600 pixels while retaining redaction", async () => {
+L0105 |     await page.setViewportSize({ width: 2560, height: 1440 });
+L0106 |     const scan = await fixture();
+L0107 |     const layout = await layoutFor(scan);
+L0108 |     const raw = `data:image/png;base64,${(await page.screenshot({ type: "png" })).toString("base64")}`;
+L0109 |     const result = await render(raw, layout);
+L0110 |     assert.equal(result.scale, 0.625);
+L0111 |     const processed = await imageSamples(result.imageUrl, [[600 * result.scale, 240 * result.scale]]);
+L0112 |     assert.equal(processed.width, 1600); assert.equal(processed.height, 900);
+L0113 |     assert.deepEqual(processed.samples[0], gray);
+L0114 |     await page.setViewportSize({ width: 1000, height: 700 });
+L0115 |   });
+L0116 |   await check("transient geometry changes stay invalid after the original position returns", async () => {
+L0117 |     const scan = await fixture();
+L0118 |     const watchId = crypto.randomUUID();
+L0119 |     await layoutFor(scan, { startWatch: watchId });
+L0120 |     await page.locator("#ordinary").evaluate((el) => { el.style.transform = "translateX(10px)"; el.style.transform = ""; });
+L0121 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0122 |     assert.deepEqual(await layoutFor(scan, { releaseWatch: watchId }), { released: true });
+L0123 |     const second = crypto.randomUUID();
+L0124 |     assert.equal((await layoutFor(scan, { startWatch: second })).changed, false);
+L0125 |     await layoutFor(scan, { releaseWatch: second });
+L0126 |   });
+L0127 |   await check("transient aria label changes invalidate screenshots even without geometry changes", async () => {
+L0128 |     const scan = await fixture();
+L0129 |     const watchId = crypto.randomUUID();
+L0130 |     await layoutFor(scan, { startWatch: watchId });
+L0131 |     await page.locator("#ordinary").evaluate((el) => { el.setAttribute("aria-label", "父亲学校"); el.removeAttribute("aria-label"); });
+L0132 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0133 |     await layoutFor(scan, { releaseWatch: watchId });
+L0134 |   });
+L0135 |   await check("scrolling away and back invalidates a capture even with matching final coordinates", async () => {
+L0136 |     const scan = await fixture();
+L0137 |     const watchId = crypto.randomUUID();
+L0138 |     await layoutFor(scan, { startWatch: watchId });
+L0139 |     await page.evaluate(async () => { scrollTo(0, 200); await new Promise(requestAnimationFrame); scrollTo(0, 0); await new Promise(requestAnimationFrame); });
+L0140 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0141 |     await layoutFor(scan, { releaseWatch: watchId });
+L0142 |   });
+L0143 |   await check("a fresh scan releases the previous capture watch and cannot reuse its old snapshot", async () => {
+L0144 |     const scan = await fixture();
+L0145 |     const watchId = crypto.randomUUID();
+L0146 |     await layoutFor(scan, { startWatch: watchId });
+L0147 |     const fresh = await page.evaluate(pageBridge, { action: "scan" });
+L0148 |     await assert.rejects(layoutFor(scan, { watchId }), /页面已变化/);
+L0149 |     const next = crypto.randomUUID();
+L0150 |     assert.equal((await layoutFor(fresh, { startWatch: next })).changed, false);
+L0151 |     await layoutFor(fresh, { releaseWatch: next });
+L0152 |   });
+L0153 |   assert.deepEqual(errors, []);
+L0154 |   console.log(`Vision browser cases passed: ${passed}`);
+L0155 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/README.md
+SHA256: 7032ca9a388671fb2bbcfaffeccc9070c41db9d397b1832382a50d68c55aacea
+L0001 | # 离线组件验收页
+L0002 | 
+L0003 | 这些页面直接运行本地依赖的真实 Ant Design 3、Ant Design 5 和 Element UI 2 组件。所有示例选项和数据都是虚构的，测试服务器只允许本地请求。
+L0004 | 
+L0005 | 安装开发依赖后执行 `npm.cmd run test:components`。组件测试也包含在 `test:browser` 中。使用 `BROWSER_EXECUTABLE` 可以指定 Chromium 浏览器路径。
+L0006 | 
+L0007 | 每个真实组件页面包含普通下拉、搜索下拉、三级级联、日期、月份、日期范围、单选、多选。测试同时核对页面读数和框架持有的值，避免只改 DOM 的假成功。My97 页面仅模拟输入接口及 `dateFmt`，不宣称覆盖 My97 弹出日历。
+L0008 | 
+L0009 | 依赖由 `package-lock.json` 固定，页面只读取 `/node_modules/` 下的 UMD 脚本与样式，不使用 CDN。
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd-fixture.js
+SHA256: a5d958fed9b8f9f042b5d856052dc2159891965f292a2b5cb40c3cbbeb3ad041
+L0001 | (function () {
+L0002 |   const h = React.createElement;
+L0003 |   const { Select, Cascader, DatePicker, Radio, Checkbox, Form } = antd;
+L0004 |   const isV3 = window.fixtureLibrary === "antd3";
+L0005 |   const locationOptions = [{ value: "广东省", label: "广东省", children: [
+L0006 |     { value: "深圳市", label: "深圳市", children: [{ value: "南山区", label: "南山区" }, { value: "福田区", label: "福田区" }] },
+L0007 |     { value: "广州市", label: "广州市", children: [{ value: "天河区", label: "天河区" }] }
+L0008 |   ] }];
+L0009 |   function App() {
+L0010 |     const [values, setValues] = React.useState({ degree: undefined, school: undefined, location: [], date: null, month: null, range: [], gender: undefined, languages: [] });
+L0011 |     const update = (key) => (value) => setValues((old) => ({ ...old, [key]: value }));
+L0012 |     window.fixtureValues = { ...values, date: values.date?.format("YYYY-MM-DD") || "", month: values.month?.format("YYYY-MM") || "", range: (values.range || []).map((value) => value.format("YYYY-MM-DD")) };
+L0013 |     const field = (id, label, component) => h("div", { className: "fixture-field", "data-fixture-field": id, key: id }, h(Form.Item, { label }, component));
+L0014 |     const select = (id, options, showSearch = false) => h(Select, { id, style: { width: 300 }, value: values[id], onChange: update(id), allowClear: true, showSearch, optionFilterProp: "children", placeholder: "请选择" }, options.map((value) => h(Select.Option, { key: value, value }, value)));
+L0015 |     const monthProps = { id: "month", value: values.month, onChange: update("month"), format: "YYYY-MM", placeholder: "YYYY-MM", allowClear: true, inputReadOnly: true };
+L0016 |     return h("section", null, h("h1", null, `${isV3 ? "Ant Design 3" : "Ant Design 5"} 真实组件`), h(Form, { layout: "vertical" }, [
+L0017 |       field("degree", "学历", select("degree", ["本科", "硕士", "博士"])),
+L0018 |       field("school", "学校", select("school", ["示例大学", "星海大学", "远山学院"], true)),
+L0019 |       field("location", "所在地", h(Cascader, { id: "location", options: locationOptions, value: values.location, onChange: update("location"), allowClear: true, placeholder: "请选择地区", style: { width: 300 } })),
+L0020 |       field("date", "日期", h(DatePicker, { id: "date", value: values.date, onChange: update("date"), format: "YYYY-MM-DD", placeholder: "YYYY-MM-DD", allowClear: true, inputReadOnly: true })),
+L0021 |       field("month", "月份", isV3 ? h(DatePicker.MonthPicker, monthProps) : h(DatePicker, { ...monthProps, picker: "month" })),
+L0022 |       field("range", "任职时间", h(DatePicker.RangePicker, { value: values.range, onChange: update("range"), format: "YYYY-MM-DD", placeholder: ["开始日期", "结束日期"], allowClear: true, inputReadOnly: true })),
+L0023 |       field("gender", "性别", h(Radio.Group, { value: values.gender, onChange: (event) => update("gender")(event.target.value) }, ["男", "女"].map((value) => h(Radio, { key: value, value }, value)))),
+L0024 |       field("languages", "语言", h(Checkbox.Group, { value: values.languages, onChange: update("languages"), options: ["中文", "英语"] }))
+L0025 |     ]));
+L0026 |   }
+L0027 |   ReactDOM.render(h(App), document.getElementById("root"));
+L0028 |   window.fixtureReady = true;
+L0029 | })();
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd3.html
+SHA256: de1920e9fcae6df20fc2f76ee474b63453b436bfb8a667b20e4ccc188dfc6eb0
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Ant Design 3 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/antd3/dist/antd.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root"></main>
+L0006 | <script src="/node_modules/react/umd/react.development.js"></script>
+L0007 | <script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+L0008 | <script src="/node_modules/moment/min/moment.min.js"></script>
+L0009 | <script src="/node_modules/antd3/dist/antd.js"></script>
+L0010 | <script>window.fixtureLibrary = "antd3";</script>
+L0011 | <script src="/test/fixtures/components/antd-fixture.js"></script></body></html>
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd5.html
+SHA256: 7fd10ccd3acc5efabc2b98565503b23677944d9477bd8ed40526cc9e3562d453
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Ant Design 5 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/antd5/dist/reset.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root"></main>
+L0006 | <script src="/node_modules/react/umd/react.development.js"></script>
+L0007 | <script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+L0008 | <script src="/node_modules/dayjs/dayjs.min.js"></script>
+L0009 | <script src="/node_modules/antd5/dist/antd.js"></script>
+L0010 | <script>window.fixtureLibrary = "antd5";</script>
+L0011 | <script src="/test/fixtures/components/antd-fixture.js"></script></body></html>
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/element.html
 SHA256: 4f1c3d1efb845c1ac9c899fca67c05f87784c32a96a61994dab650d821fdd85c
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Element UI 2 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/element-ui/lib/theme-chalk/index.css">
 L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
 L0005 | <body><main id="root">
 L0006 | <h1>Element UI 2 真实组件</h1>

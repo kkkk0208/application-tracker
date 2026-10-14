@@ -57,7 +57,8 @@ test("record card prepares page information in session only and never saves auto
   await h.card.prepare(h.session.snapshot, { enabled: false });
   await h.card.render();
   assert.deepEqual([h.session.recordDraft.company, h.session.recordDraft.role], ["示例公司", "分析师"]);
-  assert.equal(h.session.recordDraft.portalLink, h.session.snapshot.url);
+  // Login tokens in the page address are removed before a record can be stored.
+  assert.equal(h.session.recordDraft.portalLink, "https://careers.example/jobs/1");
   assert.equal(h.session.recentJobs[0].url, "https://careers.example/jobs/1");
   assert.equal(h.container.hidden, false);
   assert.match(h.container.innerHTML, /提交后记一笔|结构化数据|id="saveRecord"/);

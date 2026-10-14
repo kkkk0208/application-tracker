@@ -2,6 +2,129 @@
 ========================================================================
 FILE: application-tracker-extension/src/records/records.css (continued)
 SHA256: 7b6669e7290aedff8154aae73f2bb2de3d6310872ebb5604cd9448c56217d19f
+L0098 |   font-weight: 700;
+L0099 | }
+L0100 | 
+L0101 | .primary-action {
+L0102 |   border-color: #166534;
+L0103 |   color: white;
+L0104 |   background: #166534;
+L0105 | }
+L0106 | 
+L0107 | .secondary-action {
+L0108 |   color: #1a73e8;
+L0109 | }
+L0110 | 
+L0111 | .toolbar {
+L0112 |   margin-bottom: 16px;
+L0113 | }
+L0114 | 
+L0115 | .application-info-header {
+L0116 |   display: flex;
+L0117 |   align-items: flex-start;
+L0118 |   justify-content: space-between;
+L0119 |   gap: 16px;
+L0120 |   margin-bottom: 16px;
+L0121 | }
+L0122 | 
+L0123 | .application-info-header p,
+L0124 | .application-info-empty p {
+L0125 |   margin: 6px 0 0;
+L0126 |   color: #475569;
+L0127 | }
+L0128 | 
+L0129 | .application-info-list {
+L0130 |   display: grid;
+L0131 |   grid-template-columns: repeat(2, minmax(0, 1fr));
+L0132 |   gap: 14px;
+L0133 | }
+L0134 | 
+L0135 | .application-info-group {
+L0136 |   display: grid;
+L0137 |   gap: 14px;
+L0138 | }
+L0139 | 
+L0140 | .application-info-card,
+L0141 | .application-info-empty {
+L0142 |   border: 1px solid #e2e8f0;
+L0143 |   border-radius: 8px;
+L0144 |   padding: 16px;
+L0145 |   background: white;
+L0146 | }
+L0147 | 
+L0148 | .application-info-card header {
+L0149 |   display: flex;
+L0150 |   align-items: center;
+L0151 |   justify-content: space-between;
+L0152 |   gap: 12px;
+L0153 |   margin-bottom: 12px;
+L0154 | }
+L0155 | 
+L0156 | .application-info-card h3,
+L0157 | .application-info-card h4 {
+L0158 |   margin: 0;
+L0159 | }
+L0160 | 
+L0161 | .application-info-card h4 {
+L0162 |   margin-top: 12px;
+L0163 |   font-size: 14px;
+L0164 | }
+L0165 | 
+L0166 | .application-info-card dl {
+L0167 |   display: grid;
+L0168 |   gap: 8px;
+L0169 |   margin: 0;
+L0170 | }
+L0171 | 
+L0172 | .application-info-card dl div {
+L0173 |   display: grid;
+L0174 |   grid-template-columns: 88px minmax(0, 1fr) auto;
+L0175 |   align-items: start;
+L0176 |   gap: 10px;
+L0177 | }
+L0178 | 
+L0179 | .application-info-card dt {
+L0180 |   color: #64748b;
+L0181 |   font-size: 13px;
+L0182 |   font-weight: 800;
+L0183 | }
+L0184 | 
+L0185 | .application-info-card dd {
+L0186 |   margin: 0;
+L0187 |   white-space: pre-wrap;
+L0188 |   overflow-wrap: anywhere;
+L0189 | }
+L0190 | 
+L0191 | .application-info-card button[data-action="copy-item"] {
+L0192 |   border: 1px solid #cbd5e1;
+L0193 |   padding: 5px 8px;
+L0194 |   color: #111827;
+L0195 |   font-size: 12px;
+L0196 |   background: white;
+L0197 | }
+L0198 | 
+L0199 | .bulk-toolbar {
+L0200 |   display: flex;
+L0201 |   align-items: center;
+L0202 |   gap: 10px;
+L0203 |   margin-bottom: 12px;
+L0204 |   border: 1px solid #bfdbfe;
+L0205 |   border-radius: 8px;
+L0206 |   padding: 10px;
+L0207 |   color: #1e3a8a;
+L0208 |   background: #eff6ff;
+L0209 | }
+L0210 | 
+L0211 | .bulk-toolbar select {
+L0212 |   border: 1px solid #93c5fd;
+L0213 |   border-radius: 6px;
+L0214 |   padding: 7px;
+L0215 |   font: inherit;
+L0216 |   background: white;
+L0217 | }
+L0218 | 
+L0219 | .danger-button {
+L0220 |   border-color: #fecaca;
 L0221 |   color: #7f1d1d;
 L0222 |   background: #fee2e2;
 L0223 | }
@@ -310,7 +433,7 @@ L0108 | </html>
 
 ========================================================================
 FILE: application-tracker-extension/src/records/records.js
-SHA256: 3784b2d4eabf5197f3544139b46faeae1e7f88d8aedb12f13c93e63877e8b521
+SHA256: e771e23b11f0fb022e7fd51205d08550e569c888fabf59b9830e6614da8abe9d
 L0001 | import { buildApplicationInfoGroups } from "../applicationInfo.js";
 L0002 | import { getBulkSelectionState, getSelectedVisibleIds, toggleAllVisibleIds } from "../bulk.js";
 L0003 | import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES, STORAGE_KEY, PROFILE_STORAGE_KEY } from "../constants.js";
@@ -765,95 +888,96 @@ L0451 |
 L0452 |   try {
 L0453 |     assertXlsxLoaded();
 L0454 |     const buffer = await file.arrayBuffer();
-L0455 |     const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-L0456 |     const imported = workbookToImportedRecords(workbook, (sheet) => XLSX.utils.sheet_to_json(sheet, { defval: "" }));
-L0457 |     if (!confirm(`将按 Excel 可见表导入 ${imported.length} 条记录，并覆盖当前本地记录。导入前会保存完整恢复点，确认继续？`)) return;
-L0458 |     if (baseline.length > 0) downloadRecordsAsXlsx(baseline, buildPreImportBackupFilename(toDateInputValue()));
-L0459 |     await requestStorageMutation({ operation: "records.replace", records: imported, expectedRecords: baseline });
-L0460 |     records = await getRecords();
-L0461 |     showMessage("已按可见表导入并覆盖本地记录；完整恢复点已保存，可在问答记忆页恢复。");
-L0462 |     render();
-L0463 |   } catch (error) {
-L0464 |     showMessage(`导入失败：${error.message}`);
-L0465 |   }
-L0466 | }
-L0467 | 
-L0468 | function downloadRecordsAsXlsx(recordsToDownload, filename) {
-L0469 |   const sheets = buildWorkbookSheets(recordsToDownload);
-L0470 |   const workbook = XLSX.utils.book_new();
-L0471 |   const workbookSheetMetadata = [];
-L0472 | 
-L0473 |   for (const sheet of sheets) {
-L0474 |     const worksheet = XLSX.utils.json_to_sheet(sheet.rows);
-L0475 |     if (sheet.type === "display") applyDisplayWorksheetLayout(worksheet);
-L0476 |     else applyRawWorksheetLayout(worksheet);
-L0477 |     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
-L0478 |     workbookSheetMetadata.push({ name: sheet.name, Hidden: sheet.hidden });
-L0479 |   }
-L0480 | 
-L0481 |   workbook.Workbook = { Sheets: workbookSheetMetadata };
-L0482 |   XLSX.writeFile(workbook, filename);
-L0483 | }
-L0484 | 
-L0485 | function applyDisplayWorksheetLayout(worksheet) {
-L0486 |   worksheet["!cols"] = [
-L0487 |     { wch: 18 },
-L0488 |     { wch: 28 },
-L0489 |     { wch: 16 },
-L0490 |     { wch: 22 },
-L0491 |     { wch: 12 },
+L0455 |     // Excel date serials avoid SheetJS's historical timezone offset entirely.
+L0456 |     const workbook = XLSX.read(buffer, { type: "array", cellDates: false });
+L0457 |     const imported = workbookToImportedRecords(workbook, (sheet) => XLSX.utils.sheet_to_json(sheet, { defval: "" }));
+L0458 |     if (!confirm(`将按 Excel 可见表导入 ${imported.length} 条记录，并覆盖当前本地记录。导入前会保存完整恢复点，确认继续？`)) return;
+L0459 |     if (baseline.length > 0) downloadRecordsAsXlsx(baseline, buildPreImportBackupFilename(toDateInputValue()));
+L0460 |     await requestStorageMutation({ operation: "records.replace", records: imported, expectedRecords: baseline });
+L0461 |     records = await getRecords();
+L0462 |     showMessage("已按可见表导入并覆盖本地记录；完整恢复点已保存，可在问答记忆页恢复。");
+L0463 |     render();
+L0464 |   } catch (error) {
+L0465 |     showMessage(`导入失败：${error.message}`);
+L0466 |   }
+L0467 | }
+L0468 | 
+L0469 | function downloadRecordsAsXlsx(recordsToDownload, filename) {
+L0470 |   const sheets = buildWorkbookSheets(recordsToDownload);
+L0471 |   const workbook = XLSX.utils.book_new();
+L0472 |   const workbookSheetMetadata = [];
+L0473 | 
+L0474 |   for (const sheet of sheets) {
+L0475 |     const worksheet = XLSX.utils.json_to_sheet(sheet.rows);
+L0476 |     if (sheet.type === "display") applyDisplayWorksheetLayout(worksheet);
+L0477 |     else applyRawWorksheetLayout(worksheet);
+L0478 |     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+L0479 |     workbookSheetMetadata.push({ name: sheet.name, Hidden: sheet.hidden });
+L0480 |   }
+L0481 | 
+L0482 |   workbook.Workbook = { Sheets: workbookSheetMetadata };
+L0483 |   XLSX.writeFile(workbook, filename);
+L0484 | }
+L0485 | 
+L0486 | function applyDisplayWorksheetLayout(worksheet) {
+L0487 |   worksheet["!cols"] = [
+L0488 |     { wch: 18 },
+L0489 |     { wch: 28 },
+L0490 |     { wch: 16 },
+L0491 |     { wch: 22 },
 L0492 |     { wch: 12 },
-L0493 |     { wch: 18 },
-L0494 |     { wch: 46 },
-L0495 |     { wch: 36 },
-L0496 |     { wch: 42 },
-L0497 |     { wch: 36 },
-L0498 |     { wch: 56 },
-L0499 |     { wch: 22 },
+L0493 |     { wch: 12 },
+L0494 |     { wch: 18 },
+L0495 |     { wch: 46 },
+L0496 |     { wch: 36 },
+L0497 |     { wch: 42 },
+L0498 |     { wch: 36 },
+L0499 |     { wch: 56 },
 L0500 |     { wch: 22 },
-L0501 |     { wch: 38, hidden: true }
-L0502 |   ];
-L0503 |   worksheet["!autofilter"] = { ref: worksheet["!ref"] };
-L0504 | }
-L0505 | 
-L0506 | function applyRawWorksheetLayout(worksheet) {
-L0507 |   worksheet["!cols"] = [
-L0508 |     { wch: 38 },
-L0509 |     { wch: 18 },
-L0510 |     { wch: 28 },
-L0511 |     { wch: 16 },
-L0512 |     { wch: 46 },
-L0513 |     { wch: 36 },
-L0514 |     { wch: 18 },
-L0515 |     { wch: 12 },
-L0516 |     { wch: 18 },
-L0517 |     { wch: 56 },
-L0518 |     { wch: 12 },
-L0519 |     { wch: 42 },
-L0520 |     { wch: 36 },
-L0521 |     { wch: 22 },
-L0522 |     { wch: 22 }
-L0523 |   ];
-L0524 | }
-L0525 | 
-L0526 | function assertXlsxLoaded() {
-L0527 |   if (!globalThis.XLSX) {
-L0528 |     throw new Error("Excel 库未加载，请确认 vendor/xlsx.full.min.js 存在。");
-L0529 |   }
-L0530 | }
-L0531 | 
-L0532 | function escapeHtml(value) {
-L0533 |   return String(value ?? "")
-L0534 |     .replaceAll("&", "&amp;")
-L0535 |     .replaceAll("<", "&lt;")
-L0536 |     .replaceAll(">", "&gt;")
-L0537 |     .replaceAll('"', "&quot;")
-L0538 |     .replaceAll("'", "&#039;");
-L0539 | }
-L0540 | 
-L0541 | function escapeAttribute(value) {
-L0542 |   return escapeHtml(value || "#");
-L0543 | }
+L0501 |     { wch: 22 },
+L0502 |     { wch: 38, hidden: true }
+L0503 |   ];
+L0504 |   worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+L0505 | }
+L0506 | 
+L0507 | function applyRawWorksheetLayout(worksheet) {
+L0508 |   worksheet["!cols"] = [
+L0509 |     { wch: 38 },
+L0510 |     { wch: 18 },
+L0511 |     { wch: 28 },
+L0512 |     { wch: 16 },
+L0513 |     { wch: 46 },
+L0514 |     { wch: 36 },
+L0515 |     { wch: 18 },
+L0516 |     { wch: 12 },
+L0517 |     { wch: 18 },
+L0518 |     { wch: 56 },
+L0519 |     { wch: 12 },
+L0520 |     { wch: 42 },
+L0521 |     { wch: 36 },
+L0522 |     { wch: 22 },
+L0523 |     { wch: 22 }
+L0524 |   ];
+L0525 | }
+L0526 | 
+L0527 | function assertXlsxLoaded() {
+L0528 |   if (!globalThis.XLSX) {
+L0529 |     throw new Error("Excel 库未加载，请确认 vendor/xlsx.full.min.js 存在。");
+L0530 |   }
+L0531 | }
+L0532 | 
+L0533 | function escapeHtml(value) {
+L0534 |   return String(value ?? "")
+L0535 |     .replaceAll("&", "&amp;")
+L0536 |     .replaceAll("<", "&lt;")
+L0537 |     .replaceAll(">", "&gt;")
+L0538 |     .replaceAll('"', "&quot;")
+L0539 |     .replaceAll("'", "&#039;");
+L0540 | }
+L0541 | 
+L0542 | function escapeAttribute(value) {
+L0543 |   return escapeHtml(value || "#");
+L0544 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/sourceDetection.js

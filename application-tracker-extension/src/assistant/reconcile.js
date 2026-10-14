@@ -15,6 +15,7 @@ export function reconcilePlan(previous, next) {
     if (item.value || !item.supported) return { ...item, selected: false };
     if (old && sameQuestion(old, item)) {
       return { ...item, answer: old.answer, source: old.source, factIds: old.factIds,
+        requiresSelection: old.requiresSelection, memoryId: old.memoryId ?? item.memoryId, memoryVersion: old.memoryVersion ?? item.memoryVersion,
         edited: old.edited, selected: false,
         status: old.answer ? old.status === "ready" && !old.edited ? "ready" : "review" : item.status,
         reason: old.answer ? "已保留原答案，预览后统一确认填写" : item.reason };

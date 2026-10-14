@@ -2,6 +2,30 @@
 ========================================================================
 FILE: application-tracker-extension/src/profile/profile.html (continued)
 SHA256: 9f822d47b594726e1d2151a40f84c56a1afb994c14d5835964f58752d19bbbfa
+L0100 |             <h2>Master Education</h2>
+L0101 |             <div class="field-grid">
+L0102 |               <label>University <input name="masterUniversity" /></label>
+L0103 |               <label>Degree <input name="masterDegree" placeholder="Master" /></label>
+L0104 |               <label>Major <input name="masterMajor" /></label>
+L0105 |               <label>Start date <input name="masterStartDateMirror" placeholder="2025-09" /></label>
+L0106 |               <label>Graduation date <input name="masterGraduationDateMirror" placeholder="2026-06" /></label>
+L0107 |             </div>
+L0108 |           </section>
+L0109 | 
+L0110 |           <section class="form-section">
+L0111 |             <h2>Bachelor Education</h2>
+L0112 |             <div class="field-grid">
+L0113 |               <label>University <input name="bachelorUniversity" /></label>
+L0114 |               <label>Degree <input name="bachelorDegree" placeholder="Bachelor" /></label>
+L0115 |               <label>Major <input name="bachelorMajor" /></label>
+L0116 |               <label>Start date <input name="bachelorStartDateMirror" placeholder="2021-09" /></label>
+L0117 |               <label>Graduation date <input name="bachelorGraduationDateMirror" placeholder="2025-06" /></label>
+L0118 |             </div>
+L0119 |           </section>
+L0120 | 
+L0121 |           <section class="form-section">
+L0122 |             <div class="section-title-row">
+L0123 |               <h2>Internship Experience</h2>
 L0124 |               <button class="secondary-button" type="button" data-action="add-internship">+ Add Internship</button>
 L0125 |             </div>
 L0126 |             <div id="enInternshipList" class="internship-list" data-internship-list="en"></div>

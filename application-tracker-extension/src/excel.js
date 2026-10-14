@@ -169,7 +169,14 @@ function keyFor(options, value, label) {
 }
 
 function importedDate(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    // SheetJS cellDates returns a time near local midnight, and in China/Hong Kong
+    // it is a few minutes early (historical +08:05:43 offset), e.g. 23:54:17 the
+    // day before. toISOString() then lost a day. Round to the nearest local day.
+    if (!value.getUTCHours() && !value.getUTCMinutes() && !value.getUTCSeconds() && !value.getUTCMilliseconds()) return value.toISOString().slice(0, 10);
+    const nearest = new Date(value.getFullYear(), value.getMonth(), value.getDate() + (value.getHours() >= 12 ? 1 : 0));
+    return `${nearest.getFullYear()}-${String(nearest.getMonth() + 1).padStart(2, "0")}-${String(nearest.getDate()).padStart(2, "0")}`;
+  }
   if (typeof value === "number" && Number.isFinite(value)) return new Date((Math.floor(value) - 25569) * 86400000).toISOString().slice(0, 10);
   const formatted = text(value).match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
   return formatted ? `${formatted[1]}-${formatted[2].padStart(2, "0")}-${formatted[3].padStart(2, "0")}` : text(value);

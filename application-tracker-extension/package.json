@@ -11,7 +11,8 @@
     "test:ui": "node scripts/ui-tests.mjs",
     "test:data-ui": "node scripts/data-ui-tests.mjs",
     "test:vision-browser": "node scripts/vision-browser-tests.mjs",
-    "test:real-pages": "node scripts/real-page-tests.mjs"
+    "test:real-pages": "node scripts/real-page-tests.mjs",
+    "test:slow": "node scripts/scan-scaling-check.mjs && node scripts/slow-cpu-date-check.mjs"
   },
   "devDependencies": {
     "antd3": "npm:antd@3.26.20",

@@ -159,6 +159,22 @@ try {
     assert.match(unnamed.nearbyText, /PUBLIC_NONE/);
     assert.ok(!unnamed.nearbyText.includes("PRIVATE"));
   });
+  for (const label of ["是否同意外派", "是否同意轮岗", "是否同意参加夜班值守", "Do you agree to work in Hong Kong?"]) {
+    await check(`business agreement remains fillable: ${label}`, async () => {
+      const choices = label.startsWith("Do") ? ["Yes", "No"] : ["同意", "不同意"];
+      const snapshot = await fixture(group("radio", label, choices));
+      const field = snapshot.fields[0];
+      assert.equal(field.supported, true, field.reason);
+      const result = await action(snapshot, field, choices[0]);
+      assert.equal(result.status, "verified"); assert.equal(result.after, choices[0]);
+    });
+  }
+  await check("legal agreement and a single acceptance checkbox stay manual", async () => {
+    for (const html of [group("radio", "是否同意外派并授权共享资料", ["同意", "不同意"]), '<label>我同意参加轮岗<input type="checkbox"></label>']) {
+      const snapshot = await fixture(html);
+      assert.equal(snapshot.fields[0].supported, false);
+    }
+  });
   assert.deepEqual(errors, []);
   console.log(`Choice and privacy browser cases passed: ${passed}`);
 } finally {

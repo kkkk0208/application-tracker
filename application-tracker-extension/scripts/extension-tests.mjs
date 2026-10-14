@@ -56,6 +56,10 @@ try {
     await chrome.storage.session.set({ [`applicationTracker.assistant.target.${ids.windowId}`]: ids.tabId });
   }, { ids, profile: originalProfile });
   const panel = await context.newPage();
+  const preparePage = async () => {
+    if (!await panel.locator("#prepare").isVisible() && !await panel.locator("#menu").isVisible()) await panel.locator("#menuButton").click();
+    await panel.locator("#prepare").click();
+  };
   const errors = []; panel.on("pageerror", (error) => errors.push(error.message));
   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
   const createRecords = (page, prefix) => page.evaluate(async (prefix) => {
@@ -73,7 +77,7 @@ try {
   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).status, "oa");
   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).notes, "另一页面的更新");
   console.log("PASS real background queue preserves concurrent writes and independent patches across extension pages");
-  await panel.locator("#prepare").click();
+  await preparePage();
   await panel.locator("#questions .question").first().waitFor();
   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   assert.equal(await panel.locator("#questions .question").count(), 6);
@@ -113,7 +117,7 @@ try {
   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
   assert.equal(await target.locator("#intro").inputValue(), "");
   console.log("PASS extension undo restores only assistant-written fields");
-  await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+  await preparePage(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
   await panel.setViewportSize({ width: 420, height: 1000 }); await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
@@ -180,8 +184,8 @@ try {
   assert.equal(await popup.locator('[data-job-source="role"]').textContent(), "最近岗位");
   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), currentLink);
   const recent = await worker.evaluate(async () => (await chrome.storage.session.get("applicationTracker.recentJobs"))["applicationTracker.recentJobs"]);
-  assert.equal(recent.length, 1);
-  assert.equal(new URL(recent[0].url).search, "");
+  assert.equal(recent.length, 2);
+  assert.deepEqual(recent.map((job) => new URL(job.url).search).sort(), ["", "?jobId=another-role"]);
   await popup.close();
   await target.reload();
   console.log("PASS real popup offers recent jobs on application pages and preserves the current application link");
@@ -288,7 +292,7 @@ try {
   console.log("PASS real AI settings screen persists screenshot opt-in and opt-out without enabling AI or changing the model and key");
   await target.goto(origin + "/cross");
   await target.frameLocator("iframe").locator("#website").waitFor();
-  await panel.locator("#prepare").click();
+  await preparePage();
   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("1/2"));
   const crossOrigin = `http://localhost:${server.address().port}`;
   assert.equal(await panel.getByRole("button", { name: `允许读取内嵌表单（localhost:${server.address().port}）`, exact: true }).count(), 1);

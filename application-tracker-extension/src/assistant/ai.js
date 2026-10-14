@@ -1,4 +1,4 @@
-import { eligibleFacts, acceptAiItems, intentFitsQuestion, interpretField } from "./planner.js";
+import { eligibleFacts, acceptAiItems, intentFitsQuestion, interpretField, validateValue } from "./planner.js";
 
 const schema = { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false,
   properties: { fieldId: { type: "string" }, entityId: { type: "string" }, kind: { type: "string", enum: ["fact", "option", "draft"] }, factIds: { type: "array", items: { type: "string" } }, text: { type: ["string", "null"] }, optionId: { type: ["string", "null"] } },
@@ -23,22 +23,32 @@ export function buildAiBatches(plan, facts, snapshot, language) {
   });
 }
 function safeDraftItem(item) {
-  if (!item?.supported || item.value || !(item.narrative || item.kind === "textarea")) return null;
+  if (!item?.label?.trim() || /^(?:未命名问题|unnamed question)$/i.test(item.label.trim())) return null;
+  if (!item?.supported || item.value || !(item.narrative || item.kind === "textarea") || item.datePart || item.dateRange || item.kind === "cascader") return null;
   if (!item.entityId || item.entityId.includes("unknown")) return null;
   let safe = { ...item, narrative: Boolean(item.narrative || item.kind === "textarea") };
   if (!safe.intent) {
     const meaning = interpretField(item, [], { [item.groupId]: item.entityId });
-    if (meaning.ruleConfidence !== "high" || !meaning.narrative || meaning.entityId !== item.entityId) return null;
-    safe = { ...safe, intent: meaning.intent, needsSemanticReview: false };
+    if (meaning.ruleConfidence === "high" && meaning.entityId === item.entityId) safe = { ...safe, intent: meaning.intent, needsSemanticReview: false };
   }
-  if (!/^(?:common_answer\.(?:whyRole|whyCompany|selfIntroduction)|experience\.[^.]+\.\d+\.description)$/.test(safe.intent)) return null;
-  if (!intentFitsQuestion(safe, safe.intent) || (safe.entityId !== "self" && /^common_answer\./.test(safe.intent))) return null;
+  if (safe.intent && (!intentFitsQuestion(safe, safe.intent) || safe.entityId !== "self" && /(?:^|\.)common_answer\./.test(safe.intent))) return null;
   return safe;
 }
+function relatedDraftFacts(item, facts, language) {
+  const available = facts.filter((fact) => typeof fact.value === "string" && fact.value.trim() && (!fact.language || fact.language === language));
+  const exact = eligibleFacts(item, available);
+  if (exact.length) return exact;
+  // A known direct fact without a value cannot borrow unrelated prose facts.
+  if (item.intent && !/whyRole|whyCompany|selfIntroduction|description/.test(item.intent)) return [];
+  if (item.entityId !== "self") return available.filter((fact) => fact.entityId === item.entityId);
+  return available.filter((fact) => ["education", "experience"].includes(fact.category)
+    || fact.id.startsWith("common_answer.") && !/salary|visa|rightToWork|earliestStartDate/i.test(fact.id));
+}
+export const canDraftQuestion = (item) => Boolean(safeDraftItem(item));
 export function buildDraftBatch(item, facts, snapshot, language) {
   item = safeDraftItem(item);
   if (!item) return null;
-  const related = eligibleFacts(item, facts);
+  const related = relatedDraftFacts(item, facts, language);
   if (!related.length) return null;
   const constraints = {};
   for (const key of ["required", "maxLength", "multiple", "min", "max", "pattern"]) {
@@ -101,9 +111,17 @@ export async function requestDraft(settings, batch, item, facts, signal, fetchIm
     return valid;
   });
   const relatedIds = new Set(expected.facts.map((fact) => fact.id));
-  const related = facts.filter((fact) => relatedIds.has(fact.id));
-  const result = acceptAiItems({ items: drafts }, [{ ...safeDraftItem(item), edited: false, narrative: true }], related);
-  return { accepted: result.accepted, errors: [...errors, ...result.errors] };
+  const accepted = [];
+  for (const draft of drafts) {
+    if (!Array.isArray(draft.factIds) || !draft.factIds.length || new Set(draft.factIds).size !== draft.factIds.length || draft.factIds.some((id) => !relatedIds.has(id))) {
+      errors.push({ fieldId: item.fieldId, reason: "草稿引用了未发送的资料或缺少可核对来源" }); continue;
+    }
+    const error = validateValue(item, draft.text);
+    if (error) { errors.push({ fieldId: item.fieldId, reason: error }); continue; }
+    accepted.push({ fieldId: item.fieldId, answer: draft.text, factIds: draft.factIds, status: "review", selected: false,
+      source: "AI 草稿 · " + draft.factIds.map((id) => expected.facts.find((fact) => fact.id === id).label).join("、"), reason: "请核对后填写" });
+  }
+  return { accepted, errors };
 }
 export function buildPayload(model, batch) {
   return { model, store: false, max_output_tokens: 4000,

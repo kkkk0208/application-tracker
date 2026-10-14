@@ -1,7 +1,134 @@
 
 ========================================================================
-FILE: application-tracker-extension/test/visualCapture.test.js (continued)
+FILE: application-tracker-extension/test/vision.test.js (continued)
+SHA256: 4b0c913ca4025fd3ab53aa21cbba0779eb5ebfe1a199a76e533fa20b1b653072
+L0141 |     const snapshot = { fields: [{ ...item, ...change }] };
+L0142 |     assert.equal(applyVisualObservations(snapshot, [item], [observation()]).rejected, 1);
+L0143 |   }
+L0144 |   const snapshot = { fields: [structuredClone(item)] };
+L0145 |   assert.equal(applyVisualObservations(snapshot, [item], [observation(), observation()]).rejected, 2);
+L0146 |   assert.equal(applyVisualObservations(snapshot, [item], [observation({ action: "submit" })]).rejected, 1);
+L0147 |   assert.equal(snapshot.fields.length, 1);
+L0148 | });
+L0149 | 
+L0150 | test("visual labels revealing protected password, verification or declaration controls remain unfillable observations", async () => {
+L0151 |   for (const label of ["登录密码", "短信验证码", "同意申请声明", "电子签名", "Password", "Verification code", "OTP", "Agree to terms and conditions", "Declaration", "Upload resume"]) {
+L0152 |     const item = field();
+L0153 |     const proposed = observation({ label, section: "" });
+L0154 |     assert.deepEqual(await requestVisualRecognition(settings, [item], capture(), undefined, response([proposed])), [], label);
+L0155 |     const snapshot = { fields: [structuredClone(item)] };
+L0156 |     assert.equal(applyVisualObservations(snapshot, [item], [proposed]).rejected, 1, label);
+L0157 |     assert.equal(snapshot.fields[0].label, "未命名问题");
+L0158 |     assert.equal(snapshot.fields[0].answer, undefined);
+L0159 |   }
+L0160 | });
+L0161 | 
+L0162 | test("vision cannot introduce a conflicting subject or question intent into a meaningful DOM label", async () => {
+L0163 |   const cases = [
+L0164 |     [field({ label: "姓名", intent: "identity.full_name", needsSemanticReview: true }), observation({ label: "父亲姓名", section: "家庭信息" })],
+L0165 |     [field({ label: "邮箱", intent: "contact.email", needsSemanticReview: true }), observation({ label: "姓名", section: "" })],
+L0166 |     [field({ label: "专业", intent: "education.master.major", entityId: "education.master" }), observation({ label: "学校名称", section: "本科教育" })]
+L0167 |   ];
+L0168 |   for (const [item, proposed] of cases) {
+L0169 |     assert.deepEqual(await requestVisualRecognition(settings, [item], capture([item]), undefined, response([proposed])), []);
+L0170 |     const snapshot = { fields: [structuredClone(item)] };
+L0171 |     assert.equal(applyVisualObservations(snapshot, [item], [proposed]).rejected, 1);
+L0172 |     assert.deepEqual(snapshot.fields[0], item);
+L0173 |   }
+L0174 | });
+L0175 | 
+L0176 | test("unsupported doctorate observations never fall back to master's facts", async () => {
+L0177 |   for (const section of ["博士教育", "Doctoral education", "Ph.D education"]) {
+L0178 |     const item = field();
+L0179 |     const proposed = observation({ section });
+L0180 |     assert.deepEqual(await requestVisualRecognition(settings, [item], capture([item]), undefined, response([proposed])), []);
+L0181 |     const snapshot = { fields: [structuredClone(item)] };
+L0182 |     assert.equal(applyVisualObservations(snapshot, [item], [proposed]).rejected, 1);
+L0183 |     assert.equal(snapshot.fields[0].label, "未命名问题");
+L0184 |   }
+L0185 |   for (const type of ["password", "file", "submit", "button", "reset", "hidden"]) assert.equal(needsVisualRecognition(field({ type })), false);
+L0186 | });
+L0187 | 
+L0188 | test("cancellation rejects a request before send and a late response after it was sent", async () => {
+L0189 |   const before = new AbortController();
+L0190 |   before.abort();
+L0191 |   await assert.rejects(requestVisualRecognition(settings, [field()], capture(), before.signal, () => { throw new Error("should not fetch"); }), { name: "AbortError" });
+L0192 |   const during = new AbortController();
+L0193 |   await assert.rejects(requestVisualRecognition(settings, [field()], capture(), during.signal, async () => {
+L0194 |     during.abort();
+L0195 |     return response([observation()])();
+L0196 |   }), { name: "AbortError" });
+L0197 | });
+L0198 | 
+L0199 | test("refresh restores visual context before reconciliation to retain a manually edited answer", () => {
+L0200 |   const original = field({ section: "申请信息" });
+L0201 |   const first = { fields: [structuredClone(original)] };
+L0202 |   applyVisualObservations(first, preparePlan(first, []), [observation()]);
+L0203 |   const previous = preparePlan(first, []);
+L0204 |   Object.assign(previous[0], { edited: true, answer: "手动核实后的学校", source: "本次手动编辑", selected: true, factIds: [] });
+L0205 |   const snapshot = { fields: [structuredClone(original)] };
+L0206 |   const raw = preparePlan(snapshot, []);
+L0207 |   assert.equal(restoreVisualContext(snapshot, previous, raw), 1);
+L0208 |   const restored = reconcilePlan(previous, preparePlan(snapshot, []));
+L0209 |   assert.equal(restored[0].answer, "手动核实后的学校");
+L0210 |   assert.equal(restored[0].edited, true);
+L0211 |   assert.equal(restored[0].label, "学校名称");
+L0212 |   assert.equal(restored[0].section, "本科教育");
+L0213 |   assert.equal(snapshot.fields[0].domLabel, "未命名问题");
+L0214 |   assert.equal(snapshot.fields[0].domSection, "申请信息");
+L0215 |   assert.equal(snapshot.fields[0].answer, undefined);
+L0216 |   assert.equal(snapshot.fields[0].intent, original.intent);
+L0217 |   assert.equal(snapshot.fields[0].entityId, original.entityId);
+L0218 | });
+L0219 | 
+L0220 | test("refresh retains visual question text for an explicit user binding but rechecks ordinary visual suggestions", () => {
+L0221 |   const original = field({ section: "申请信息" });
+L0222 |   const first = { fields: [structuredClone(original)] };
+L0223 |   applyVisualObservations(first, preparePlan(first, []), [observation()]);
+L0224 |   const bindings = { [original.groupId]: "education.master" };
+L0225 |   const previous = preparePlan(first, [], [], "zh", bindings);
+L0226 |   const snapshot = { fields: [structuredClone(original)] };
+L0227 |   assert.equal(restoreVisualContext(snapshot, previous, preparePlan(snapshot, [])), 0);
+L0228 |   assert.equal(snapshot.fields[0].label, "未命名问题");
+L0229 |   const raw = preparePlan(snapshot, [], [], "zh", bindings);
+L0230 |   assert.equal(restoreVisualContext(snapshot, previous, raw), 1);
+L0231 |   const restored = preparePlan(snapshot, [], [], "zh", bindings)[0];
+L0232 |   assert.equal(restored.label, "学校名称");
+L0233 |   assert.equal(restored.entityId, "education.master");
+L0234 |   assert.equal(restored.bindingExplicit, true);
+L0235 | });
+L0236 | 
+L0237 | test("visual metadata is not restored across changed raw questions, constraints, options or documents", () => {
+L0238 |   const original = field({ section: "申请信息", options: [{ id: "a", text: "A", disabled: false }] });
+L0239 |   const first = { fields: [structuredClone(original)] };
+L0240 |   applyVisualObservations(first, preparePlan(first, []), [observation()]);
+L0241 |   const previous = preparePlan(first, []);
+L0242 |   previous[0].edited = true;
+L0243 |   const changes = [
+L0244 |     { label: "新问题" }, { section: "新分区" }, { groupId: "new-group" }, { group: "新分组" },
+L0245 |     { documentId: "replacement" }, { constraints: { required: true } },
+L0246 |     { options: [{ id: "a", text: "B", disabled: false }] }, { options: [{ id: "a", text: "A", disabled: true }] },
+L0247 |     { kind: "textarea" }, { type: "email" }, { value: "网页已有答案" }, { supported: false },
+L0248 |     { help: "仅填写父亲资料" }, { entityHint: "family" }, { datePart: "year" },
+L0249 |     { contextEvidence: [{ source: "nearby-heading", text: "硕士教育" }] }, { contextConflicts: ["分组主体变化"] }
+L0250 |   ];
+L0251 |   for (const change of changes) {
+L0252 |     const snapshot = { fields: [{ ...structuredClone(original), ...change }] };
+L0253 |     const before = structuredClone(snapshot.fields[0]);
+L0254 |     assert.equal(restoreVisualContext(snapshot, previous, preparePlan(snapshot, [])), 0, JSON.stringify(change));
+L0255 |     assert.deepEqual(snapshot.fields[0], before);
+L0256 |   }
+L0257 | });
+
+========================================================================
+FILE: application-tracker-extension/test/visualCapture.test.js
 SHA256: 5cedc11a498d74fce6c78182ed2f043911972dbec0f18d188c8dd804c788f277
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { captureVisualContext, renderVisualCapture } from "../src/assistant/visualCapture.js";
+L0004 | 
+L0005 | const rawImage = "data:image/png;base64,UkFXX0lNQUdFX1NFQ1JFVA==";
+L0006 | const layout = () => ({ viewport: { width: 1000, height: 500, scrollX: 0, scrollY: 20, devicePixelRatio: 2, visualScale: 1, visualOffsetX: 0, visualOffsetY: 0 }, fields: [{ localFieldId: "f1", rect: { x: 40, y: 60, width: 200, height: 30 } }], redactions: [{ x: 40, y: 60, width: 200, height: 30 }, { x: 350, y: 50, width: 300, height: 100 }] });
 L0007 | const snapshot = () => ({ tabId: 12, url: "https://example.com/apply", frames: [{ frameId: 0, documentId: "doc-main", token: "token", scanId: "scan", url: "https://example.com/apply" }], fields: [{ frameId: 0, documentId: "doc-main", localFieldId: "f1", fieldId: "doc-main:f1", supported: true, value: "" }] });
 L0008 | const event = () => { const listeners = new Set(); return { addListener: (fn) => listeners.add(fn), removeListener: (fn) => listeners.delete(fn), emit: (...args) => listeners.forEach((fn) => fn(...args)), count: () => listeners.size }; };
 L0009 | 

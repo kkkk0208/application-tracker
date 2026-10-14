@@ -36,9 +36,9 @@ test("local, confirmed-memory and edited preview answers allow an explicit draft
   }
 });
 
-test("unsupported, filled, factual and unrelated narrative fields have no draft batch", () => {
+test("unsupported, filled, non-prose and incompatible subject fields have no draft batch", () => {
   const intro = planFor(field("自我介绍"));
-  for (const change of [{ supported: false }, { value: "SENTINEL_WEB_VALUE" }, { kind: "text", narrative: false }, { intent: "", label: "学校所在地", needsSemanticReview: true }, { entityId: "family.father" }]) assert.equal(draftFor({ ...intro, ...change }), null);
+  for (const change of [{ supported: false }, { value: "SENTINEL_WEB_VALUE" }, { kind: "text", narrative: false }, { entityId: "family.father" }]) assert.equal(draftFor({ ...intro, ...change }), null);
   assert.equal(buildDraftBatch(intro, [], snapshot, "zh"), null);
 });
 
@@ -175,17 +175,31 @@ test("none pairing leaves high-confidence narrative drafting available without r
   assert.equal(JSON.stringify(item), before);
 });
 
-test("draft intent recovery rejects unknown subjects, low-confidence questions and factual text fields", () => {
+test("draft intent recovery still rejects unknown subjects and non-prose inputs", () => {
   const cleared = { ...planFor(field("自我介绍")), answer: "", intent: "", ruleConfidence: "none", needsSemanticReview: false };
-  for (const change of [{ entityId: "education.unknown" }, { entityId: "family.father" }, { label: "请介绍你为什么想加入这家公司" }, { label: "学校所在地" }, { label: "邮箱", kind: "text", narrative: false }, { label: "自我介绍", kind: "text", narrative: false }]) assert.equal(draftFor({ ...cleared, ...change }), null);
+  for (const change of [{ entityId: "education.unknown" }, { entityId: "family.father" }, { label: "邮箱", kind: "text", narrative: false }, { label: "自我介绍", kind: "text", narrative: false }]) assert.equal(draftFor({ ...cleared, ...change }), null);
 });
 
-test("a textarea never grants drafting permission for salary, contact or other direct facts", () => {
-  for (const label of ["期望薪资", "邮箱", "学历", "姓名"]) {
+test("an explicitly requested factual textarea uses only its canonical fact and cannot borrow missing facts", () => {
+  for (const [label, id] of [["期望薪资", "common_answer.expectedSalary.zh"], ["邮箱", "contact.email"], ["姓名", "identity.full_name.zh"]]) {
     const item = planFor(field(label));
-    assert.equal(draftFor(item), null);
+    assert.deepEqual(draftFor(item).facts.map((fact) => fact.id), [id]);
   }
-  const salary = planFor(field("期望薪资"));
-  assert.equal(salary.answer, "SENTINEL_SALARY");
-  assert.equal(draftFor({ ...salary, narrative: true, kind: "textarea" }), null);
+  assert.equal(draftFor(planFor(field("学历"))), null, "Missing degree data cannot borrow unrelated education or experience facts");
+});
+
+test("an arbitrary long-text question can draft from education, experience and common answers after explicit sending", async () => {
+  const item = planFor(field("请分享一个你克服困难的事例"));
+  assert.equal(item.intent, "");
+  const batch = draftFor(item);
+  assert.ok(batch.facts.some((fact) => fact.id.startsWith("education.")));
+  assert.ok(batch.facts.some((fact) => fact.id.startsWith("experience.")));
+  assert.ok(batch.facts.some((fact) => fact.id.startsWith("common_answer.")));
+  for (const secret of ["SENTINEL_NAME", "SENTINEL_EMAIL", "SENTINEL_SALARY", "SENTINEL_URL"]) assert.ok(!JSON.stringify(batch).includes(secret), secret);
+  let calls = 0;
+  const result = await requestDraft(settings, batch, item, facts, undefined, async (_url, options) => {
+    calls++; assert.deepEqual(JSON.parse(JSON.parse(options.body).input[1].content).facts, batch.facts);
+    return response([proposal(item)]);
+  });
+  assert.equal(calls, 1); assert.equal(result.accepted[0].status, "review");
 });

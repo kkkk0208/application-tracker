@@ -1,6 +1,7 @@
 import { answerForFact, intentFitsQuestion, interpretField, memoryScopeMatches, normalize, validateValue } from "./planner.js";
 import { optionMatch } from "./optionMatch.js";
 import { parseDateValue } from "./dateValue.js";
+import { isOpenTextQuestion } from "./openText.js";
 
 export const PAIRING_FORMAT = "application_field_pairing";
 export const BLOCKED_LABEL = /奖惩|处分|民族|出生|证件|身份证|研究|论文|证书|award|disciplin|ethnic|birth|national id|research|publication|certificat|first name|last name|surname|family name|given name|^姓(?:氏)?$|^名(?:字)?$/i;
@@ -159,13 +160,13 @@ export function acceptPairs(raw, plan, facts, memories, { url, language, batchId
       const candidates = memories.filter((memory) => memory.id === pair.memoryId);
       const memory = candidates[0];
       if (pair.factId !== null || pair.transform !== "none" || candidates.length !== 1 || memory.confirmed !== true || memory.language !== language
-        || memory.entityId !== item.entityId || !memoryScopeMatches(memory, url) || !memoryFits(item, memory)) {
+        || memory.entityId !== item.entityId || !memoryScopeMatches(memory, url) || !(memoryFits(item, memory) || isOpenTextQuestion(item) && isOpenTextQuestion({ ...item, label: memory.question, intent: "", ruleConfidence: "none" }))) {
         reject("记忆未确认、题意、语言、主体或页面范围不匹配"); continue;
       }
       value = memory.answer;
       update = { fieldId: item.fieldId, factIds: [], memoryId: memory.id, memoryVersion: memory.updatedAt,
         source: "已确认问答记忆 · AI 配对", status: "review", reason: "AI 判断是同一个问题，请核对", selected: false,
-        needsSemanticReview: false, semanticReviewed: true, ruleConfidence: "none" };
+        requiresSelection: isOpenTextQuestion(item), ...(isOpenTextQuestion(item) ? { selectionExplicit: false } : {}), needsSemanticReview: false, semanticReviewed: true, ruleConfidence: "none" };
     }
     if (typeof value !== "string" || !value.trim()) { reject("资料或记忆没有可用内容"); continue; }
     if (pair.source === "fact" && item.datePart) {

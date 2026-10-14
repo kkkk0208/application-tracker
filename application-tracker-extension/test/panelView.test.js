@@ -21,7 +21,8 @@ test("panel grouping keeps unrequired unanswered fields optional", () => assert.
 test("panel counters and section summaries preserve page order and latest operation", () => {
   const plan = [item({ fieldId: "1", answer: "a", status: "ready", section: "教育", selected: true }), item({ fieldId: "2", answer: "b", status: "ready", section: "基本", selected: false }), item({ fieldId: "3", answer: "c", status: "ready", section: "教育", selected: true }), item({ fieldId: "4" }), item({ fieldId: "5", supported: false }), item({ fieldId: "6", value: "saved" }), item({ fieldId: "7", constraints: { required: true } })];
   const view = buildPanelView(plan, [{ fieldId: "2", status: "failed" }, { fieldId: "2", status: "verified" }]);
-  assert.deepEqual(view.counts, { fill: 2, attention: 1, skip: 3 });
+  assert.deepEqual(view.counts, { fill: 2, attention: 1, skip: 2 });
+  assert.equal(buildPanelView(plan).counts.skip, 3, "Before a fill result, website-existing values remain in the skip overview");
   assert.deepEqual(view.readySections, [{ name: "教育", count: 2 }, { name: "基本", count: 1 }]);
 });
 test("panel language detection uses labels and page title with a Chinese default", () => {

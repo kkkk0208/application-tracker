@@ -2,6 +2,273 @@
 ========================================================================
 FILE: application-tracker-extension/package-lock.json (continued)
 SHA256: f76ed988797974d9f4c36bb4d70e1ab9ccf9d6f0cf4f210d30ea05b50f788245
+L0931 |       "dev": true,
+L0932 |       "license": "MIT",
+L0933 |       "dependencies": {
+L0934 |         "@babel/runtime": "^7.10.1",
+L0935 |         "@rc-component/mini-decimal": "^1.0.1",
+L0936 |         "classnames": "^2.2.5",
+L0937 |         "rc-input": "~1.8.0",
+L0938 |         "rc-util": "^5.40.1"
+L0939 |       },
+L0940 |       "peerDependencies": {
+L0941 |         "react": ">=16.9.0",
+L0942 |         "react-dom": ">=16.9.0"
+L0943 |       }
+L0944 |     },
+L0945 |     "node_modules/antd5/node_modules/rc-mentions": {
+L0946 |       "version": "2.20.0",
+L0947 |       "resolved": "https://registry.npmjs.org/rc-mentions/-/rc-mentions-2.20.0.tgz",
+L0948 |       "integrity": "sha512-w8HCMZEh3f0nR8ZEd466ATqmXFCMGMN5UFCzEUL0bM/nGw/wOS2GgRzKBcm19K++jDyuWCOJOdgcKGXU3fXfbQ==",
+L0949 |       "dev": true,
+L0950 |       "license": "MIT",
+L0951 |       "dependencies": {
+L0952 |         "@babel/runtime": "^7.22.5",
+L0953 |         "@rc-component/trigger": "^2.0.0",
+L0954 |         "classnames": "^2.2.6",
+L0955 |         "rc-input": "~1.8.0",
+L0956 |         "rc-menu": "~9.16.0",
+L0957 |         "rc-textarea": "~1.10.0",
+L0958 |         "rc-util": "^5.34.1"
+L0959 |       },
+L0960 |       "peerDependencies": {
+L0961 |         "react": ">=16.9.0",
+L0962 |         "react-dom": ">=16.9.0"
+L0963 |       }
+L0964 |     },
+L0965 |     "node_modules/antd5/node_modules/rc-menu": {
+L0966 |       "version": "9.16.1",
+L0967 |       "resolved": "https://registry.npmjs.org/rc-menu/-/rc-menu-9.16.1.tgz",
+L0968 |       "integrity": "sha512-ghHx6/6Dvp+fw8CJhDUHFHDJ84hJE3BXNCzSgLdmNiFErWSOaZNsihDAsKq9ByTALo/xkNIwtDFGIl6r+RPXBg==",
+L0969 |       "dev": true,
+L0970 |       "license": "MIT",
+L0971 |       "dependencies": {
+L0972 |         "@babel/runtime": "^7.10.1",
+L0973 |         "@rc-component/trigger": "^2.0.0",
+L0974 |         "classnames": "2.x",
+L0975 |         "rc-motion": "^2.4.3",
+L0976 |         "rc-overflow": "^1.3.1",
+L0977 |         "rc-util": "^5.27.0"
+L0978 |       },
+L0979 |       "peerDependencies": {
+L0980 |         "react": ">=16.9.0",
+L0981 |         "react-dom": ">=16.9.0"
+L0982 |       }
+L0983 |     },
+L0984 |     "node_modules/antd5/node_modules/rc-notification": {
+L0985 |       "version": "5.6.4",
+L0986 |       "resolved": "https://registry.npmjs.org/rc-notification/-/rc-notification-5.6.4.tgz",
+L0987 |       "integrity": "sha512-KcS4O6B4qzM3KH7lkwOB7ooLPZ4b6J+VMmQgT51VZCeEcmghdeR4IrMcFq0LG+RPdnbe/ArT086tGM8Snimgiw==",
+L0988 |       "dev": true,
+L0989 |       "license": "MIT",
+L0990 |       "dependencies": {
+L0991 |         "@babel/runtime": "^7.10.1",
+L0992 |         "classnames": "2.x",
+L0993 |         "rc-motion": "^2.9.0",
+L0994 |         "rc-util": "^5.20.1"
+L0995 |       },
+L0996 |       "engines": {
+L0997 |         "node": ">=8.x"
+L0998 |       },
+L0999 |       "peerDependencies": {
+L1000 |         "react": ">=16.9.0",
+L1001 |         "react-dom": ">=16.9.0"
+L1002 |       }
+L1003 |     },
+L1004 |     "node_modules/antd5/node_modules/rc-pagination": {
+L1005 |       "version": "5.1.0",
+L1006 |       "resolved": "https://registry.npmjs.org/rc-pagination/-/rc-pagination-5.1.0.tgz",
+L1007 |       "integrity": "sha512-8416Yip/+eclTFdHXLKTxZvn70duYVGTvUUWbckCCZoIl3jagqke3GLsFrMs0bsQBikiYpZLD9206Ej4SOdOXQ==",
+L1008 |       "dev": true,
+L1009 |       "license": "MIT",
+L1010 |       "dependencies": {
+L1011 |         "@babel/runtime": "^7.10.1",
+L1012 |         "classnames": "^2.3.2",
+L1013 |         "rc-util": "^5.38.0"
+L1014 |       },
+L1015 |       "peerDependencies": {
+L1016 |         "react": ">=16.9.0",
+L1017 |         "react-dom": ">=16.9.0"
+L1018 |       }
+L1019 |     },
+L1020 |     "node_modules/antd5/node_modules/rc-progress": {
+L1021 |       "version": "4.0.0",
+L1022 |       "resolved": "https://registry.npmjs.org/rc-progress/-/rc-progress-4.0.0.tgz",
+L1023 |       "integrity": "sha512-oofVMMafOCokIUIBnZLNcOZFsABaUw8PPrf1/y0ZBvKZNpOiu5h4AO9vv11Sw0p4Hb3D0yGWuEattcQGtNJ/aw==",
+L1024 |       "dev": true,
+L1025 |       "license": "MIT",
+L1026 |       "dependencies": {
+L1027 |         "@babel/runtime": "^7.10.1",
+L1028 |         "classnames": "^2.2.6",
+L1029 |         "rc-util": "^5.16.1"
+L1030 |       },
+L1031 |       "peerDependencies": {
+L1032 |         "react": ">=16.9.0",
+L1033 |         "react-dom": ">=16.9.0"
+L1034 |       }
+L1035 |     },
+L1036 |     "node_modules/antd5/node_modules/rc-rate": {
+L1037 |       "version": "2.13.1",
+L1038 |       "resolved": "https://registry.npmjs.org/rc-rate/-/rc-rate-2.13.1.tgz",
+L1039 |       "integrity": "sha512-QUhQ9ivQ8Gy7mtMZPAjLbxBt5y9GRp65VcUyGUMF3N3fhiftivPHdpuDIaWIMOTEprAjZPC08bls1dQB+I1F2Q==",
+L1040 |       "dev": true,
+L1041 |       "license": "MIT",
+L1042 |       "dependencies": {
+L1043 |         "@babel/runtime": "^7.10.1",
+L1044 |         "classnames": "^2.2.5",
+L1045 |         "rc-util": "^5.0.1"
+L1046 |       },
+L1047 |       "engines": {
+L1048 |         "node": ">=8.x"
+L1049 |       },
+L1050 |       "peerDependencies": {
+L1051 |         "react": ">=16.9.0",
+L1052 |         "react-dom": ">=16.9.0"
+L1053 |       }
+L1054 |     },
+L1055 |     "node_modules/antd5/node_modules/rc-resize-observer": {
+L1056 |       "version": "1.4.3",
+L1057 |       "resolved": "https://registry.npmjs.org/rc-resize-observer/-/rc-resize-observer-1.4.3.tgz",
+L1058 |       "integrity": "sha512-YZLjUbyIWox8E9i9C3Tm7ia+W7euPItNWSPX5sCcQTYbnwDb5uNpnLHQCG1f22oZWUhLw4Mv2tFmeWe68CDQRQ==",
+L1059 |       "dev": true,
+L1060 |       "license": "MIT",
+L1061 |       "dependencies": {
+L1062 |         "@babel/runtime": "^7.20.7",
+L1063 |         "classnames": "^2.2.1",
+L1064 |         "rc-util": "^5.44.1",
+L1065 |         "resize-observer-polyfill": "^1.5.1"
+L1066 |       },
+L1067 |       "peerDependencies": {
+L1068 |         "react": ">=16.9.0",
+L1069 |         "react-dom": ">=16.9.0"
+L1070 |       }
+L1071 |     },
+L1072 |     "node_modules/antd5/node_modules/rc-select": {
+L1073 |       "version": "14.16.8",
+L1074 |       "resolved": "https://registry.npmjs.org/rc-select/-/rc-select-14.16.8.tgz",
+L1075 |       "integrity": "sha512-NOV5BZa1wZrsdkKaiK7LHRuo5ZjZYMDxPP6/1+09+FB4KoNi8jcG1ZqLE3AVCxEsYMBe65OBx71wFoHRTP3LRg==",
+L1076 |       "dev": true,
+L1077 |       "license": "MIT",
+L1078 |       "dependencies": {
+L1079 |         "@babel/runtime": "^7.10.1",
+L1080 |         "@rc-component/trigger": "^2.1.1",
+L1081 |         "classnames": "2.x",
+L1082 |         "rc-motion": "^2.0.1",
+L1083 |         "rc-overflow": "^1.3.1",
+L1084 |         "rc-util": "^5.16.1",
+L1085 |         "rc-virtual-list": "^3.5.2"
+L1086 |       },
+L1087 |       "engines": {
+L1088 |         "node": ">=8.x"
+L1089 |       },
+L1090 |       "peerDependencies": {
+L1091 |         "react": "*",
+L1092 |         "react-dom": "*"
+L1093 |       }
+L1094 |     },
+L1095 |     "node_modules/antd5/node_modules/rc-slider": {
+L1096 |       "version": "11.1.9",
+L1097 |       "resolved": "https://registry.npmjs.org/rc-slider/-/rc-slider-11.1.9.tgz",
+L1098 |       "integrity": "sha512-h8IknhzSh3FEM9u8ivkskh+Ef4Yo4JRIY2nj7MrH6GQmrwV6mcpJf5/4KgH5JaVI1H3E52yCdpOlVyGZIeph5A==",
+L1099 |       "dev": true,
+L1100 |       "license": "MIT",
+L1101 |       "dependencies": {
+L1102 |         "@babel/runtime": "^7.10.1",
+L1103 |         "classnames": "^2.2.5",
+L1104 |         "rc-util": "^5.36.0"
+L1105 |       },
+L1106 |       "engines": {
+L1107 |         "node": ">=8.x"
+L1108 |       },
+L1109 |       "peerDependencies": {
+L1110 |         "react": ">=16.9.0",
+L1111 |         "react-dom": ">=16.9.0"
+L1112 |       }
+L1113 |     },
+L1114 |     "node_modules/antd5/node_modules/rc-steps": {
+L1115 |       "version": "6.0.1",
+L1116 |       "resolved": "https://registry.npmjs.org/rc-steps/-/rc-steps-6.0.1.tgz",
+L1117 |       "integrity": "sha512-lKHL+Sny0SeHkQKKDJlAjV5oZ8DwCdS2hFhAkIjuQt1/pB81M0cA0ErVFdHq9+jmPmFw1vJB2F5NBzFXLJxV+g==",
+L1118 |       "dev": true,
+L1119 |       "license": "MIT",
+L1120 |       "dependencies": {
+L1121 |         "@babel/runtime": "^7.16.7",
+L1122 |         "classnames": "^2.2.3",
+L1123 |         "rc-util": "^5.16.1"
+L1124 |       },
+L1125 |       "engines": {
+L1126 |         "node": ">=8.x"
+L1127 |       },
+L1128 |       "peerDependencies": {
+L1129 |         "react": ">=16.9.0",
+L1130 |         "react-dom": ">=16.9.0"
+L1131 |       }
+L1132 |     },
+L1133 |     "node_modules/antd5/node_modules/rc-switch": {
+L1134 |       "version": "4.1.0",
+L1135 |       "resolved": "https://registry.npmjs.org/rc-switch/-/rc-switch-4.1.0.tgz",
+L1136 |       "integrity": "sha512-TI8ufP2Az9oEbvyCeVE4+90PDSljGyuwix3fV58p7HV2o4wBnVToEyomJRVyTaZeqNPAp+vqeo4Wnj5u0ZZQBg==",
+L1137 |       "dev": true,
+L1138 |       "license": "MIT",
+L1139 |       "dependencies": {
+L1140 |         "@babel/runtime": "^7.21.0",
+L1141 |         "classnames": "^2.2.1",
+L1142 |         "rc-util": "^5.30.0"
+L1143 |       },
+L1144 |       "peerDependencies": {
+L1145 |         "react": ">=16.9.0",
+L1146 |         "react-dom": ">=16.9.0"
+L1147 |       }
+L1148 |     },
+L1149 |     "node_modules/antd5/node_modules/rc-table": {
+L1150 |       "version": "7.54.0",
+L1151 |       "resolved": "https://registry.npmjs.org/rc-table/-/rc-table-7.54.0.tgz",
+L1152 |       "integrity": "sha512-/wDTkki6wBTjwylwAGjpLKYklKo9YgjZwAU77+7ME5mBoS32Q4nAwoqhA2lSge6fobLW3Tap6uc5xfwaL2p0Sw==",
+L1153 |       "dev": true,
+L1154 |       "license": "MIT",
+L1155 |       "dependencies": {
+L1156 |         "@babel/runtime": "^7.10.1",
+L1157 |         "@rc-component/context": "^1.4.0",
+L1158 |         "classnames": "^2.2.5",
+L1159 |         "rc-resize-observer": "^1.1.0",
+L1160 |         "rc-util": "^5.44.3",
+L1161 |         "rc-virtual-list": "^3.14.2"
+L1162 |       },
+L1163 |       "engines": {
+L1164 |         "node": ">=8.x"
+L1165 |       },
+L1166 |       "peerDependencies": {
+L1167 |         "react": ">=16.9.0",
+L1168 |         "react-dom": ">=16.9.0"
+L1169 |       }
+L1170 |     },
+L1171 |     "node_modules/antd5/node_modules/rc-tabs": {
+L1172 |       "version": "15.7.0",
+L1173 |       "resolved": "https://registry.npmjs.org/rc-tabs/-/rc-tabs-15.7.0.tgz",
+L1174 |       "integrity": "sha512-ZepiE+6fmozYdWf/9gVp7k56PKHB1YYoDsKeQA1CBlJ/POIhjkcYiv0AGP0w2Jhzftd3AVvZP/K+V+Lpi2ankA==",
+L1175 |       "dev": true,
+L1176 |       "license": "MIT",
+L1177 |       "dependencies": {
+L1178 |         "@babel/runtime": "^7.11.2",
+L1179 |         "classnames": "2.x",
+L1180 |         "rc-dropdown": "~4.2.0",
+L1181 |         "rc-menu": "~9.16.0",
+L1182 |         "rc-motion": "^2.6.2",
+L1183 |         "rc-resize-observer": "^1.0.0",
+L1184 |         "rc-util": "^5.34.1"
+L1185 |       },
+L1186 |       "engines": {
+L1187 |         "node": ">=8.x"
+L1188 |       },
+L1189 |       "peerDependencies": {
+L1190 |         "react": ">=16.9.0",
+L1191 |         "react-dom": ">=16.9.0"
+L1192 |       }
+L1193 |     },
+L1194 |     "node_modules/antd5/node_modules/rc-tooltip": {
+L1195 |       "version": "6.4.0",
+L1196 |       "resolved": "https://registry.npmjs.org/rc-tooltip/-/rc-tooltip-6.4.0.tgz",
+L1197 |       "integrity": "sha512-kqyivim5cp8I5RkHmpsp1Nn/Wk+1oeloMv9c7LXNgDxUpGm+RbXJGL+OPvDlcRnx9DBeOe4wyOIl4OKUERyH1g==",
 L1198 |       "dev": true,
 L1199 |       "license": "MIT",
 L1200 |       "dependencies": {
@@ -1974,7 +2241,7 @@ L3166 | }
 
 ========================================================================
 FILE: application-tracker-extension/package.json
-SHA256: 5eac366f28837615df1ce77e1488adfc365a72f140a1010f697b4ff96eea6866
+SHA256: c3e7e1414eaa240e4c4635dd4009fef52c3962dedd161618563506dcfe7f8bd6
 L0001 | {
 L0002 |   "name": "application-tracker-extension",
 L0003 |   "version": "0.4.0",
@@ -1988,19 +2255,20 @@ L0010 |     "test:extension": "node scripts/extension-tests.mjs",
 L0011 |     "test:ui": "node scripts/ui-tests.mjs",
 L0012 |     "test:data-ui": "node scripts/data-ui-tests.mjs",
 L0013 |     "test:vision-browser": "node scripts/vision-browser-tests.mjs",
-L0014 |     "test:real-pages": "node scripts/real-page-tests.mjs"
-L0015 |   },
-L0016 |   "devDependencies": {
-L0017 |     "antd3": "npm:antd@3.26.20",
-L0018 |     "antd5": "npm:antd@5.29.3",
-L0019 |     "dayjs": "1.11.19",
-L0020 |     "element-ui": "2.15.14",
-L0021 |     "moment": "2.30.1",
-L0022 |     "react": "16.14.0",
-L0023 |     "react-dom": "16.14.0",
-L0024 |     "vue": "2.7.16"
-L0025 |   }
-L0026 | }
+L0014 |     "test:real-pages": "node scripts/real-page-tests.mjs",
+L0015 |     "test:slow": "node scripts/scan-scaling-check.mjs && node scripts/slow-cpu-date-check.mjs"
+L0016 |   },
+L0017 |   "devDependencies": {
+L0018 |     "antd3": "npm:antd@3.26.20",
+L0019 |     "antd5": "npm:antd@5.29.3",
+L0020 |     "dayjs": "1.11.19",
+L0021 |     "element-ui": "2.15.14",
+L0022 |     "moment": "2.30.1",
+L0023 |     "react": "16.14.0",
+L0024 |     "react-dom": "16.14.0",
+L0025 |     "vue": "2.7.16"
+L0026 |   }
+L0027 | }
 
 ========================================================================
 FILE: docs/2026-09-22-preview-confirmation.md
@@ -2301,177 +2569,3 @@ L0150 |    - `华润集团招聘官网` 得到公司“华润集团”，岗位�
 L0151 |    - `recentJobs` 排序：同 host 优先，其次按时间。
 L0152 | 2. 浏览器测试：在三个真实页面上运行 `collectJobSignals` 和 `extractJobInfo`：
 L0153 |    - `huarun-runjob.html`：公司“华润集团”，岗位为空。
-L0154 |    - `chinahr-applyjob.html`：岗位为空，不能是“填写简历”。
-L0155 |    - `wintalent-crc.html`：岗位为空，不能是“简历填写”。
-L0156 | 3. 原有 CTgoodjobs、JobsDB、Moka 相关测试改为测新模块里的站点适配，行为不变。
-L0157 | 
-L0158 | 验收：以上测试通过；弹窗在三个真实页面上不出现错误的公司或岗位；manifest 里没有 content_scripts。
-L0159 | 
-L0160 | ## 4. 阶段 2：功能二，扫描层（`src/assistant/pageBridge.js`）
-L0161 | 
-L0162 | ### 4.1 先应用参考补丁
-L0163 | 
-L0164 | 在 `application-tracker-extension` 目录执行 `git apply ..\docs\reference\pageBridge-scan.patch`。空白字符报错时加 `--ignore-whitespace`；不能用 git 时按补丁内容手动修改。
-L0165 | 
-L0166 | 已在 0.4.0 源码上验证：应用后 `test:real-pages` 三页四项全部 100%；现有 201 项单元测试、32 项浏览器测试、21 项界面测试、7 项截图测试、8 项数据界面测试全部通过。`test:extension` 没有在验证环境运行，请执行。
-L0167 | 
-L0168 | 补丁内容：
-L0169 | 
-L0170 | 1. `questionFor(el)`：按顺序找题目文字，找到就停：aria-labelledby 或 aria-label；输入框自己的 label（不是通用占位字才算）；已知组件的题目框（`.ant-form-item`、`.el-form-item`、`.ivu-form-item`、`.arco-form-item`、`.t-form__item`、`.layui-form-item`、`.form-item--phoenix`、`.form-group`）；表格同一行左边的格子；从输入框往上最多 6 层，每层往前看最多 3 个兄弟节点里的短文字（不超过 60 字，遇到含输入框的节点或 h1 到 h6、legend 就停）；最后是不属于通用占位字的 placeholder。结果带 `source`。
-L0171 | 2. 单选、多选：先看所在 fieldset 的 legend；没有就取所有选项的最近公共父节点，对它找题目，并跳过选项自己的文字。
-L0172 | 3. `sectionFor(el)`：往上逐层，看前面最多 12 个兄弟节点里“像标题”的元素：h1 到 h6、legend，或 class 含 `module-title`、`form-tit`、`setTitle`、`section-title`、`title`、`tit`、`heading`、`caption`；不含输入框；不是 td、th、label；2 到 30 个字，至少含两个汉字或字母；多个候选时取最短的。
-L0173 | 4. `blockFor(el)`：往上找“同一父节点下、结构签名相同、都含输入框、并且自己内部至少有 2 道不同题目”的兄弟块，得到 `groupIndex`（第几段，从 1 开始）和 `blockKey`；`groupId` 改为 `blockKey:groupIndex`。
-L0174 | 5. `discover()` 先认领组件，再处理普通输入框：级联（`.ant-cascader-picker`、`.ant-select.ant-cascader`、`.el-cascader`）为 `kind: "cascader"`；日期（`.ant-calendar-picker`、`.ant-picker`、`.el-date-editor`）为 `kind: "date"`、`adapter: "picker-date"`；`input.Wdate` 或 onclick 含 `WdatePicker` 的为 `kind: "date"`、`adapter: "my97-date"`；弹窗选择（`.magnify-glass`，以及 id 或 name 以 `showName` 开头的输入框）为 `kind: "chooser"`，暂不可填，原因写“需要在网页弹窗中选择，请手动处理”。最后按页面顺序排序。
-L0175 | 6. `descriptor()`：只读不再等于不能填（`date`、`cascader`、`custom-select` 例外）；新增字段 `labelSource`、`order`、`groupIndex`、`blockKey`。
-L0176 | 
-L0177 | ### 4.2 补丁之后必须完成的
-L0178 | 
-L0179 | 补丁只改了“认题”，没改“填写”。不完成下面 a 和 b，日期和级联会出现在预览里并被选中，但填不进去。
-L0180 | 
-L0181 | a. 为新控件实现 read、write、verify。`pageBridge` 会被 Chrome 序列化注入，所以代码必须留在这个函数里。建议写成一个 `ADAPTERS` 对象，按 adapter 名分派，每个提供 `read(entry)` 和 `async write(entry, value, scope)`，沿用现有的 `transaction`、`scope.guard`、`scope.act`、用户中途修改即停止、`restoreMenu` 等保护：
-L0182 | 
-L0183 | - `my97-date`：从 onclick 里解析 `dateFmt`（如 `dateFmt:'yyyy-MM'`，没写就是 `yyyy-MM-dd`），把值格式化后用现有 `setValue` 写入（会触发 input、change、blur），`read` 就是 `input.value`。
-L0184 | - `picker-date`，Ant Design 3（`.ant-calendar-picker`，输入框只读）：点击输入框，等 `.ant-calendar-picker-container` 出现；在面板顶部可编辑的 `.ant-calendar-input` 里写入日期并按 Enter；月份面板（`.ant-calendar-month-panel`）改为依次点年份和月份；`read` 取输入框的值。
-L0185 | - `picker-date`，Ant Design 4/5（`.ant-picker`，输入框可编辑）：聚焦、写值、按 Enter、失焦；范围选择有两个输入框，分别写开始和结束。
-L0186 | - `picker-date`，Element（`.el-date-editor`）：输入框可编辑时写值并按 Enter；只读时打开面板点选。
-L0187 | - `cascader`：答案是路径数组，如 `["广东省","深圳市","南山区"]`。Ant Design 3：点击 `.ant-cascader-picker`，逐级在第 i 个 `.ant-cascader-menu` 里点文字匹配的 `.ant-cascader-menu-item`；有 `.ant-cascader-picker-show-search` 时，也可以输入末级名称后点匹配的搜索结果。Ant Design 4/5 同理（`.ant-cascader-menu-item`）。Element 用 `.el-cascader-panel .el-cascader-node`。`read` 取显示文字（`.ant-cascader-picker-label` 或选中项文字）。
-L0188 | - `custom-select`：把 `.el-select` 加进认领名单；Element 的菜单取当前可见的 `.el-select-dropdown`，选项为 `.el-select-dropdown__item`。确认 Ant Design 3 的菜单能被 `menuSelector` 和 `menuOptions` 找到（`.ant-select-dropdown`、`[role="listbox"]`、`li[role="option"]`、`.ant-select-dropdown-menu-item`），`read` 取 `.ant-select-selection-selected-value` 的文字。
-L0189 | - `verify`：用选项匹配和日期归一化比较，`2022-09`、`2022/09`、`2022年09月` 视为相同。
-L0190 | 
-L0191 | b. 选项匹配 `optionMatch`：归一化（NFKC、大小写、全半角、空白；地名比较时去掉省、市、区、县、自治区、特别行政区后缀），依次尝试完全相同、归一化相同、同义词（附录 E）、唯一包含；有多个候选时不选，交给用户。同一份逻辑在 `pageBridge` 里内联一份，另建 `src/assistant/optionMatch.js` 供 planner 和测试使用，两份用同一组测试用例保持一致。
-L0192 | 
-L0193 | c. 用 div 做的选项：认领 `[role="radio"]`、`[role="checkbox"]` 组（没有原生 input 时），以及“同一父节点下、class 相同、文字短、class 含 radio、check、option、tag、choice”的可点击元素组，`kind: "choice"`。选中状态看 `aria-checked="true"` 或 class 含 `is-checked`、`active`、`selected`、`checked`、`on`；写入就是点击目标选项；回读核验选中状态。
-L0194 | 
-L0195 | d. 弹窗选择（`chooser`）：本版保持不可填并提示原因。以后按站点单独适配（华润的“期望行业”、wintalent 的学校和专业弹窗）。
-L0196 | 
-L0197 | e. 跨域内嵌页面：`manifest.json` 加 `"optional_host_permissions": ["https://*/*", "http://*/*"]`。`session.js` 的 `scanPage` 记录扫描失败的 frame 及其 origin（`webNavigation.getAllFrames` 返回 url）。侧栏在有失败 frame 时显示按钮“允许读取内嵌表单（域名）”，在点击处理函数里调用 `chrome.permissions.request({ origins: [origin + "/*"] })`，授权后重新识别。在扩展测试里加一个跨域 iframe 用例。
-L0198 | 
-L0199 | f. 页面类型：`sidepanel/assistant.js` 的 `prepare()` 现在对 `job`、`unknown` 整页锁死。改为只在明确是登录页时锁定；其他情况显示提醒，但照常生成预览。
-L0200 | 
-L0201 | g. 题目质量：`labelSource` 为 `placeholder` 或 `none` 的字段，在预览里标“题目未识别”；交给 AI 时附带附近文字（同一题目框或同一行前后 80 字，不含任何输入值）。
-L0202 | 
-L0203 | ### 4.3 离线组件测试页
-L0204 | 
-L0205 | 现有测试都是手写的 HTML，碰不到真实组件的行为；保存下来的真实页面又没有脚本，只能测“认题”。所以另做组件测试页：
-L0206 | 
-L0207 | 1. 把 `react@16`、`react-dom@16`、`antd@3`、`moment`、`antd@5`、`vue@2`、`element-ui@2` 装进 devDependencies，`.gitignore` 加 `node_modules/`。
-L0208 | 2. 在 `test/fixtures/components/` 写测试页，用本地测试服务器提供这些库的 UMD 文件，不要用 CDN。每页放同一套控件：下拉、可搜索下拉、级联、日期、月份、日期范围、单选、多选。
-L0209 | 3. My97 WdatePicker 没有可靠的 npm 包，用普通输入框加 `class="Wdate"` 和 `onclick="WdatePicker({dateFmt:'yyyy-MM'})"` 模拟即可，因为写入只依赖输入框的值。
-L0210 | 4. 每个 adapter 至少测：打开、选择、回读核验、撤销、中途用户手动修改时停止、菜单能恢复关闭。
-L0211 | 
-L0212 | ### 4.4 验收
-L0213 | 
-L0214 | - `npm.cmd run test:real-pages` 三页四项全部 PASS。
-L0215 | - 组件测试页的新用例全部通过；原有套件全部通过。
-L0216 | - 用户在三个真实网站上手动核对（第 8 节）。
-L0217 | 
-L0218 | ## 5. 阶段 3：资料层（个人资料 v2）
-L0219 | 
-L0220 | ### 5.1 新结构
-L0221 | 
-L0222 | ```js
-L0223 | {
-L0224 |   profileVersion: 2,
-L0225 |   basic: {
-L0226 |     nameZh, surnameZh, givenNameZh, nameEn, surnameEn, givenNameEn, preferredName,
-L0227 |     gender, birthDate, nationality, ethnicity, politicalStatus, maritalStatus,
-L0228 |     hukou, hukouType, nativePlace, originPlace, currentCity, height, idType, idNumber
-L0229 |   },
-L0230 |   contact: { phone, phoneCountryCode, email, backupEmail, address, wechat, linkedin, github, website },
-L0231 |   emergencyContact: { name, relation, phone },
-L0232 |   education: [{
-L0233 |     level, schoolZh, schoolEn, country, collegeZh, collegeEn, majorZh, majorEn, minor,
-L0234 |     degreeZh, degreeEn, studyMode, startDate, endDate, gpa, gpaScale, rank, courses, thesis, isHighest
-L0235 |   }],
-L0236 |   experiences: [{
-L0237 |     type, companyZh, companyEn, department, roleZh, roleEn, city, startDate, endDate,
-L0238 |     periodText, descriptionZh, descriptionEn, reference, referenceTitle, referencePhone, leaveReason
-L0239 |   }],
-L0240 |   projects: [{ name, role, startDate, endDate, description }],
-L0241 |   activities: [{ name, role, startDate, endDate, description }],
-L0242 |   awards: [{ name, date, level, issuer }],
-L0243 |   certificates: [{ name, date, score }],
-L0244 |   languages: [{ language, level, listeningSpeaking, readingWriting, test, score, date }],
-L0245 |   skills: [{ name, level, duration }],
-L0246 |   family: [{ relation, name, employer, title, phone }],
-L0247 |   preferences: {
-L0248 |     expectedCities, expectedSalary, earliestStartDate, relocation, acceptAdjustment,
-L0249 |     testCity, infoSource, relativesInCompany, remoteAreaWilling
-L0250 |   },
-L0251 |   commonAnswers: { /* 沿用现有 10 项，每项 { zh, en } */ },
-L0252 |   knowledgeBase: { zh: "", en: "" }
-L0253 | }
-L0254 | ```
-L0255 | 
-L0256 | 规则：所有值都是字符串（`expectedCities` 可以是字符串数组）；日期用 `YYYY-MM-DD` 或 `YYYY-MM`，只知道年月时不要补日；`education` 和 `experiences` 默认按时间倒序（最近的在前）；`level` 用“高中、大专、本科、硕士、博士、交换”之一；`type` 用“实习、全职、兼职”之一。`knowledgeBase` 让用户粘贴整份简历和任何补充说明，是 AI 的重要资料来源。
-L0257 | 
-L0258 | ### 5.2 迁移 v1 到 v2
-L0259 | 
-L0260 | 在 `normalizeProfile` 里实现，读取时兼容 v1，下次保存写成 v2：
-L0261 | 
-L0262 | | v1 字段 | v2 字段 |
-L0263 | |---|---|
-L0264 | | `fullNameZh` | `basic.nameZh` |
-L0265 | | `fullName` | `basic.nameEn` |
-L0266 | | `englishName` | `basic.preferredName` |
-L0267 | | `phone`、`email`、`linkedin`、`github`、`website` | `contact.*` |
-L0268 | | `master*` | `education[0]`：`level: "硕士"`，`schoolZh/En`、`degreeZh/En`、`majorZh/En`、`startDate`、`endDate`（来自 `masterGraduationDate`） |
-L0269 | | `bachelor*` | `education[1]`：`level: "本科"`，同上 |
-L0270 | | `internships[]` | `experiences[]`：`type: "实习"`，`companyZh/En`、`roleZh/En`、`descriptionZh/En`；`period` 尽量解析成 `startDate` 和 `endDate`（如 `2023.06-2023.09`、`2023年6月至9月`），解析不了就放进 `periodText` |
-L0271 | | `commonAnswers` | 原样保留 |
-L0272 | | 旧的 `university`、`degree`、`major`、`graduationDate` | 沿用现有逻辑，并入硕士那一段 |
-L0273 | 
-L0274 | 某一段教育完全没有值时，不要生成空的 education 项。
-L0275 | 
-L0276 | ### 5.3 备份
-L0277 | 
-L0278 | 新导出用 `schemaVersion: 4`，`profile` 为 v2。导入接受 schemaVersion 2、3（v1 资料，先迁移）和 4。`backup.js` 的 `validateProfile` 改为校验 v2 结构：已知键、数组里是对象、值都是字符串。合并逻辑不变。`storageMutations.js` 里对资料的归一化同步支持 v2。
-L0279 | 
-L0280 | ### 5.4 编辑页（`profile/profile.html`、`profile/profile.js`）
-L0281 | 
-L0282 | 分区：基本信息、联系方式、紧急联系人、教育经历、工作和实习经历、项目、校园经历、获奖、证书、语言、技能、家庭成员（可选）、求职偏好、常见答案、资料库。多段内容可以增删和上下移动。需要中英文的字段并排显示中文和 English。
-L0283 | 
-L0284 | ### 5.5 从简历导入（推荐）
-L0285 | 
-L0286 | 编辑页加按钮“从简历文本导入”：用户粘贴简历文字，AI 按 v2 结构解析（严格 JSON schema），页面显示与现有资料的逐项差异，用户勾选后保存。AI 关闭时隐藏这个按钮。原文同时存进 `knowledgeBase`。
-L0287 | 
-L0288 | ### 5.6 隐私
-L0289 | 
-L0290 | `basic.idNumber` 和 `family` 默认不发给 AI。AI 设置里加开关“允许把家庭成员信息发给 AI”，默认关。证件号只用本地规则填写，预览中默认不勾选。
-L0291 | 
-L0292 | ### 5.7 其他要同步改的地方
-L0293 | 
-L0294 | `applicationInfo.js`（弹窗里的复制申请信息）、`aiProfileMemory.js` 的 `buildLocalProfileMemory`、`planner.js` 的 `factsFromProfile`、`memory/memory.js`（问答记忆的主体选项增加“教育第 n 段”“经历第 n 段”等）、`backup.js`、`storageMutations.js`。
-L0295 | 
-L0296 | 验收：v1 样例迁移结果逐字段断言；v1 备份导入、v2 导出再导入往返一致；编辑页增删教育、保存、刷新后一致；`test:data-ui` 通过。
-L0297 | 
-L0298 | ## 6. 阶段 4：匹配和 AI 层
-L0299 | 
-L0300 | ### 6.1 本地规则（`planner.js`）
-L0301 | 
-L0302 | 1. 用意图词典（附录 D）替换现在锚定整句的 `rules`：按归一化后的“包含”匹配并打分，完全相同最高，较长的同义词优先。
-L0303 | 2. 用分区和 `groupIndex` 决定主体：
-L0304 |    - 分区含“教育、学历、学习”：对应 `education[groupIndex - 1]`。分区或说明文字含“从最高学历”“由近及远”时按时间倒序（默认）；含“从高中”“从本科开始”“由远及近”时按时间正序。
-L0305 |    - 分区含“实习、工作、实践”：对应 `experiences`；分区写明“实习”或“全职”时先按 `type` 过滤，再按顺序取。
-L0306 |    - 家庭、父亲、母亲、配偶：按 `relation` 对应 `family`。
-L0307 |    - 语言、证书、获奖或奖惩、项目、校园或社团或活动、技能：对应各自数组。
-L0308 | 3. “时间、开始日期、结束日期、名称、说明、职务、联系电话”这类通用题，按所在分区决定含义。“时间”后面有两个日期框时，第一个填开始，第二个填结束。
-L0309 | 4. 本地规则只直接填高可信度的答案（同义词完全命中、主体明确、值不需要转换），其余交给 AI。AI 关闭时，本地规则尽量填，但不做拆分和翻译。
-L0310 | 5. 删除“实习一律 `experience.unknown`”和“单段教育默认硕士”的逻辑。保留手动指定对应经历的界面，作为覆盖手段。
-L0311 | 
-L0312 | ### 6.2 删除旧限制
-L0313 | 
-L0314 | 1. 删除 `assistant/ai.js` 的 `recognizeQuestions` 里的题目黑名单（First name、Last name、姓、名、出生、证书、奖项、研究、论文等）。
-L0315 | 2. 删除 `eligibleFacts` 的限制和“AI 不能改主体”的限制。
-L0316 | 3. `acceptAiItems` 由 6.4 的新校验取代。`recognizeQuestions` 加 `buildAiBatches`、`requestBatch` 的两步流程由 6.3 的一次请求取代；旧代码删除，相关测试改写。
-L0317 | 
-L0318 | ### 6.3 整页理解请求（新文件 `src/assistant/formAi.js`）
-L0319 | 
-L0320 | 1. 时机：扫描、本地规则、读取下拉选项之后。对象：所有可填、还没有高可信度本地答案的字段（不含密码、验证码、上传、同意声明、签名）。
-L0321 | 2. 分批：按页面顺序每批最多 40 个字段，每批都带完整资料；最多 2 批并行。
-L0322 | 3. 请求内容（user 消息里的 JSON）：
-L0323 | 
-L0324 | ```json
-L0325 | {
-L0326 |   "language": "zh",
-L0327 |   "page": { "title": "...", "hostPath": "crc.wintalent.cn/wt/..." },
