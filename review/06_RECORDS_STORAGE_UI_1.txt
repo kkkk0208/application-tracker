@@ -1,31 +1,166 @@
-Application Tracker / RECORDS_STORAGE_UI
-快照日期：2026-10-12（Asia/Shanghai）
-完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
-本附件包含：
-- application-tracker-extension/src/backup.js
-- application-tracker-extension/src/board.js
-- application-tracker-extension/src/board/board.css
-- application-tracker-extension/src/board/board.html
-- application-tracker-extension/src/board/board.js
-- application-tracker-extension/src/bulk.js
-- application-tracker-extension/src/constants.js
-- application-tracker-extension/src/dateUtils.js
-- application-tracker-extension/src/duplicates.js
-- application-tracker-extension/src/excel.js
-- application-tracker-extension/src/jobInfo/aiJobInfo.js
-- application-tracker-extension/src/jobInfo/collectSignals.js
-- application-tracker-extension/src/jobInfo/extractJobInfo.js
-- application-tracker-extension/src/memory/memory.css
-- application-tracker-extension/src/memory/memory.html
-- application-tracker-extension/src/memory/memory.js
-- application-tracker-extension/src/model.js
+
+========================================================================
+FILE: application-tracker-extension/src/applicationInfo.js
+SHA256: cb2ec57354471060d72c7aaed036acc3b93f22a0407cf2b62cc4ae6d30e78b7b
+L0001 | import { normalizeProfile } from "./profile.js";
+L0002 | 
+L0003 | const COMMON_ANSWER_LABELS = {
+L0004 |   visaSponsorship: { zh: "是否需要签证赞助", en: "Visa Sponsorship" },
+L0005 |   rightToWork: { zh: "工作资格", en: "Right to Work" },
+L0006 |   expectedSalary: { zh: "期望薪资", en: "Expected Salary" },
+L0007 |   earliestStartDate: { zh: "最早到岗时间", en: "Earliest Start Date" },
+L0008 |   currentLocation: { zh: "当前所在地", en: "Current Location" },
+L0009 |   relocation: { zh: "是否愿意搬迁", en: "Relocation" },
+L0010 |   languageAbility: { zh: "语言能力", en: "Language Ability" },
+L0011 |   whyRole: { zh: "为什么选择这个岗位", en: "Why This Role" },
+L0012 |   whyCompany: { zh: "为什么选择这家公司", en: "Why This Company" },
+L0013 |   selfIntroduction: { zh: "自我介绍", en: "Self Introduction" }
+L0014 | };
+L0015 | 
+L0016 | export function buildApplicationInfoGroups(profile) {
+L0017 |   const normalized = normalizeProfile(profile);
+L0018 |   return [
+L0019 |     buildChineseGroup(normalized),
+L0020 |     buildEnglishGroup(normalized)
+L0021 |   ].map((group) => ({
+L0022 |     ...group,
+L0023 |     sections: group.sections.filter((section) => hasSectionContent(section))
+L0024 |   })).filter((group) => group.sections.length > 0);
+L0025 | }
+L0026 | 
+L0027 | export function buildApplicationInfoSections(profile) {
+L0028 |   return buildApplicationInfoGroups(profile).flatMap((group) => group.sections);
+L0029 | }
+L0030 | 
+L0031 | function buildChineseGroup(profile) {
+L0032 |   return {
+L0033 |     title: "中文申请",
+L0034 |     sections: [
+L0035 |       buildSection("基础信息", [
+L0036 |         ["姓名", profile.fullNameZh],
+L0037 |         ["电话", profile.phone],
+L0038 |         ["邮箱", profile.email],
+L0039 |         ["LinkedIn", profile.linkedin],
+L0040 |         ["GitHub", profile.github],
+L0041 |         ["个人网站", profile.website]
+L0042 |       ]),
+L0043 |       buildSection("硕士教育", [
+L0044 |         ["学校", profile.masterUniversityZh],
+L0045 |         ["学历", profile.masterDegreeZh],
+L0046 |         ["专业", profile.masterMajorZh],
+L0047 |         ["入学时间", profile.masterStartDate],
+L0048 |         ["毕业时间", profile.masterGraduationDate]
+L0049 |       ]),
+L0050 |       buildSection("本科教育", [
+L0051 |         ["学校", profile.bachelorUniversityZh],
+L0052 |         ["学历", profile.bachelorDegreeZh],
+L0053 |         ["专业", profile.bachelorMajorZh],
+L0054 |         ["入学时间", profile.bachelorStartDate],
+L0055 |         ["毕业时间", profile.bachelorGraduationDate]
+L0056 |       ]),
+L0057 |       buildInternshipSection("实习经历", profile.internships, {
+L0058 |         company: "公司",
+L0059 |         role: "职位",
+L0060 |         period: "时间",
+L0061 |         description: "经历"
+L0062 |       }, "zh"),
+L0063 |       buildCommonAnswersSection("常见申请问题", profile.commonAnswers, "zh")
+L0064 |     ]
+L0065 |   };
+L0066 | }
+L0067 | 
+L0068 | function buildEnglishGroup(profile) {
+L0069 |   return {
+L0070 |     title: "English Application",
+L0071 |     sections: [
+L0072 |       buildSection("Basic Info", [
+L0073 |         ["Full Name", profile.fullName],
+L0074 |         ["English Name", profile.englishName],
+L0075 |         ["Phone", profile.phone],
+L0076 |         ["Email", profile.email],
+L0077 |         ["LinkedIn", profile.linkedin],
+L0078 |         ["GitHub", profile.github],
+L0079 |         ["Website", profile.website]
+L0080 |       ]),
+L0081 |       buildSection("Master Education", [
+L0082 |         ["University", profile.masterUniversity],
+L0083 |         ["Degree", profile.masterDegree],
+L0084 |         ["Major", profile.masterMajor],
+L0085 |         ["Start Date", profile.masterStartDate],
+L0086 |         ["Graduation Date", profile.masterGraduationDate]
+L0087 |       ]),
+L0088 |       buildSection("Bachelor Education", [
+L0089 |         ["University", profile.bachelorUniversity],
+L0090 |         ["Degree", profile.bachelorDegree],
+L0091 |         ["Major", profile.bachelorMajor],
+L0092 |         ["Start Date", profile.bachelorStartDate],
+L0093 |         ["Graduation Date", profile.bachelorGraduationDate]
+L0094 |       ]),
+L0095 |       buildInternshipSection("Internship Experience", profile.internships, {
+L0096 |         company: "Company",
+L0097 |         role: "Role",
+L0098 |         period: "Period",
+L0099 |         description: "Experience"
+L0100 |       }, "en"),
+L0101 |       buildCommonAnswersSection("Common Application Questions", profile.commonAnswers, "en")
+L0102 |     ]
+L0103 |   };
+L0104 | }
+L0105 | 
+L0106 | function buildSection(title, pairs) {
+L0107 |   return {
+L0108 |     title,
+L0109 |     items: pairs
+L0110 |       .filter(([, value]) => String(value || "").trim())
+L0111 |       .map(([label, value]) => ({ label, value, copyText: value })),
+L0112 |     entries: []
+L0113 |   };
+L0114 | }
+L0115 | 
+L0116 | function buildCommonAnswersSection(title, answers, language) {
+L0117 |   const pairs = Object.entries(COMMON_ANSWER_LABELS).map(([field, labels]) => [
+L0118 |     labels[language],
+L0119 |     answers[field]?.[language]
+L0120 |   ]);
+L0121 |   return buildSection(title, pairs);
+L0122 | }
+L0123 | 
+L0124 | function buildInternshipSection(title, internships, labels, language) {
+L0125 |   const entries = internships.map((internship) => {
+L0126 |     const company = language === "zh" ? internship.companyZh : internship.company;
+L0127 |     const role = language === "zh" ? internship.roleZh : internship.role;
+L0128 |     const description = language === "zh" ? internship.descriptionZh : internship.description;
+L0129 |     const hasLanguageSpecificContent = [company, role, description].some((value) => String(value || "").trim());
+L0130 |     if (!hasLanguageSpecificContent) return null;
+L0131 | 
+L0132 |     const items = [
+L0133 |       [labels.company, company],
+L0134 |       [labels.role, role],
+L0135 |       [labels.period, internship.period],
+L0136 |       [labels.description, description]
+L0137 |     ]
+L0138 |       .filter(([, value]) => String(value || "").trim())
+L0139 |       .map(([label, value]) => ({ label, value, copyText: value }));
+L0140 |     return {
+L0141 |       title: [company, role].filter(Boolean).join(" - "),
+L0142 |       items
+L0143 |     };
+L0144 |   }).filter((entry) => entry?.items.length > 0);
+L0145 | 
+L0146 |   return {
+L0147 |     title,
+L0148 |     items: [],
+L0149 |     entries
+L0150 |   };
+L0151 | }
+L0152 | 
+L0153 | function hasSectionContent(section) {
+L0154 |   return section.items.length > 0 || section.entries.length > 0;
+L0155 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/backup.js
-SHA256: e866bfd28d7d2cc058fff269bfb3d57b3a309405592da99bf351c71a0ffe9e83
-LINES: 131
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: 6244a481f17ac6be19f033fa7c61980071e3065a560e3b71f5f8ed82c13462b9
 L0001 | import { normalizeImportedRecord, validateRecordForSave } from "./model.js";
 L0002 | import { normalizeProfile, PROFILE_FIELDS, COMMON_ANSWER_FIELDS, profileHasUsableFields } from "./profile.js";
 L0003 | import { STATUS_KEYS } from "./constants.js";
@@ -48,16 +183,16 @@ L0019 | function array(value, name) { if (!Array.isArray(value) || value.length 
 L0020 | function uniqueIds(items, name) { const seen = new Set(); for (const item of items) { if (seen.has(item.id)) fail(`${name}中存在重复 ID`); seen.add(item.id); } }
 L0021 | function validDate(value) { if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const date = new Date(`${value}T12:00:00Z`); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value; }
 L0022 | 
-L0023 | function validateRecords(records) {
+L0023 | export function validateRecords(records) {
 L0024 |   array(records, "投递记录");
 L0025 |   const output = records.map((record) => {
 L0026 |     expectObject(record, "投递记录"); knownKeys(record, recordFields, "投递记录");
 L0027 |     string(record.id, "记录 ID", true);
 L0028 |     optionalStrings(record, recordFields.filter((key) => key !== "statusHistory"), "投递记录");
-L0029 |     if (Object.keys(validateRecordForSave(record)).length) fail("投递记录缺少公司、岗位、链接、来源、投递日期或状态");
-L0030 |     if (!validDate(record.appliedDate) || record.nextActionDate && !validDate(record.nextActionDate)) fail("投递日期格式不正确");
-L0031 |     let url; try { url = new URL(record.portalLink); } catch { fail("投递链接格式不正确"); }
-L0032 |     if (!/^https?:$/.test(url.protocol)) fail("投递链接必须使用 http 或 https");
+L0029 |     const errors = validateRecordForSave(record);
+L0030 |     if (errors.portalLink) fail(errors.portalLink);
+L0031 |     if (Object.keys(errors).length) fail("投递记录缺少公司、岗位、链接、来源、投递日期或状态");
+L0032 |     if (!validDate(record.appliedDate) || record.nextActionDate && !validDate(record.nextActionDate)) fail("投递日期格式不正确");
 L0033 |     array(record.statusHistory, "进度时间线");
 L0034 |     for (const entry of record.statusHistory) {
 L0035 |       expectObject(entry, "时间线条目"); knownKeys(entry, ["status", "date"], "时间线条目");
@@ -156,14 +291,10 @@ L0127 |     legacyMemoryBackup: merge(normalizedCurrent.legacyMemoryBackup, inco
 L0128 |   };
 L0129 |   return { data, summary: { mode, partial: backup.partial, incomingRecords: incoming.records.length, incomingMemories: incoming.memories.length, incomingLegacy: incoming.legacyMemories.length, resultRecords: data.records.length, resultMemories: data.memories.length, conflictCount, profileKept, profileConflict, exportedAt: backup.exportedAt } };
 L0130 | }
-L0131 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/board.js
 SHA256: e2eac31094cb25b717269b4ca907e814d19796a2e89722795823751232ec8fda
-LINES: 23
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | export const BOARD_COLUMNS = [
 L0002 |   { key: "applied", label: "已投递", statuses: ["applied"] },
 L0003 |   { key: "assessment", label: "笔试", statuses: ["oa"] },
@@ -186,14 +317,10 @@ L0019 |   }
 L0020 | 
 L0021 |   return grouped;
 L0022 | }
-L0023 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/board/board.css
 SHA256: bdf3caeb35bb5b7f338cff120603fb2c66fa0d7a53ba5f51a8713a38b417332e
-LINES: 222
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | * {
 L0002 |   box-sizing: border-box;
 L0003 | }
@@ -415,14 +542,10 @@ L0218 | .status-warning {
 L0219 |   color: #713f12;
 L0220 |   background: #fef3c7;
 L0221 | }
-L0222 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/board/board.html
 SHA256: cfb6099900cd441bc52c505f0aae0d2fb67b8d8ba4fa27c6d52470a0ce80879e
-LINES: 33
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | <!doctype html>
 L0002 | <html lang="zh-CN">
 L0003 |   <head>
@@ -455,169 +578,163 @@ L0029 |     </main>
 L0030 |     <script type="module" src="./board.js"></script>
 L0031 |   </body>
 L0032 | </html>
-L0033 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/board/board.js
-SHA256: 121c8991a952beeca3c01dfd9e904e81c41a5c664e9185b75e77decb15dcfe97
-LINES: 148
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: 54c0fbf05c443274bb7fa7fa4a4f36542b70d01ce20a8e1238b433d4bcf33932
 L0001 | import { BOARD_COLUMNS, groupRecordsForBoard } from "../board.js";
 L0002 | import { STATUSES, STORAGE_KEY } from "../constants.js";
 L0003 | import { classifyNextActionDate, toDateInputValue } from "../dateUtils.js";
 L0004 | import { getCompanyInitial, getStatusTone, summarizeRecords } from "../presentation.js";
 L0005 | import { getRecords, saveExistingRecord } from "../storage.js";
-L0006 | 
-L0007 | const boardView = document.querySelector("#boardView");
-L0008 | const summaryLine = document.querySelector("#summaryLine");
-L0009 | const searchInput = document.querySelector("#searchInput");
-L0010 | const statusFilter = document.querySelector("#statusFilter");
-L0011 | const message = document.querySelector("#message");
-L0012 | 
-L0013 | let records = [];
-L0014 | 
-L0015 | init();
-L0016 | 
-L0017 | async function init() {
-L0018 |   fillFilter();
-L0019 |   records = await getRecords();
-L0020 |   render();
-L0021 | 
-L0022 |   searchInput.addEventListener("input", render);
-L0023 |   statusFilter.addEventListener("change", render);
-L0024 |   boardView.addEventListener("change", handleStatusChange);
-L0025 |   chrome.storage.onChanged.addListener((changes, area) => {
-L0026 |     if (area !== "local" || !changes[STORAGE_KEY]) return;
-L0027 |     records = Array.isArray(changes[STORAGE_KEY].newValue) ? changes[STORAGE_KEY].newValue : [];
-L0028 |     render();
-L0029 |   });
-L0030 | }
-L0031 | 
-L0032 | function render() {
-L0033 |   renderSummary();
-L0034 |   const visibleRecords = getVisibleRecords();
-L0035 |   const grouped = groupRecordsForBoard(visibleRecords);
-L0036 |   boardView.innerHTML = BOARD_COLUMNS.map((column) => renderColumn(column, grouped[column.key])).join("");
-L0037 | }
-L0038 | 
-L0039 | function renderSummary() {
-L0040 |   const summary = summarizeRecords(records);
-L0041 |   summaryLine.textContent = `共 ${summary.total} 条 · 进行中 ${summary.active} · Offer ${summary.offers} · 已拒 ${summary.rejected}`;
-L0042 | }
-L0043 | 
-L0044 | function getVisibleRecords() {
-L0045 |   return records
-L0046 |     .filter(matchesSearch)
-L0047 |     .filter(matchesStatus)
-L0048 |     .sort((a, b) => (b.nextActionDate || b.appliedDate || "").localeCompare(a.nextActionDate || a.appliedDate || ""));
-L0049 | }
-L0050 | 
-L0051 | function renderColumn(column, columnRecords) {
-L0052 |   return `
-L0053 |     <article class="board-column">
-L0054 |       <header class="board-column-header">
-L0055 |         <h2 class="board-column-title">${escapeHtml(column.label)}</h2>
-L0056 |         <span class="board-count">${columnRecords.length}</span>
-L0057 |       </header>
-L0058 |       <div class="board-card-list">
-L0059 |         ${columnRecords.map(renderCard).join("")}
-L0060 |       </div>
-L0061 |     </article>
-L0062 |   `;
-L0063 | }
-L0064 | 
-L0065 | function renderCard(record) {
-L0066 |   const dueClass = classifyNextActionDate(record.nextActionDate, toDateInputValue());
-L0067 |   const statusTone = getStatusTone(record.status);
-L0068 |   const companyInitial = getCompanyInitial(record.company);
-L0069 |   return `
-L0070 |     <article class="board-card ${dueClass === "none" ? "" : dueClass}">
-L0071 |       <div class="board-card-title">
-L0072 |         <span class="company-avatar">${escapeHtml(companyInitial)}</span>
-L0073 |         <a href="${escapeAttribute(record.portalLink)}" target="_blank" rel="noreferrer">${escapeHtml(record.company)}</a>
-L0074 |       </div>
-L0075 |       <p class="board-card-role">${escapeHtml(record.role)}</p>
-L0076 |       <div class="board-card-meta">
-L0077 |         <span>Base：${escapeHtml(record.base || "-")}</span>
-L0078 |         <span>投递：${escapeHtml(record.appliedDate || "-")}</span>
-L0079 |         <span>跟进：${escapeHtml(record.nextActionDate || "-")}</span>
-L0080 |       </div>
-L0081 |       <select class="status-select status-${statusTone}" data-action="status" data-id="${record.id}" aria-label="修改 ${escapeAttribute(record.company)} 的状态">
-L0082 |         ${renderStatusOptions(record.status)}
-L0083 |       </select>
-L0084 |     </article>
-L0085 |   `;
-L0086 | }
-L0087 | 
-L0088 | function renderStatusOptions(selectedStatus) {
-L0089 |   return STATUSES.map((status) => {
-L0090 |     const selected = status.key === selectedStatus ? " selected" : "";
-L0091 |     return `<option value="${status.key}"${selected}>${status.label}</option>`;
-L0092 |   }).join("");
-L0093 | }
-L0094 | 
-L0095 | async function handleStatusChange(event) {
-L0096 |   const select = event.target.closest("select[data-action='status']");
-L0097 |   if (!select) return;
-L0098 | 
-L0099 |   const record = records.find((item) => item.id === select.dataset.id);
-L0100 |   if (!record) return;
-L0101 |   if (record.status === select.value) return;
-L0102 | 
-L0103 |   try {
-L0104 |     await saveExistingRecord(record.id, { status: select.value });
-L0105 |     records = await getRecords();
-L0106 |     showMessage("状态已更新。");
-L0107 |     render();
-L0108 |   } catch (error) {
-L0109 |     select.value = record.status;
-L0110 |     showMessage(`状态更新失败：${error.message}`);
-L0111 |   }
-L0112 | }
-L0113 | 
-L0114 | function fillFilter() {
-L0115 |   statusFilter.innerHTML = [
-L0116 |     `<option value="">全部状态</option>`,
-L0117 |     ...STATUSES.map((status) => `<option value="${status.key}">${status.label}</option>`)
-L0118 |   ].join("");
-L0119 | }
-L0120 | 
-L0121 | function matchesSearch(record) {
-L0122 |   const query = searchInput.value.trim().toLowerCase();
-L0123 |   if (!query) return true;
-L0124 |   return `${record.company} ${record.role}`.toLowerCase().includes(query);
-L0125 | }
-L0126 | 
-L0127 | function matchesStatus(record) {
-L0128 |   return !statusFilter.value || record.status === statusFilter.value;
-L0129 | }
-L0130 | 
-L0131 | function showMessage(text) {
-L0132 |   message.textContent = text;
-L0133 |   message.hidden = false;
-L0134 | }
-L0135 | 
-L0136 | function escapeHtml(value) {
-L0137 |   return String(value ?? "")
-L0138 |     .replaceAll("&", "&amp;")
-L0139 |     .replaceAll("<", "&lt;")
-L0140 |     .replaceAll(">", "&gt;")
-L0141 |     .replaceAll('"', "&quot;")
-L0142 |     .replaceAll("'", "&#039;");
-L0143 | }
-L0144 | 
-L0145 | function escapeAttribute(value) {
-L0146 |   return escapeHtml(value || "#");
-L0147 | }
-L0148 | 
+L0006 | import { getPortalUrl } from "../model.js";
+L0007 | 
+L0008 | const boardView = document.querySelector("#boardView");
+L0009 | const summaryLine = document.querySelector("#summaryLine");
+L0010 | const searchInput = document.querySelector("#searchInput");
+L0011 | const statusFilter = document.querySelector("#statusFilter");
+L0012 | const message = document.querySelector("#message");
+L0013 | 
+L0014 | let records = [];
+L0015 | 
+L0016 | init();
+L0017 | 
+L0018 | async function init() {
+L0019 |   fillFilter();
+L0020 |   records = await getRecords();
+L0021 |   render();
+L0022 | 
+L0023 |   searchInput.addEventListener("input", render);
+L0024 |   statusFilter.addEventListener("change", render);
+L0025 |   boardView.addEventListener("change", handleStatusChange);
+L0026 |   chrome.storage.onChanged.addListener((changes, area) => {
+L0027 |     if (area !== "local" || !changes[STORAGE_KEY]) return;
+L0028 |     records = Array.isArray(changes[STORAGE_KEY].newValue) ? changes[STORAGE_KEY].newValue : [];
+L0029 |     render();
+L0030 |   });
+L0031 | }
+L0032 | 
+L0033 | function render() {
+L0034 |   renderSummary();
+L0035 |   const visibleRecords = getVisibleRecords();
+L0036 |   const grouped = groupRecordsForBoard(visibleRecords);
+L0037 |   boardView.innerHTML = BOARD_COLUMNS.map((column) => renderColumn(column, grouped[column.key])).join("");
+L0038 | }
+L0039 | 
+L0040 | function renderSummary() {
+L0041 |   const summary = summarizeRecords(records);
+L0042 |   summaryLine.textContent = `共 ${summary.total} 条 · 进行中 ${summary.active} · Offer ${summary.offers} · 已拒 ${summary.rejected}`;
+L0043 | }
+L0044 | 
+L0045 | function getVisibleRecords() {
+L0046 |   return records
+L0047 |     .filter(matchesSearch)
+L0048 |     .filter(matchesStatus)
+L0049 |     .sort((a, b) => (b.nextActionDate || b.appliedDate || "").localeCompare(a.nextActionDate || a.appliedDate || ""));
+L0050 | }
+L0051 | 
+L0052 | function renderColumn(column, columnRecords) {
+L0053 |   return `
+L0054 |     <article class="board-column">
+L0055 |       <header class="board-column-header">
+L0056 |         <h2 class="board-column-title">${escapeHtml(column.label)}</h2>
+L0057 |         <span class="board-count">${columnRecords.length}</span>
+L0058 |       </header>
+L0059 |       <div class="board-card-list">
+L0060 |         ${columnRecords.map(renderCard).join("")}
+L0061 |       </div>
+L0062 |     </article>
+L0063 |   `;
+L0064 | }
+L0065 | 
+L0066 | function renderCard(record) {
+L0067 |   const dueClass = classifyNextActionDate(record.nextActionDate, toDateInputValue());
+L0068 |   const statusTone = getStatusTone(record.status);
+L0069 |   const companyInitial = getCompanyInitial(record.company);
+L0070 |   const portalUrl = getPortalUrl(record.portalLink);
+L0071 |   return `
+L0072 |     <article class="board-card ${dueClass === "none" ? "" : dueClass}">
+L0073 |       <div class="board-card-title">
+L0074 |         <span class="company-avatar">${escapeHtml(companyInitial)}</span>
+L0075 |         ${portalUrl ? `<a href="${escapeAttribute(portalUrl)}" target="_blank" rel="noreferrer">${escapeHtml(record.company)}</a>` : `<span>${escapeHtml(record.company)}</span>`}
+L0076 |       </div>
+L0077 |       <p class="board-card-role">${escapeHtml(record.role)}</p>
+L0078 |       <div class="board-card-meta">
+L0079 |         <span>Base：${escapeHtml(record.base || "-")}</span>
+L0080 |         <span>投递：${escapeHtml(record.appliedDate || "-")}</span>
+L0081 |         <span>跟进：${escapeHtml(record.nextActionDate || "-")}</span>
+L0082 |       </div>
+L0083 |       <select class="status-select status-${statusTone}" data-action="status" data-id="${record.id}" aria-label="修改 ${escapeAttribute(record.company)} 的状态">
+L0084 |         ${renderStatusOptions(record.status)}
+L0085 |       </select>
+L0086 |     </article>
+L0087 |   `;
+L0088 | }
+L0089 | 
+L0090 | function renderStatusOptions(selectedStatus) {
+L0091 |   return STATUSES.map((status) => {
+L0092 |     const selected = status.key === selectedStatus ? " selected" : "";
+L0093 |     return `<option value="${status.key}"${selected}>${status.label}</option>`;
+L0094 |   }).join("");
+L0095 | }
+L0096 | 
+L0097 | async function handleStatusChange(event) {
+L0098 |   const select = event.target.closest("select[data-action='status']");
+L0099 |   if (!select) return;
+L0100 | 
+L0101 |   const record = records.find((item) => item.id === select.dataset.id);
+L0102 |   if (!record) return;
+L0103 |   if (record.status === select.value) return;
+L0104 | 
+L0105 |   try {
+L0106 |     await saveExistingRecord(record.id, { status: select.value });
+L0107 |     records = await getRecords();
+L0108 |     showMessage("状态已更新。");
+L0109 |     render();
+L0110 |   } catch (error) {
+L0111 |     select.value = record.status;
+L0112 |     showMessage(`状态更新失败：${error.message}`);
+L0113 |   }
+L0114 | }
+L0115 | 
+L0116 | function fillFilter() {
+L0117 |   statusFilter.innerHTML = [
+L0118 |     `<option value="">全部状态</option>`,
+L0119 |     ...STATUSES.map((status) => `<option value="${status.key}">${status.label}</option>`)
+L0120 |   ].join("");
+L0121 | }
+L0122 | 
+L0123 | function matchesSearch(record) {
+L0124 |   const query = searchInput.value.trim().toLowerCase();
+L0125 |   if (!query) return true;
+L0126 |   return `${record.company} ${record.role}`.toLowerCase().includes(query);
+L0127 | }
+L0128 | 
+L0129 | function matchesStatus(record) {
+L0130 |   return !statusFilter.value || record.status === statusFilter.value;
+L0131 | }
+L0132 | 
+L0133 | function showMessage(text) {
+L0134 |   message.textContent = text;
+L0135 |   message.hidden = false;
+L0136 | }
+L0137 | 
+L0138 | function escapeHtml(value) {
+L0139 |   return String(value ?? "")
+L0140 |     .replaceAll("&", "&amp;")
+L0141 |     .replaceAll("<", "&lt;")
+L0142 |     .replaceAll(">", "&gt;")
+L0143 |     .replaceAll('"', "&quot;")
+L0144 |     .replaceAll("'", "&#039;");
+L0145 | }
+L0146 | 
+L0147 | function escapeAttribute(value) {
+L0148 |   return escapeHtml(value || "#");
+L0149 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/bulk.js
 SHA256: 3ad5973df077c8bdf0469cf2a7083ee41b1fbce61696b747a46fa0cda5ad8a6c
-LINES: 27
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | export function getSelectedVisibleIds(selectedIds, visibleRecords) {
 L0002 |   return visibleRecords
 L0003 |     .map((record) => record.id)
@@ -644,14 +761,10 @@ L0023 |     }
 L0024 |   }
 L0025 |   return nextSelectedIds;
 L0026 | }
-L0027 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/constants.js
 SHA256: d235dc8253ccc8ebbc0233eaa50034f02cecd9eb6f179a2cc73751cfc29d6c9f
-LINES: 33
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | export const STORAGE_KEY = "applicationTracker.records";
 L0002 | export const PROFILE_STORAGE_KEY = "applicationTracker.profile";
 L0003 | export const QUESTION_MEMORY_STORAGE_KEY = "applicationTracker.questionMemory";
@@ -684,14 +797,10 @@ L0029 | export const STATUS_KEYS = new Set(STATUSES.map((status) => status.key))
 L0030 | export const SOURCE_KEYS = new Set(SOURCES.map((source) => source.key));
 L0031 | export const DEFAULT_STATUS = "applied";
 L0032 | export const DEFAULT_SOURCE = "company_portal";
-L0033 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/dateUtils.js
 SHA256: 70a2fbb62217e4a846c97509d3ea0f01f409d9e6c852f7d4ce01c99a28903e94
-LINES: 26
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | const DAY_MS = 24 * 60 * 60 * 1000;
 L0002 | 
 L0003 | export function toDateInputValue(date = new Date()) {
@@ -717,14 +826,10 @@ L0022 |   if (!match) return null;
 L0023 |   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
 L0024 |   return toDateInputValue(date) === value ? date : null;
 L0025 | }
-L0026 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/duplicates.js
 SHA256: ef7ae8039a7451c26157835a92fa0ef84253f35218954b689b6b91ca8d6ae3cb
-LINES: 34
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | export function findPotentialDuplicate(draft, records) {
 L0002 |   const draftId = draft.id || "";
 L0003 |   const draftPortalLink = normalizeUrl(draft.portalLink);
@@ -758,119 +863,210 @@ L0030 |
 L0031 | function normalizeUrl(value) {
 L0032 |   return String(value ?? "").trim().replace(/\/+$/, "").toLowerCase();
 L0033 | }
-L0034 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/excel.js
-SHA256: b8414dff60f0e032cca151851adbe07fb3e7f3450ff0fa327b37f770b74582cf
-LINES: 98
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | import { normalizeImportedRecord } from "./model.js";
-L0002 | import { SOURCES, STATUSES } from "./constants.js";
-L0003 | 
-L0004 | export const EXPORT_COLUMNS = [
-L0005 |   "id",
-L0006 |   "company",
-L0007 |   "role",
-L0008 |   "base",
-L0009 |   "portalLink",
-L0010 |   "pageTitle",
-L0011 |   "source",
-L0012 |   "appliedDate",
-L0013 |   "status",
-L0014 |   "statusHistory",
-L0015 |   "nextActionDate",
-L0016 |   "jdText",
-L0017 |   "notes",
-L0018 |   "createdAt",
-L0019 |   "updatedAt"
-L0020 | ];
-L0021 | 
-L0022 | export function recordsToExportRows(records) {
-L0023 |   return records.map((record) => {
-L0024 |     const row = {};
-L0025 |     for (const column of EXPORT_COLUMNS) {
-L0026 |       row[column] = column === "statusHistory"
-L0027 |         ? JSON.stringify(record.statusHistory || [])
-L0028 |         : record[column] ?? "";
-L0029 |     }
-L0030 |     return row;
-L0031 |   });
-L0032 | }
-L0033 | 
-L0034 | export function recordsToDisplayRows(records) {
-L0035 |   return records.map((record) => ({
-L0036 |     "公司": record.company ?? "",
-L0037 |     "岗位": record.role ?? "",
-L0038 |     "Base 地": record.base ?? "",
-L0039 |     "当前进度": labelFor(STATUSES, record.status),
-L0040 |     "投递日期": record.appliedDate ?? "",
-L0041 |     "下次跟进": record.nextActionDate ?? "",
-L0042 |     "投递来源": labelFor(SOURCES, record.source),
-L0043 |     "Portal 链接": record.portalLink ?? "",
-L0044 |     "网页标题": record.pageTitle ?? "",
-L0045 |     "JD 原文或要点": record.jdText ?? "",
-L0046 |     "备注": record.notes ?? "",
-L0047 |     "进度时间线": formatStatusHistory(record.statusHistory),
-L0048 |     "创建时间": record.createdAt ?? "",
-L0049 |     "更新时间": record.updatedAt ?? ""
-L0050 |   }));
-L0051 | }
-L0052 | 
-L0053 | export function buildWorkbookSheets(records) {
-L0054 |   return [
-L0055 |     {
-L0056 |       name: "投递记录",
-L0057 |       hidden: 0,
-L0058 |       rows: recordsToDisplayRows(records),
-L0059 |       type: "display"
-L0060 |     },
-L0061 |     {
-L0062 |       name: "_restore_data",
-L0063 |       hidden: 2,
-L0064 |       rows: recordsToExportRows(records),
-L0065 |       type: "raw"
-L0066 |     }
-L0067 |   ];
-L0068 | }
-L0069 | 
-L0070 | export function buildPreImportBackupFilename(dateString) {
-L0071 |   return `application-records-backup-before-import-${dateString}.xlsx`;
-L0072 | }
-L0073 | 
-L0074 | export function rowsToImportedRecords(rows) {
-L0075 |   if (!Array.isArray(rows)) {
-L0076 |     throw new Error("Imported sheet is empty or invalid");
-L0077 |   }
-L0078 | 
-L0079 |   for (const column of EXPORT_COLUMNS) {
-L0080 |     if (!Object.prototype.hasOwnProperty.call(rows[0] || {}, column)) {
-L0081 |       throw new Error(`Missing required column: ${column}`);
-L0082 |     }
-L0083 |   }
-L0084 | 
-L0085 |   return rows.map((row) => normalizeImportedRecord(row));
-L0086 | }
-L0087 | 
-L0088 | function formatStatusHistory(statusHistory) {
-L0089 |   if (!Array.isArray(statusHistory)) return "";
-L0090 |   return statusHistory
-L0091 |     .map((item) => `${item.date || ""} ${labelFor(STATUSES, item.status)}`)
-L0092 |     .join(" -> ");
-L0093 | }
-L0094 | 
-L0095 | function labelFor(options, key) {
-L0096 |   return options.find((option) => option.key === key)?.label || key || "";
-L0097 | }
-L0098 | 
+SHA256: e03577404e1e3c924d262b45e2d59f1989c28ba6cfd1c296108b47d4e52dfac9
+L0001 | import { normalizeImportedRecord, updateRecord } from "./model.js";
+L0002 | import { validateRecords } from "./backup.js";
+L0003 | import { SOURCES, STATUSES } from "./constants.js";
+L0004 | 
+L0005 | export const EXPORT_COLUMNS = [
+L0006 |   "id",
+L0007 |   "company",
+L0008 |   "role",
+L0009 |   "base",
+L0010 |   "portalLink",
+L0011 |   "pageTitle",
+L0012 |   "source",
+L0013 |   "appliedDate",
+L0014 |   "status",
+L0015 |   "statusHistory",
+L0016 |   "nextActionDate",
+L0017 |   "jdText",
+L0018 |   "notes",
+L0019 |   "createdAt",
+L0020 |   "updatedAt"
+L0021 | ];
+L0022 | 
+L0023 | export function recordsToExportRows(records) {
+L0024 |   return records.map((record) => {
+L0025 |     const row = {};
+L0026 |     for (const column of EXPORT_COLUMNS) {
+L0027 |       row[column] = column === "statusHistory"
+L0028 |         ? JSON.stringify(record.statusHistory || [])
+L0029 |         : record[column] ?? "";
+L0030 |     }
+L0031 |     return row;
+L0032 |   });
+L0033 | }
+L0034 | 
+L0035 | export function recordsToDisplayRows(records) {
+L0036 |   return records.map((record) => ({
+L0037 |     "公司": record.company ?? "",
+L0038 |     "岗位": record.role ?? "",
+L0039 |     "Base 地": record.base ?? "",
+L0040 |     "当前进度": labelFor(STATUSES, record.status),
+L0041 |     "投递日期": record.appliedDate ?? "",
+L0042 |     "下次跟进": record.nextActionDate ?? "",
+L0043 |     "投递来源": labelFor(SOURCES, record.source),
+L0044 |     "Portal 链接": record.portalLink ?? "",
+L0045 |     "网页标题": record.pageTitle ?? "",
+L0046 |     "JD 原文或要点": record.jdText ?? "",
+L0047 |     "备注": record.notes ?? "",
+L0048 |     "进度时间线": formatStatusHistory(record.statusHistory),
+L0049 |     "创建时间": record.createdAt ?? "",
+L0050 |     "更新时间": record.updatedAt ?? "",
+L0051 |     "记录 ID": record.id ?? ""
+L0052 |   }));
+L0053 | }
+L0054 | 
+L0055 | export function buildWorkbookSheets(records) {
+L0056 |   return [
+L0057 |     {
+L0058 |       name: "投递记录",
+L0059 |       hidden: 0,
+L0060 |       rows: recordsToDisplayRows(records),
+L0061 |       type: "display"
+L0062 |     },
+L0063 |     {
+L0064 |       name: "_restore_data",
+L0065 |       hidden: 2,
+L0066 |       rows: recordsToExportRows(records),
+L0067 |       type: "raw"
+L0068 |     }
+L0069 |   ];
+L0070 | }
+L0071 | 
+L0072 | export function buildPreImportBackupFilename(dateString) {
+L0073 |   return `application-records-backup-before-import-${dateString}.xlsx`;
+L0074 | }
+L0075 | 
+L0076 | export function rowsToImportedRecords(rows) {
+L0077 |   if (!Array.isArray(rows)) {
+L0078 |     throw new Error("Imported sheet is empty or invalid");
+L0079 |   }
+L0080 | 
+L0081 |   for (const column of EXPORT_COLUMNS) {
+L0082 |     if (!Object.prototype.hasOwnProperty.call(rows[0] || {}, column)) {
+L0083 |       throw new Error(`Missing required column: ${column}`);
+L0084 |     }
+L0085 |   }
+L0086 | 
+L0087 |   return validateRecords(rows.map((row) => normalizeImportedRecord(row)));
+L0088 | }
+L0089 | 
+L0090 | const displayFields = {
+L0091 |   company: "公司", role: "岗位", base: "Base 地", status: "当前进度",
+L0092 |   appliedDate: "投递日期", nextActionDate: "下次跟进", source: "投递来源",
+L0093 |   portalLink: "Portal 链接", pageTitle: "网页标题", jdText: "JD 原文或要点", notes: "备注"
+L0094 | };
+L0095 | 
+L0096 | // The visible table is authoritative. Hidden rows supply identity and history,
+L0097 | // never an older copy of editable cells. readRows keeps this module independent
+L0098 | // of the XLSX browser library and makes the import policy testable.
+L0099 | export function workbookToImportedRecords(workbook, readRows, now = new Date().toISOString()) {
+L0100 |   const rawName = ["_restore_data", "_data"].find((name) => workbook.SheetNames.includes(name));
+L0101 |   const visibleName = workbook.SheetNames.includes("投递记录") ? "投递记录"
+L0102 |     : workbook.SheetNames.find((name, index) => !["_restore_data", "_data"].includes(name) && !workbook.Workbook?.Sheets?.[index]?.Hidden);
+L0103 |   if (!visibleName) {
+L0104 |     if (!rawName) throw new Error("Excel 中没有可导入的投递记录表");
+L0105 |     return rowsToImportedRecords(readRows(workbook.Sheets[rawName]));
+L0106 |   }
+L0107 |   const rows = readRows(workbook.Sheets[visibleName]);
+L0108 |   if (!rows.length) throw new Error("可见投递记录表为空，请核对后再导入");
+L0109 |   if (!Object.hasOwn(rows[0], "公司")) return rowsToImportedRecords(rows);
+L0110 |   for (const label of Object.values(displayFields)) {
+L0111 |     if (!Object.hasOwn(rows[0], label)) throw new Error(`可见投递记录表缺少列：${label}`);
+L0112 |   }
+L0113 |   const rawRows = rawName ? readRows(workbook.Sheets[rawName]) : [];
+L0114 |   const metadata = rawRows.length ? rowsToImportedRecords(rawRows) : [];
+L0115 |   const byId = new Map(metadata.map((record) => [record.id, record]));
+L0116 |   const used = new Set();
+L0117 |   const imported = rows.map((row, index) => {
+L0118 |     const rowId = text(row["记录 ID"]);
+L0119 |     let previous = rowId ? byId.get(rowId) : undefined;
+L0120 |     if (rowId && metadata.length && !previous) throw new Error(`第 ${index + 2} 行的记录 ID 与隐藏元数据不一致，请勿修改记录 ID`);
+L0121 |     if (!rowId && metadata.length) {
+L0122 |       const createdAt = text(row["创建时间"]);
+L0123 |       let matches = createdAt ? metadata.filter((record) => record.createdAt === createdAt) : [];
+L0124 |       if (matches.length !== 1) {
+L0125 |         matches = metadata.filter((record) => {
+L0126 |           const original = recordsToDisplayRows([record])[0];
+L0127 |           return Object.values(displayFields).every((label) => text(row[label]) === text(original[label]));
+L0128 |         });
+L0129 |       }
+L0130 |       if (matches.length === 1) previous = matches[0];
+L0131 |       else if (createdAt || text(row["进度时间线"]) || text(row["更新时间"])) {
+L0132 |         throw new Error(`旧版 Excel 第 ${index + 2} 行无法唯一关联隐藏记录，已停止导入。请重新导出带记录 ID 的 Excel 后编辑`);
+L0133 |       }
+L0134 |     }
+L0135 |     if (previous && used.has(previous.id)) throw new Error(`第 ${index + 2} 行重复使用同一记录 ID`);
+L0136 |     if (previous) used.add(previous.id);
+L0137 |     const draft = Object.fromEntries(Object.entries(displayFields).map(([field, label]) => [field, text(row[label])]));
+L0138 |     draft.status = keyFor(STATUSES, draft.status, "当前进度");
+L0139 |     draft.source = keyFor(SOURCES, draft.source, "投递来源");
+L0140 |     draft.appliedDate = importedDate(row["投递日期"]);
+L0141 |     draft.nextActionDate = importedDate(row["下次跟进"]);
+L0142 |     const visibleHistory = text(row["进度时间线"]);
+L0143 |     const historyChanged = previous && Object.hasOwn(row, "进度时间线") && visibleHistory !== formatStatusHistory(previous.statusHistory);
+L0144 |     let record = previous ? updateRecord(previous, draft, now) : normalizeImportedRecord({ ...draft, id: rowId, createdAt: text(row["创建时间"]), updatedAt: text(row["更新时间"]) }, now);
+L0145 |     if (historyChanged || !previous && visibleHistory) record.statusHistory = parseDisplayHistory(visibleHistory);
+L0146 |     if (previous && !historyChanged && Object.entries(draft).every(([field, value]) => value === previous[field])) record = previous;
+L0147 |     // A visible-only workbook has no old status to compare with. Retain all
+L0148 |     // user-supplied history, then record the current status if it differs from
+L0149 |     // the final event. The same applies when both status and history are edited.
+L0150 |     if (record.statusHistory.at(-1)?.status !== record.status) {
+L0151 |       record = { ...record, statusHistory: [...record.statusHistory, { status: record.status, date: now }], updatedAt: now };
+L0152 |     }
+L0153 |     // Creation/update timestamps are system metadata; changing them is never
+L0154 |     // silently ignored when an existing hidden record is being retained.
+L0155 |     if (previous && ["创建时间", "更新时间"].some((label) => Object.hasOwn(row, label) && text(row[label]) !== previous[label === "创建时间" ? "createdAt" : "updatedAt"])) {
+L0156 |       throw new Error(`第 ${index + 2} 行修改了系统时间列，请保留创建时间和更新时间，由插件记录更新`);
+L0157 |     }
+L0158 |     return record;
+L0159 |   });
+L0160 |   return validateRecords(imported);
+L0161 | }
+L0162 | 
+L0163 | function text(value) { return value == null ? "" : String(value).trim(); }
+L0164 | 
+L0165 | function keyFor(options, value, label) {
+L0166 |   const option = options.find((item) => item.key === value || item.label === value || item.label.split(" / ").includes(value));
+L0167 |   if (!option) throw new Error(`${label}包含不支持的值：${value}`);
+L0168 |   return option.key;
+L0169 | }
+L0170 | 
+L0171 | function importedDate(value) {
+L0172 |   if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+L0173 |   if (typeof value === "number" && Number.isFinite(value)) return new Date((Math.floor(value) - 25569) * 86400000).toISOString().slice(0, 10);
+L0174 |   const formatted = text(value).match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+L0175 |   return formatted ? `${formatted[1]}-${formatted[2].padStart(2, "0")}-${formatted[3].padStart(2, "0")}` : text(value);
+L0176 | }
+L0177 | 
+L0178 | function parseDisplayHistory(value) {
+L0179 |   if (!value) return [];
+L0180 |   return value.split(" -> ").map((entry) => {
+L0181 |     const match = entry.match(/^(\S+)\s+(.+)$/);
+L0182 |     if (!match) throw new Error("进度时间线格式不正确，请使用导出时的日期和状态格式");
+L0183 |     return { date: match[1], status: keyFor(STATUSES, match[2], "进度时间线") };
+L0184 |   });
+L0185 | }
+L0186 | 
+L0187 | function formatStatusHistory(statusHistory) {
+L0188 |   if (!Array.isArray(statusHistory)) return "";
+L0189 |   return statusHistory
+L0190 |     .map((item) => `${item.date || ""} ${labelFor(STATUSES, item.status)}`)
+L0191 |     .join(" -> ");
+L0192 | }
+L0193 | 
+L0194 | function labelFor(options, key) {
+L0195 |   return options.find((option) => option.key === key)?.label || key || "";
+L0196 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/jobInfo/aiJobInfo.js
 SHA256: 06c06f1948857333060380a3a44bffb35476be5003ddc808185e4f7c1ba6a5b5
-LINES: 106
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import { DEFAULT_AI_SETTINGS } from "../aiSettings.js";
 L0002 | import { extractJobInfo } from "./extractJobInfo.js";
 L0003 | 
@@ -976,14 +1172,10 @@ L0102 |   let result;
 L0103 |   try { result = JSON.parse(outputText); } catch { throw new Error("AI 岗位信息格式无效，已保留页面识别结果"); }
 L0104 |   return validateResult(result);
 L0105 | }
-L0106 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/jobInfo/collectSignals.js
 SHA256: bc2fc8306aa6a8d6b36841f32a43da523181117b96feb7fe7bf21a6d84114ab5
-LINES: 110
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | // Chrome serializes this function for injection; keep every helper inside it.
 L0002 | export function collectJobSignals() {
 L0003 |   const clean = (value, max = 80) => typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
@@ -1093,14 +1285,10 @@ L0106 |     signals.siteCandidates.base = unique([...textFrom(["[class*='job-loc
 L0107 |   }
 L0108 |   return signals;
 L0109 | }
-L0110 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/jobInfo/extractJobInfo.js
 SHA256: c53f2e63d9e27bb8b8ce2a91c54f65935bfac83e0e0c1e57378cfe25547cb052
-LINES: 68
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | const PLATFORMS = /^(?:智联招聘|智联|BOSS直聘|前程无忧|51job|猎聘|猎聘网|拉勾|拉勾招聘|实习僧|牛客|牛客网|应届生求职网|脉脉|LinkedIn|领英|JobsDB|CTgoodjobs|Indeed|Moka)$/i;
 L0002 | const GENERIC = /^(?:招聘|招聘官网|官方招聘网站|校园招聘|社会招聘|人才招聘|加入我们|Careers?|Jobs?|填写简历|简历填写|我的简历|职位详情|岗位详情|申请职位|职位申请|应聘职位|招聘职位|投递简历|个人中心|首页|登录|注册|校园|社会|校招|社招|投递记录|返回|基本信息|个人信息|个人基本信息|基础信息|教育经历|工作经历|Job details?|Job application|Apply(?: now)?|Save(?: job)?|Report|Share|Print|Company overview|Jobs? description)$/i;
 L0003 | const COMPANY = /公司|集团|银行|基金|证券|保险|科技|有限|股份|事务所|会计师|咨询|\b(?:Limited|Ltd\.?|Inc\.?|Group|Bank|Capital|Securities|LLP)\b/i;
@@ -1168,460 +1356,37 @@ L0064 |   const time = (item) => typeof item.capturedAt === "number" ? item.capt
 L0065 |   return list(recentJobs).filter((item) => item && typeof item === "object").slice().sort((a, b) =>
 L0066 |     Number(itemHost(b) === normalizedHost) - Number(itemHost(a) === normalizedHost) || time(b) - time(a));
 L0067 | }
-L0068 | 
 
 ========================================================================
-FILE: application-tracker-extension/src/memory/memory.css
-SHA256: 46f60127f78ca5951c746c91a5e5c95cb3629c25afb93eafc10f852f2122afb3
-LINES: 227
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | * {
-L0002 |   box-sizing: border-box;
-L0003 | }
+FILE: application-tracker-extension/src/jobInfo/recentJobs.js
+SHA256: b27991dec1626f61bd805717b46d871b17b8f8e5e7d2a445829ffa03b024d3b4
+L0001 | import { sanitizeJobUrl } from "./extractJobInfo.js";
+L0002 | 
+L0003 | export const RECENT_JOBS_KEY = "applicationTracker.recentJobs";
 L0004 | 
-L0005 | body {
-L0006 |   margin: 0;
-L0007 |   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-L0008 |   color: #202124;
-L0009 |   background: #f8fafc;
-L0010 | }
-L0011 | 
-L0012 | .memory-shell {
-L0013 |   max-width: 980px;
-L0014 |   margin: 0 auto;
-L0015 |   padding: 24px;
-L0016 | }
-L0017 | 
-L0018 | .page-header {
-L0019 |   display: flex;
-L0020 |   align-items: flex-start;
-L0021 |   justify-content: space-between;
-L0022 |   gap: 16px;
-L0023 |   margin-bottom: 18px;
-L0024 | }
-L0025 | 
-L0026 | h1,
-L0027 | p {
-L0028 |   margin: 0;
-L0029 | }
-L0030 | 
-L0031 | h1 {
-L0032 |   font-size: 24px;
-L0033 | }
-L0034 | 
-L0035 | p {
-L0036 |   margin-top: 6px;
-L0037 |   color: #475569;
-L0038 | }
-L0039 | 
-L0040 | a {
-L0041 |   color: #1a73e8;
-L0042 |   font-weight: 700;
-L0043 |   text-decoration: none;
-L0044 | }
-L0045 | 
-L0046 | .toolbar {
-L0047 |   display: flex;
-L0048 |   align-items: center;
-L0049 |   flex-wrap: wrap;
-L0050 |   gap: 10px;
-L0051 |   margin-bottom: 14px;
-L0052 | }
-L0053 | 
-L0054 | input {
-L0055 |   width: min(420px, 100%);
-L0056 |   border: 1px solid #cbd5e1;
-L0057 |   border-radius: 6px;
-L0058 |   padding: 9px;
-L0059 |   font: inherit;
-L0060 |   background: white;
-L0061 | }
-L0062 | 
-L0063 | .memory-list {
-L0064 |   display: grid;
-L0065 |   gap: 12px;
-L0066 | }
-L0067 | 
-L0068 | .memory-card {
-L0069 |   border: 1px solid #e2e8f0;
-L0070 |   border-radius: 8px;
-L0071 |   padding: 14px;
-L0072 |   background: white;
-L0073 | }
-L0074 | 
-L0075 | .memory-card header {
-L0076 |   display: flex;
-L0077 |   align-items: center;
-L0078 |   justify-content: space-between;
-L0079 |   gap: 12px;
-L0080 |   margin-bottom: 10px;
-L0081 | }
-L0082 | 
-L0083 | .memory-card h2 {
-L0084 |   margin: 0;
-L0085 |   font-size: 16px;
-L0086 | }
-L0087 | 
-L0088 | .memory-card header small {
-L0089 |   display: block;
-L0090 |   margin-top: 4px;
-L0091 |   color: #64748b;
-L0092 |   font-size: 12px;
-L0093 | }
-L0094 | 
-L0095 | .memory-meta {
-L0096 |   display: flex;
-L0097 |   flex-wrap: wrap;
-L0098 |   gap: 8px;
-L0099 |   margin-top: 10px;
-L0100 |   color: #64748b;
-L0101 |   font-size: 12px;
-L0102 | }
-L0103 | 
-L0104 | button {
-L0105 |   border: 1px solid #fecaca;
-L0106 |   border-radius: 6px;
-L0107 |   padding: 7px 10px;
-L0108 |   color: #7f1d1d;
-L0109 |   font: inherit;
-L0110 |   font-weight: 800;
-L0111 |   background: #fee2e2;
-L0112 |   cursor: pointer;
-L0113 | }
-L0114 | 
-L0115 | button:disabled {
-L0116 |   cursor: wait;
-L0117 |   opacity: 0.65;
-L0118 | }
-L0119 | 
-L0120 | .cleanup-button,
-L0121 | .apply-cleanup-button {
-L0122 |   border-color: #166534;
-L0123 |   color: white;
-L0124 |   background: #166534;
-L0125 | }
-L0126 | 
-L0127 | .cleanup-preview {
-L0128 |   margin-bottom: 14px;
-L0129 | }
-L0130 | 
-L0131 | .cleanup-card {
-L0132 |   display: grid;
-L0133 |   gap: 10px;
-L0134 |   border: 1px solid #bbf7d0;
-L0135 |   border-radius: 8px;
-L0136 |   padding: 14px;
-L0137 |   background: #f0fdf4;
-L0138 | }
-L0139 | 
-L0140 | .cleanup-card header {
-L0141 |   display: flex;
-L0142 |   align-items: flex-start;
-L0143 |   justify-content: space-between;
-L0144 |   gap: 12px;
-L0145 | }
-L0146 | 
-L0147 | .cleanup-card h2,
-L0148 | .cleanup-card h3 {
-L0149 |   margin: 0;
-L0150 | }
-L0151 | 
-L0152 | .cleanup-card h2 {
-L0153 |   font-size: 17px;
-L0154 | }
-L0155 | 
-L0156 | .cleanup-card h3 {
-L0157 |   font-size: 14px;
-L0158 | }
-L0159 | 
-L0160 | .cleanup-summary {
-L0161 |   color: #166534;
-L0162 |   font-size: 13px;
-L0163 |   font-weight: 700;
-L0164 | }
-L0165 | 
-L0166 | .cleanup-suggestion {
-L0167 |   display: grid;
-L0168 |   grid-template-columns: auto minmax(0, 1fr);
-L0169 |   gap: 10px;
-L0170 |   align-items: flex-start;
-L0171 |   border: 1px solid #dcfce7;
-L0172 |   border-radius: 8px;
-L0173 |   padding: 10px;
-L0174 |   background: white;
-L0175 | }
-L0176 | 
-L0177 | .cleanup-suggestion input {
-L0178 |   width: auto;
-L0179 |   margin-top: 3px;
-L0180 | }
-L0181 | 
-L0182 | .cleanup-suggestion span {
-L0183 |   display: grid;
-L0184 |   gap: 4px;
-L0185 | }
-L0186 | 
-L0187 | .cleanup-suggestion small {
-L0188 |   color: #64748b;
-L0189 | }
-L0190 | 
-L0191 | .empty,
-L0192 | .message {
-L0193 |   border-radius: 6px;
-L0194 |   padding: 10px;
-L0195 | }
-L0196 | 
-L0197 | .empty {
-L0198 |   color: #475569;
-L0199 |   background: white;
-L0200 | }
-L0201 | 
-L0202 | .message {
-L0203 |   margin-bottom: 12px;
-L0204 |   color: #14532d;
-L0205 |   font-weight: 700;
-L0206 |   background: #dcfce7;
-L0207 | }
-L0208 | details{margin-top:12px}details label{display:block;margin:12px 0}details input,details textarea{display:block;width:100%;max-width:100%;font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:6px}details select{font:inherit}summary{cursor:pointer;color:#245b48}
-L0209 | [hidden] { display: none !important; }
-L0210 | .backup-card { border: 1px solid #d5dfd3; border-radius: 10px; background: #f1f6ed; padding: 18px; margin-bottom: 18px; }
-L0211 | .backup-card h2 { font-size: 18px; margin: 0; }
-L0212 | .backup-card h3 { font-size: 16px; margin: 0 0 8px; }
-L0213 | .backup-card p { line-height: 1.65; }
-L0214 | .backup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 12px; }
-L0215 | .backup-actions button:not(.cleanup-button), #refreshMemories { background: white; border-color: #cad5cd; color: #29473b; font-weight: 600; }
-L0216 | .import-button { display: flex; align-items: center; gap: 8px; cursor: pointer; color: #29473b; font-weight: 600; }
-L0217 | .import-button input { max-width: 240px; font-size: 12px; padding: 6px; }
-L0218 | .backup-preview { border-top: 1px solid #cad5cd; margin-top: 16px; padding-top: 14px; }
-L0219 | .backup-preview label { display: block; margin: 12px 0; font-weight: 600; }
-L0220 | select { font: inherit; padding: 8px; max-width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; background: white; }
-L0221 | .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-L0222 | .field-grid select { display: block; width: 100%; margin-top: 6px; }
-L0223 | .answer-text { white-space: pre-wrap; }
-L0224 | .scope-link { font-size: 12px; overflow-wrap: anywhere; }
-L0225 | button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #88ad72; outline-offset: 2px; }
-L0226 | @media (max-width: 600px) { .memory-shell { padding: 16px; } .page-header { flex-wrap: wrap; } .field-grid { grid-template-columns: 1fr; gap: 0; } .import-button { flex-wrap: wrap; } }
-L0227 | 
-
-========================================================================
-FILE: application-tracker-extension/src/memory/memory.html
-SHA256: 33aa371ba4c38930ba1507dd142ccc8f3e25649571c8c53aa66b4ca1110ee921
-LINES: 48
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | <!doctype html>
-L0002 | <html lang="zh-CN">
-L0003 |   <head>
-L0004 |     <meta charset="utf-8" />
-L0005 |     <meta name="viewport" content="width=device-width, initial-scale=1" />
-L0006 |     <title>申请问答记忆库</title>
-L0007 |     <link rel="stylesheet" href="./memory.css" />
-L0008 |   </head>
-L0009 |   <body>
-L0010 |     <main class="memory-shell">
-L0011 |       <header class="page-header">
-L0012 |         <div>
-L0013 |           <h1>申请问答记忆库</h1>
-L0014 |           <p>核对答案、主体和适用范围后，申请助手才会复用。历史答案保留待确认，个人信息保持原样。</p>
-L0015 |         </div>
-L0016 |         <a href="../records/records.html">返回投递记录</a>
-L0017 |       </header>
-L0018 | 
-L0019 |       <section class="toolbar">
-L0020 |         <input id="searchInput" type="search" placeholder="搜索问题、答案或分类" />
-L0021 |         <button id="refreshMemories" type="button" hidden>刷新列表</button>
-L0022 |       </section>
-L0023 | 
-L0024 |       <section class="backup-card" aria-label="备份和恢复">
-L0025 |         <h2>备份和恢复</h2>
-L0026 |         <p>完整备份包含投递记录、个人资料与问答记忆，不包含 API Key。Excel 备份仅包含投递记录。</p>
-L0027 |         <div class="backup-actions">
-L0028 |           <button id="exportBackup" class="cleanup-button" type="button">导出完整备份</button>
-L0029 |           <label class="import-button">导入 JSON 备份<input id="importBackup" type="file" accept=".json,application/json" /></label>
-L0030 |           <button id="restoreRecovery" type="button" hidden>导入前恢复点</button>
-L0031 |         </div>
-L0032 |         <section id="backupPreview" class="backup-preview" hidden>
-L0033 |           <h3>恢复预览</h3><p id="backupSummary"></p>
-L0034 |           <label>恢复方式 <select id="restoreMode"><option value="merge">合并到当前数据</option><option value="replace">替换为备份数据</option></select></label>
-L0035 |           <p id="restoreDescription"></p>
-L0036 |           <div class="backup-actions"><button id="confirmRestore" class="cleanup-button" type="button">确认恢复</button><button id="refreshPreview" type="button">重新预览</button><button id="cancelRestore" type="button">取消</button></div>
-L0037 |         </section>
-L0038 |       </section>
-L0039 | 
-L0040 |       <p id="message" class="message" role="status" aria-live="polite" hidden></p>
-L0041 |       <section id="cleanupPreview" class="cleanup-preview" hidden></section>
-L0042 |       <section id="memoryList" class="memory-list"></section>
-L0043 |     </main>
-L0044 |     <script type="module" src="./memory.js"></script>
-L0045 |   </body>
-L0046 | </html>
-L0047 | 
-L0048 | 
-
-========================================================================
-FILE: application-tracker-extension/src/memory/memory.js
-SHA256: 116aba9eac196e1683c18668335d89fe768155db2da47cce9c7386415cd89be7
-LINES: 150
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | import { getMemories, saveMemory, deleteMemory, MEMORY_KEY } from "../assistant/store.js";
-L0002 | import { scopeFor, MEMORY_SCOPE_VERSION } from "../assistant/planner.js";
-L0003 | import { getProfile } from "../storage.js";
-L0004 | import { requestStorageMutation } from "../storageClient.js";
-L0005 | import { validateBackup, MAX_BACKUP_BYTES } from "../backup.js";
-L0006 | import { toDateInputValue } from "../dateUtils.js";
-L0007 | import { RECOVERY_KEY } from "../storageKeys.js";
-L0008 | 
-L0009 | const $ = (id) => document.getElementById(id);
-L0010 | const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-L0011 | const entityNames = { self: "本人", "education.master": "硕士教育", "education.bachelor": "本科教育", "family.father": "父亲", "family.mother": "母亲", "family.unknown": "其他家庭成员" };
-L0012 | let memories = [];
-L0013 | let profile = {};
-L0014 | let pendingBackup = null;
-L0015 | let preview = null;
-L0016 | let saving = false;
-L0017 | let previewRevision = 0;
-L0018 | const tell = (text) => { $("message").textContent = text; $("message").hidden = false; };
-L0019 | const run = (fn) => (...args) => Promise.resolve().then(() => fn(...args)).catch((error) => tell(error.message));
-L0020 | 
-L0021 | function entityLabel(value) {
-L0022 |   if (entityNames[value]) return entityNames[value];
-L0023 |   const match = /^experience\.internships\.(\d+)$/.exec(value);
-L0024 |   if (match) {
-L0025 |     const internship = profile.internships?.[Number(match[1])];
-L0026 |     return `实习 ${Number(match[1]) + 1}${internship ? ` · ${internship.companyZh || internship.company || "未命名公司"}` : ""}`;
-L0027 |   }
-L0028 |   return `已有主体（${value}）`;
-L0029 | }
-L0030 | function entityOptions(memory) {
-L0031 |   const values = [...new Set([...Object.keys(entityNames), ...(profile.internships || []).map((_, index) => `experience.internships.${index}`), memory.entityId || "self"])];
-L0032 |   return values.map((value) => `<option value="${escape(value)}" ${value === (memory.entityId || "self") ? "selected" : ""}>${escape(entityLabel(value))}</option>`).join("");
-L0033 | }
-L0034 | function memoryCard(memory) {
-L0035 |   const scoped = memory.scope !== "global";
-L0036 |   const reusable = memory.confirmed && (!scoped || memory.scopeVersion === MEMORY_SCOPE_VERSION);
-L0037 |   return `<article class="memory-card" data-id="${escape(memory.id)}">
-L0038 |     <header><h2>${escape(memory.contextPath || memory.question)}</h2><button data-delete>删除</button></header>
-L0039 |     <p class="answer-text">${escape(memory.answer)}</p>
-L0040 |     <p class="memory-meta">${reusable ? "已确认，可在适用范围内复用" : "待核对，确认后才可复用"} · ${memory.language === "en" ? "英文" : "中文"} · ${escape(entityLabel(memory.entityId || "self"))} · ${scoped ? "仅指定申请链接" : "通用答案"}</p>
-L0041 |     ${scoped ? `<p class="scope-link">${escape(memory.scope || "尚未设置申请链接")}</p>` : ""}
-L0042 |     <details><summary>核对 / 修改复用设置</summary>
-L0043 |       <label>问题 <input data-question value="${escape(memory.question)}"></label>
-L0044 |       <label>答案 <textarea data-answer rows="4">${escape(memory.answer)}</textarea></label>
-L0045 |       <div class="field-grid"><label>语言 <select data-language><option value="zh" ${memory.language === "zh" ? "selected" : ""}>中文</option><option value="en" ${memory.language === "en" ? "selected" : ""}>英文</option></select></label>
-L0046 |       <label>这是谁的信息 <select data-entity>${entityOptions(memory)}</select></label></div>
-L0047 |       <label>适用范围 <select data-scope-kind><option value="page" ${scoped ? "selected" : ""}>仅指定申请链接</option><option value="global" ${scoped ? "" : "selected"}>通用答案</option></select></label>
-L0048 |       <label data-scope-label ${scoped ? "" : "hidden"}>申请链接 <input data-scope type="url" value="${escape(scoped ? memory.scope : "")}" placeholder="粘贴这个岗位的完整申请链接"></label>
-L0049 |       <p>岗位编号和页面路径会保留，登录凭据及跟踪参数会移除。选择通用答案表示允许跨岗位复用。</p>
-L0050 |       <button data-save class="cleanup-button">确认并保存</button><p>此操作只更新问答记忆，不修改个人信息。</p>
-L0051 |     </details></article>`;
-L0052 | }
-L0053 | async function render() {
-L0054 |   [memories, profile] = await Promise.all([getMemories(), getProfile()]);
-L0055 |   const query = $("searchInput").value.trim().toLowerCase();
-L0056 |   const shown = memories.filter((m) => `${m.question} ${m.answer} ${m.scope} ${entityLabel(m.entityId || "self")}`.toLowerCase().includes(query));
-L0057 |   $("memoryList").innerHTML = shown.length ? shown.map(memoryCard).join("") : '<p class="empty">暂无匹配的问答。可以在申请助手中读取、核对并保存网页答案。</p>';
-L0058 |   $("refreshMemories").hidden = true;
-L0059 | }
-L0060 | $("searchInput").addEventListener("input", run(render));
-L0061 | $("refreshMemories").addEventListener("click", run(render));
-L0062 | $("memoryList").addEventListener("change", (event) => {
-L0063 |   if (event.target.matches("[data-scope-kind]")) event.target.closest(".memory-card").querySelector("[data-scope-label]").hidden = event.target.value === "global";
-L0064 | });
-L0065 | $("memoryList").addEventListener("click", run(async (event) => {
-L0066 |   const card = event.target.closest("[data-id]");
-L0067 |   if (!card || saving) return;
-L0068 |   const memory = memories.find((entry) => entry.id === card.dataset.id);
-L0069 |   if (!memory) return;
-L0070 |   saving = true;
-L0071 |   try {
-L0072 |     if (event.target.matches("[data-delete]")) {
-L0073 |       if (!confirm(`删除“${memory.question}”这条问答？`)) return;
-L0074 |       await deleteMemory(memory.id); tell("已删除这条问答。");
-L0075 |     } else if (event.target.matches("[data-save]")) {
-L0076 |       const scope = card.querySelector("[data-scope-kind]").value === "global" ? "global" : scopeFor(card.querySelector("[data-scope]").value.trim());
-L0077 |       if (!scope) throw new Error("请粘贴有效的申请链接");
-L0078 |       const expected = Object.fromEntries(["question", "answer", "language", "entityId", "scope", "updatedAt"].filter((key) => Object.hasOwn(memory, key)).map((key) => [key, memory[key]]));
-L0079 |       await saveMemory({ ...memory, question: card.querySelector("[data-question]").value.trim(), answer: card.querySelector("[data-answer]").value.trim(), language: card.querySelector("[data-language]").value, entityId: card.querySelector("[data-entity]").value, scope }, expected);
-L0080 |       tell("已确认保存。个人信息保持原样。");
-L0081 |     } else return;
-L0082 |     await render();
-L0083 |   } finally { saving = false; }
-L0084 | }));
-L0085 | 
-L0086 | function downloadBackup(backup) {
-L0087 |   const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" }));
-L0088 |   const link = document.createElement("a"); link.href = url; link.download = `application-tracker-backup-${toDateInputValue()}.json`; link.click();
-L0089 |   setTimeout(() => URL.revokeObjectURL(url), 10000);
-L0090 | }
-L0091 | $("exportBackup").addEventListener("click", run(async () => {
-L0092 |   downloadBackup(await requestStorageMutation({ operation: "backup.export" }));
-L0093 |   tell("已导出投递记录、个人资料与问答记忆；备份不包含 API Key。");
-L0094 | }));
-L0095 | async function refreshRecovery() {
-L0096 |   const recovery = await requestStorageMutation({ operation: "backup.recovery" });
-L0097 |   $("restoreRecovery").hidden = !recovery;
-L0098 |   if (recovery) $("restoreRecovery").title = `恢复点时间：${new Date(recovery.exportedAt).toLocaleString()}`;
-L0099 | }
-L0100 | async function showBackupPreview() {
-L0101 |   if (!pendingBackup) return;
-L0102 |   const revision = ++previewRevision;
-L0103 |   $("confirmRestore").disabled = true; preview = null;
-L0104 |   const next = await requestStorageMutation({ operation: "backup.preview", backup: pendingBackup, mode: $("restoreMode").value });
-L0105 |   if (revision !== previewRevision) return;
-L0106 |   preview = next; $("backupPreview").hidden = false;
-L0107 |   $("backupSummary").textContent = `${next.partial ? "旧版资料备份（不含投递记录）" : "完整备份"} · ${new Date(next.exportedAt).toLocaleString()}。备份包含 ${next.incomingRecords} 条投递、${next.incomingMemories} 条问答和 ${next.incomingLegacy} 条旧问答；恢复后共 ${next.resultRecords} 条投递、${next.resultMemories} 条问答。`;
-L0108 |   $("restoreDescription").textContent = next.mode === "replace"
-L0109 |     ? `${next.partial ? "替换个人资料与问答，保留现有投递记录。" : "用此备份替换全部投递记录、个人资料与问答。"}恢复前会在本机保存一个完整恢复点。`
-L0110 |     : `合并时，相同 ID 保留现有内容（本次 ${next.conflictCount} 项）。${next.profileKept ? "当前已有个人资料，整份保留。" : "当前资料为空，将导入备份中的资料。"}${next.profileConflict ? "备份资料与当前资料不同，新加入的问答将设为待核对，避免经历对应错误。" : ""}恢复前会在本机保存一个完整恢复点。`;
-L0111 |   $("confirmRestore").disabled = false;
-L0112 | }
-L0113 | $("importBackup").addEventListener("change", run(async (event) => {
-L0114 |   const file = event.target.files?.[0]; event.target.value = "";
-L0115 |   if (!file) return;
-L0116 |   pendingBackup = null; preview = null; previewRevision++; $("backupPreview").hidden = true;
-L0117 |   if (file.size > MAX_BACKUP_BYTES) throw new Error("备份文件超过 20 MB，请选择插件导出的 JSON 备份");
-L0118 |   let value; try { value = JSON.parse(await file.text()); } catch { throw new Error("无法读取 JSON，请选择插件导出的备份文件"); }
-L0119 |   validateBackup(value);
-L0120 |   pendingBackup = value; $("restoreMode").value = "merge"; await showBackupPreview();
-L0121 | }));
-L0122 | $("restoreMode").addEventListener("change", run(showBackupPreview));
-L0123 | $("refreshPreview").addEventListener("click", run(showBackupPreview));
-L0124 | $("cancelRestore").addEventListener("click", () => { pendingBackup = null; preview = null; previewRevision++; $("backupPreview").hidden = true; });
-L0125 | $("restoreRecovery").addEventListener("click", run(async () => {
-L0126 |   pendingBackup = await requestStorageMutation({ operation: "backup.recovery" });
-L0127 |   if (!pendingBackup) throw new Error("当前没有导入前恢复点");
-L0128 |   $("restoreMode").value = "replace"; await showBackupPreview(); $("backupPreview").scrollIntoView({ behavior: "smooth" });
-L0129 | }));
-L0130 | $("confirmRestore").addEventListener("click", run(async () => {
-L0131 |   if (!pendingBackup || !preview || saving) return;
-L0132 |   saving = true; $("confirmRestore").disabled = true;
-L0133 |   try {
-L0134 |     await requestStorageMutation({ operation: "backup.import", backup: pendingBackup, mode: preview.mode, currentVersion: preview.currentVersion });
-L0135 |     pendingBackup = null; preview = null; $("backupPreview").hidden = true;
-L0136 |     await render(); await refreshRecovery();
-L0137 |     tell("恢复完成。导入前的资料已保存在本机，可点击“导入前恢复点”再次预览并恢复。");
-L0138 |   } catch (error) {
-L0139 |     preview = null; throw new Error(`${error.message}。请点击“重新预览”核对后继续。`);
-L0140 |   } finally { saving = false; }
-L0141 | }));
-L0142 | chrome.storage.onChanged.addListener((changes, area) => {
-L0143 |   if (area !== "local") return;
-L0144 |   if (changes[RECOVERY_KEY]) refreshRecovery().catch((error) => tell(error.message));
-L0145 |   if (!changes[MEMORY_KEY] || saving) return;
-L0146 |   if ($("memoryList").querySelector("details[open]")) { $("refreshMemories").hidden = false; tell("问答已在另一页面更新。当前编辑内容已保留，保存时会检查冲突；也可刷新列表。"); }
-L0147 |   else render().catch((error) => tell(error.message));
-L0148 | });
-L0149 | run(async () => { await render(); await refreshRecovery(); })();
-L0150 | 
+L0005 | // These are temporary page observations, never persistent application records.
+L0006 | export async function rememberJob(sessionStorage, pageUrl, info) {
+L0007 |   if (!pageUrl || !info) return;
+L0008 |   const trusted = (key) => ["high", "medium"].includes(info.confidence?.[key]) && info[key];
+L0009 |   if (!trusted("company") && !trusted("role")) return;
+L0010 |   const url = sanitizeJobUrl(pageUrl);
+L0011 |   if (!url) return;
+L0012 |   const jobs = await loadRecentJobs(sessionStorage);
+L0013 |   const entry = {
+L0014 |     company: trusted("company") || "", role: trusted("role") || "", base: trusted("base") || "",
+L0015 |     url, host: new URL(url).hostname, capturedAt: Date.now(), source: info.source
+L0016 |   };
+L0017 |   await sessionStorage.set({ [RECENT_JOBS_KEY]: [entry, ...jobs.filter((job) => job.url !== url)].slice(0, 20) });
+L0018 | }
+L0019 | 
+L0020 | export async function loadRecentJobs(sessionStorage) {
+L0021 |   const stored = (await sessionStorage.get(RECENT_JOBS_KEY))[RECENT_JOBS_KEY];
+L0022 |   return Array.isArray(stored) ? stored : [];
+L0023 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/model.js
-SHA256: 1d0812b60afddfcfdce5f4f75f1cce6310067c2d43e7304053812094fbb33953
-LINES: 128
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: ba5f6fa92e046069f35684564c69122746b8c49724aad1e1d007154e6a61a4df
 L0001 | import { DEFAULT_STATUS, SOURCE_KEYS, STATUS_KEYS } from "./constants.js";
 L0002 | import { toDateInputValue } from "./dateUtils.js";
 L0003 | 
@@ -1687,66 +1452,1363 @@ L0062 |   const errors = {};
 L0063 |   if (!record.company?.trim()) errors.company = "请填写公司";
 L0064 |   if (!record.role?.trim()) errors.role = "请填写岗位";
 L0065 |   if (!record.portalLink?.trim()) errors.portalLink = "请填写 candidate portal link";
-L0066 |   if (!record.source?.trim()) errors.source = "请选择投递来源";
-L0067 |   if (!record.appliedDate?.trim()) errors.appliedDate = "请选择投递日期";
-L0068 |   if (!record.status?.trim()) errors.status = "请选择当前进度";
-L0069 |   return errors;
+L0066 |   else if (portalReferenceError(record.portalLink)) errors.portalLink = portalReferenceError(record.portalLink);
+L0067 |   if (!record.source?.trim()) errors.source = "请选择投递来源";
+L0068 |   if (!record.appliedDate?.trim()) errors.appliedDate = "请选择投递日期";
+L0069 |   if (!record.status?.trim()) errors.status = "请选择当前进度";
+L0070 |   return errors;
+L0071 | }
+L0072 | 
+L0073 | // A reference may be a web URL or plain text such as “微信内推”. Only web URLs
+L0074 | // are clickable; text references must survive export and recovery unchanged.
+L0075 | export function getPortalUrl(value) {
+L0076 |   const text = String(value ?? "").trim();
+L0077 |   if (!/^https?:\/\//i.test(text)) return "";
+L0078 |   try {
+L0079 |     const url = new URL(text);
+L0080 |     return /^https?:$/.test(url.protocol) ? url.href : "";
+L0081 |   } catch { return ""; }
+L0082 | }
+L0083 | 
+L0084 | function portalReferenceError(value) {
+L0085 |   const text = String(value ?? "").trim();
+L0086 |   if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) return "";
+L0087 |   return getPortalUrl(text) ? "" : "投递链接必须是有效的 http 或 https 地址；非链接来源请填写普通文字";
+L0088 | }
+L0089 | 
+L0090 | export function normalizeDraft(draft) {
+L0091 |   const normalized = {
+L0092 |     company: stringValue(draft.company),
+L0093 |     role: stringValue(draft.role),
+L0094 |     base: stringValue(draft.base),
+L0095 |     portalLink: stringValue(draft.portalLink),
+L0096 |     pageTitle: stringValue(draft.pageTitle),
+L0097 |     source: stringValue(draft.source),
+L0098 |     appliedDate: stringValue(draft.appliedDate),
+L0099 |     status: stringValue(draft.status || DEFAULT_STATUS),
+L0100 |     nextActionDate: stringValue(draft.nextActionDate),
+L0101 |     jdText: stringValue(draft.jdText),
+L0102 |     notes: stringValue(draft.notes)
+L0103 |   };
+L0104 | 
+L0105 |   const portalError = portalReferenceError(normalized.portalLink);
+L0106 |   if (portalError) throw new Error(portalError);
+L0107 | 
+L0108 |   if (normalized.status && !STATUS_KEYS.has(normalized.status)) {
+L0109 |     throw new Error(`Invalid status: ${normalized.status}`);
+L0110 |   }
+L0111 |   if (normalized.source && !SOURCE_KEYS.has(normalized.source)) {
+L0112 |     throw new Error(`Invalid source: ${normalized.source}`);
+L0113 |   }
+L0114 | 
+L0115 |   return normalized;
+L0116 | }
+L0117 | 
+L0118 | export function normalizeImportedRecord(row, now = new Date().toISOString()) {
+L0119 |   const normalized = normalizeDraft(row);
+L0120 |   const history = parseStatusHistory(row.statusHistory, normalized.status, now);
+L0121 |   return {
+L0122 |     id: stringValue(row.id) || createId(),
+L0123 |     ...normalized,
+L0124 |     statusHistory: history,
+L0125 |     createdAt: stringValue(row.createdAt) || now,
+L0126 |     updatedAt: stringValue(row.updatedAt) || now
+L0127 |   };
+L0128 | }
+L0129 | 
+L0130 | function parseStatusHistory(value, fallbackStatus, now) {
+L0131 |   if (!value) {
+L0132 |     return [{ status: fallbackStatus, date: now }];
+L0133 |   }
+L0134 |   const parsed = typeof value === "string" ? JSON.parse(value) : value;
+L0135 |   if (!Array.isArray(parsed)) {
+L0136 |     throw new Error("Invalid statusHistory: expected array");
+L0137 |   }
+L0138 |   for (const item of parsed) {
+L0139 |     if (!STATUS_KEYS.has(item.status)) {
+L0140 |       throw new Error(`Invalid status: ${item.status}`);
+L0141 |     }
+L0142 |   }
+L0143 |   return parsed;
+L0144 | }
+L0145 | 
+L0146 | function stringValue(value) {
+L0147 |   return value == null ? "" : String(value).trim();
+L0148 | }
+
+========================================================================
+FILE: application-tracker-extension/src/popup/popup.css
+SHA256: 71a515536ec280f26a1c1d523db5222002c1967331fe17c0c846287e9dde3fc2
+L0001 | * {
+L0002 |   box-sizing: border-box;
+L0003 | }
+L0004 | 
+L0005 | body {
+L0006 |   margin: 0;
+L0007 |   min-width: 380px;
+L0008 |   max-width: 420px;
+L0009 |   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+L0010 |   color: #202124;
+L0011 |   background: #f8fafc;
+L0012 | }
+L0013 | 
+L0014 | [hidden] {
+L0015 |   display: none !important;
+L0016 | }
+L0017 | 
+L0018 | .popup-shell {
+L0019 |   padding: 16px;
+L0020 | }
+L0021 | 
+L0022 | .popup-header {
+L0023 |   display: flex;
+L0024 |   align-items: center;
+L0025 |   justify-content: space-between;
+L0026 |   gap: 12px;
+L0027 |   margin-bottom: 12px;
+L0028 | }
+L0029 | 
+L0030 | h1,
+L0031 | h2,
+L0032 | h3,
+L0033 | p {
+L0034 |   margin: 0;
+L0035 | }
+L0036 | 
+L0037 | h1 {
+L0038 |   font-size: 18px;
+L0039 | }
+L0040 | 
+L0041 | h2 {
+L0042 |   font-size: 15px;
+L0043 | }
+L0044 | 
+L0045 | h3 {
+L0046 |   font-size: 13px;
+L0047 | }
+L0048 | 
+L0049 | a {
+L0050 |   color: #1a73e8;
+L0051 |   font-size: 13px;
+L0052 |   text-decoration: none;
+L0053 | }
+L0054 | 
+L0055 | .tabs {
+L0056 |   display: grid;
+L0057 |   grid-template-columns: repeat(2, minmax(0, 1fr));
+L0058 |   gap: 4px;
+L0059 |   margin-bottom: 12px;
+L0060 |   border: 1px solid #cbd5e1;
+L0061 |   border-radius: 8px;
+L0062 |   padding: 4px;
+L0063 |   background: white;
+L0064 | }
+L0065 | 
+L0066 | .tab-button {
+L0067 |   border: 0;
+L0068 |   border-radius: 6px;
+L0069 |   padding: 8px 10px;
+L0070 |   color: #475569;
+L0071 |   background: transparent;
+L0072 | }
+L0073 | 
+L0074 | .tab-button.active {
+L0075 |   color: white;
+L0076 |   background: #166534;
+L0077 | }
+L0078 | 
+L0079 | form {
+L0080 |   display: grid;
+L0081 |   gap: 10px;
+L0082 | }
+L0083 | 
+L0084 | label {
+L0085 |   display: grid;
+L0086 |   gap: 4px;
+L0087 |   font-size: 13px;
+L0088 |   font-weight: 700;
+L0089 | }
+L0090 | 
+L0091 | [data-job-source] { color: #64748b; font-size: 11px; font-weight: 400; }
+L0092 | 
+L0093 | input,
+L0094 | select,
+L0095 | textarea {
+L0096 |   width: 100%;
+L0097 |   border: 1px solid #cbd5e1;
+L0098 |   border-radius: 6px;
+L0099 |   padding: 8px;
+L0100 |   font: inherit;
+L0101 |   background: white;
+L0102 | }
+L0103 | 
+L0104 | textarea {
+L0105 |   resize: vertical;
+L0106 | }
+L0107 | 
+L0108 | button {
+L0109 |   border: 0;
+L0110 |   border-radius: 6px;
+L0111 |   padding: 9px 11px;
+L0112 |   font: inherit;
+L0113 |   font-weight: 800;
+L0114 |   color: white;
+L0115 |   background: #166534;
+L0116 |   cursor: pointer;
+L0117 | }
+L0118 | 
+L0119 | button:disabled {
+L0120 |   cursor: wait;
+L0121 |   opacity: 0.65;
+L0122 | }
+L0123 | 
+L0124 | .secondary-button {
+L0125 |   border: 1px solid #cbd5e1;
+L0126 |   color: #111827;
+L0127 |   background: white;
+L0128 | }
+L0129 | 
+L0130 | .form-actions,
+L0131 | .application-info-actions,
+L0132 | .language-tabs {
+L0133 |   display: flex;
+L0134 |   align-items: center;
+L0135 |   flex-wrap: wrap;
+L0136 |   gap: 10px;
+L0137 | }
+L0138 | 
+L0139 | .form-actions button {
+L0140 |   flex: 0 0 auto;
+L0141 | }
+L0142 | 
+L0143 | .application-info-actions {
+L0144 |   margin-bottom: 12px;
+L0145 | }
+L0146 | 
+L0147 | .language-tabs {
+L0148 |   gap: 4px;
+L0149 |   border: 1px solid #cbd5e1;
+L0150 |   border-radius: 8px;
+L0151 |   padding: 4px;
+L0152 |   background: white;
+L0153 | }
+L0154 | 
+L0155 | .language-tab {
+L0156 |   border: 0;
+L0157 |   border-radius: 6px;
+L0158 |   padding: 7px 9px;
+L0159 |   color: #475569;
+L0160 |   background: transparent;
+L0161 | }
+L0162 | 
+L0163 | .language-tab.active {
+L0164 |   color: white;
+L0165 |   background: #166534;
+L0166 | }
+L0167 | 
+L0168 | .application-info-list {
+L0169 |   display: grid;
+L0170 |   gap: 10px;
+L0171 | }
+L0172 | 
+L0173 | .question-scan-results {
+L0174 |   margin-bottom: 12px;
+L0175 | }
+L0176 | 
+L0177 | .question-scan-card,
+L0178 | .question-scan-empty {
+L0179 |   border: 1px solid #e2e8f0;
+L0180 |   border-radius: 8px;
+L0181 |   padding: 12px;
+L0182 |   background: white;
+L0183 | }
+L0184 | 
+L0185 | .question-scan-card header {
+L0186 |   display: grid;
+L0187 |   gap: 4px;
+L0188 |   margin-bottom: 10px;
+L0189 | }
+L0190 | 
+L0191 | .question-scan-card header p,
+L0192 | .question-scan-empty p {
+L0193 |   color: #64748b;
+L0194 |   font-size: 12px;
+L0195 | }
+L0196 | 
+L0197 | .question-scan-list {
+L0198 |   display: grid;
+L0199 |   gap: 8px;
+L0200 |   max-height: 220px;
+L0201 |   overflow: auto;
+L0202 | }
+L0203 | 
+L0204 | .question-scan-item {
+L0205 |   display: grid;
+L0206 |   grid-template-columns: minmax(0, 1fr);
+L0207 |   align-items: start;
+L0208 |   gap: 8px;
+L0209 |   border: 1px solid #e2e8f0;
+L0210 |   border-radius: 8px;
+L0211 |   padding: 8px;
+L0212 |   background: #f8fafc;
+L0213 | }
+L0214 | 
+L0215 | .scan-select {
+L0216 |   display: flex;
+L0217 |   grid-template-columns: none;
+L0218 |   align-items: center;
+L0219 |   gap: 8px;
+L0220 |   margin: 0;
+L0221 | }
+L0222 | 
+L0223 | .scan-select input {
+L0224 |   width: auto;
+L0225 |   margin: 0;
+L0226 | }
+L0227 | 
+L0228 | .scan-select span {
+L0229 |   border-radius: 999px;
+L0230 |   padding: 3px 7px;
+L0231 |   font-size: 11px;
+L0232 |   font-weight: 800;
+L0233 |   white-space: nowrap;
+L0234 | }
+L0235 | 
+L0236 | .scan-question-body {
+L0237 |   display: grid;
+L0238 |   gap: 7px;
+L0239 | }
+L0240 | 
+L0241 | .scan-question-body p {
+L0242 |   color: #111827;
+L0243 |   font-size: 12px;
+L0244 |   overflow-wrap: anywhere;
+L0245 | }
+L0246 | 
+L0247 | .scan-question-body textarea {
+L0248 |   min-height: 54px;
+L0249 |   padding: 7px;
+L0250 |   font-size: 12px;
+L0251 | }
+L0252 | 
+L0253 | .ai-reason {
+L0254 |   color: #64748b;
+L0255 |   font-size: 11px;
+L0256 |   line-height: 1.35;
+L0257 |   overflow-wrap: anywhere;
+L0258 | }
+L0259 | 
+L0260 | .scan-debug-panel {
+L0261 |   display: grid;
+L0262 |   gap: 8px;
+L0263 |   margin-top: 10px;
+L0264 |   border: 1px solid #fde68a;
+L0265 |   border-radius: 8px;
+L0266 |   padding: 10px;
+L0267 |   background: #fffbeb;
+L0268 | }
+L0269 | 
+L0270 | .scan-debug-panel h3 {
+L0271 |   margin: 0;
+L0272 |   font-size: 13px;
+L0273 | }
+L0274 | 
+L0275 | .scan-debug-list {
+L0276 |   display: grid;
+L0277 |   gap: 6px;
+L0278 |   max-height: 220px;
+L0279 |   overflow: auto;
+L0280 | }
+L0281 | 
+L0282 | .scan-debug-list article {
+L0283 |   display: grid;
+L0284 |   gap: 3px;
+L0285 |   border: 1px solid #fef3c7;
+L0286 |   border-radius: 7px;
+L0287 |   padding: 7px;
+L0288 |   background: white;
+L0289 | }
+L0290 | 
+L0291 | .scan-debug-list strong,
+L0292 | .scan-debug-list small,
+L0293 | .scan-debug-list span {
+L0294 |   overflow-wrap: anywhere;
+L0295 | }
+L0296 | 
+L0297 | .scan-debug-list strong {
+L0298 |   font-size: 12px;
+L0299 | }
+L0300 | 
+L0301 | .scan-debug-list small,
+L0302 | .scan-debug-list span {
+L0303 |   color: #64748b;
+L0304 |   font-size: 11px;
+L0305 | }
+L0306 | 
+L0307 | .ai-suggest-button {
+L0308 |   justify-self: start;
+L0309 |   border: 1px solid #cbd5e1;
+L0310 |   padding: 6px 8px;
+L0311 |   color: #14532d;
+L0312 |   font-size: 12px;
+L0313 |   background: #ecfdf5;
+L0314 | }
+L0315 | 
+L0316 | .confirm-fill-button {
+L0317 |   width: 100%;
+L0318 |   margin-top: 10px;
+L0319 | }
+L0320 | 
+L0321 | .scan-recognized span {
+L0322 |   color: #14532d;
+L0323 |   background: #dcfce7;
+L0324 | }
+L0325 | 
+L0326 | .scan-common span {
+L0327 |   color: #1e3a8a;
+L0328 |   background: #dbeafe;
+L0329 | }
+L0330 | 
+L0331 | .scan-memory span {
+L0332 |   color: #365314;
+L0333 |   background: #ecfccb;
+L0334 | }
+L0335 | 
+L0336 | .scan-filled span {
+L0337 |   color: #334155;
+L0338 |   background: #e2e8f0;
+L0339 | }
+L0340 | 
+L0341 | .scan-unknown span {
+L0342 |   color: #713f12;
+L0343 |   background: #fef3c7;
+L0344 | }
+L0345 | 
+L0346 | .application-info-group {
+L0347 |   display: grid;
+L0348 |   gap: 10px;
+L0349 | }
+L0350 | 
+L0351 | .application-info-card,
+L0352 | .application-info-empty {
+L0353 |   border: 1px solid #e2e8f0;
+L0354 |   border-radius: 8px;
+L0355 |   padding: 12px;
+L0356 |   background: white;
+L0357 | }
+L0358 | 
+L0359 | .application-info-card header {
+L0360 |   display: flex;
+L0361 |   align-items: center;
+L0362 |   justify-content: space-between;
+L0363 |   gap: 10px;
+L0364 |   margin-bottom: 10px;
+L0365 | }
+L0366 | 
+L0367 | .application-info-card dl {
+L0368 |   display: grid;
+L0369 |   gap: 7px;
+L0370 |   margin: 0;
+L0371 | }
+L0372 | 
+L0373 | .application-info-card dl div {
+L0374 |   display: grid;
+L0375 |   grid-template-columns: 72px minmax(0, 1fr) auto;
+L0376 |   align-items: start;
+L0377 |   gap: 8px;
+L0378 | }
+L0379 | 
+L0380 | .application-info-card dt {
+L0381 |   color: #64748b;
+L0382 |   font-size: 12px;
+L0383 |   font-weight: 800;
+L0384 | }
+L0385 | 
+L0386 | .application-info-card dd {
+L0387 |   margin: 0;
+L0388 |   font-size: 13px;
+L0389 |   white-space: pre-wrap;
+L0390 |   overflow-wrap: anywhere;
+L0391 | }
+L0392 | 
+L0393 | .copy-item-button,
+L0394 | .application-info-card button[data-action="copy-item"] {
+L0395 |   border: 1px solid #cbd5e1;
+L0396 |   padding: 5px 7px;
+L0397 |   color: #111827;
+L0398 |   font-size: 12px;
+L0399 |   background: white;
+L0400 | }
+L0401 | 
+L0402 | .application-info-entry + .application-info-entry {
+L0403 |   margin-top: 12px;
+L0404 |   border-top: 1px solid #e2e8f0;
+L0405 |   padding-top: 12px;
+L0406 | }
+L0407 | 
+L0408 | .application-info-entry h3 {
+L0409 |   margin-bottom: 8px;
+L0410 | }
+L0411 | 
+L0412 | .warning,
+L0413 | .errors {
+L0414 |   margin: 0 0 10px;
+L0415 |   border-radius: 6px;
+L0416 |   padding: 8px;
+L0417 |   color: #7c2d12;
+L0418 |   background: #ffedd5;
+L0419 | }
+L0420 | 
+L0421 | .message {
+L0422 |   margin: 0;
+L0423 |   border-radius: 6px;
+L0424 |   padding: 7px 9px;
+L0425 |   font-size: 13px;
+L0426 |   font-weight: 700;
+L0427 |   color: #14532d;
+L0428 |   background: #dcfce7;
+L0429 | }
+
+========================================================================
+FILE: application-tracker-extension/src/popup/popup.html
+SHA256: 3717571134d014dcbc99f7d0807acc04ffb83be9e2a75cccd17887a4cb820527
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN">
+L0003 |   <head>
+L0004 |     <meta charset="utf-8" />
+L0005 |     <meta name="viewport" content="width=device-width, initial-scale=1" />
+L0006 |     <title>记录投递</title>
+L0007 |     <link rel="stylesheet" href="./popup.css" />
+L0008 |   </head>
+L0009 |   <body>
+L0010 |     <main class="popup-shell">
+L0011 |       <header class="popup-header">
+L0012 |         <h1>记录投递</h1>
+L0013 |         <a href="../records/records.html" target="_blank">查看全部</a>
+L0014 |       </header>
+L0015 | 
+L0016 |       <nav class="tabs" aria-label="弹窗切换">
+L0017 |         <button class="tab-button active" type="button" data-tab="record">记录投递</button>
+L0018 |         <button class="tab-button" type="button" data-tab="applicationInfo">申请信息</button>
+L0019 |       </nav>
+L0020 | 
+L0021 |       <section id="recordPanel" class="tab-panel">
+L0022 |         <p id="tabWarning" class="warning" hidden>无法读取当前标签页，请手动填写链接和标题。</p>
+L0023 |         <form id="applicationForm" novalidate>
+L0024 |           <label>公司 <small data-job-source="company" hidden></small><input name="company" required /></label>
+L0025 |           <label>岗位 <small data-job-source="role" hidden></small><input name="role" required /></label>
+L0026 |           <label id="recentJobBox" hidden>用最近识别的岗位 <select id="recentJob"></select></label>
+L0027 |           <label>Base 地 <small data-job-source="base" hidden></small><input name="base" /></label>
+L0028 |           <label>投递链接 / 来源说明 <input name="portalLink" type="text" placeholder="https://… 或微信内推" required /></label>
+L0029 |           <label>网页标题 <input name="pageTitle" /></label>
+L0030 |           <label>投递来源 <select name="source" required></select></label>
+L0031 |           <label>投递日期 <input name="appliedDate" type="date" required /></label>
+L0032 |           <label>当前进度 <select name="status" required></select></label>
+L0033 |           <label>下次跟进 / 截止日期 <input name="nextActionDate" type="date" /></label>
+L0034 |           <label>JD 原文或要点 <textarea name="jdText" rows="4"></textarea></label>
+L0035 |           <label>备注 <textarea name="notes" rows="3"></textarea></label>
+L0036 | 
+L0037 |           <div id="formErrors" class="errors" hidden></div>
+L0038 | 
+L0039 |           <div class="form-actions">
+L0040 |             <button type="submit">保存记录</button>
+L0041 |             <button id="clearDraft" type="button">清空草稿</button>
+L0042 |             <span id="saveMessage" class="message" hidden></span>
+L0043 |           </div>
+L0044 |         </form>
+L0045 |       </section>
+L0046 | 
+L0047 |       <section id="applicationInfoPanel" class="tab-panel" hidden>
+L0048 |         <div class="application-info-actions">
+L0049 |           <button id="autofillButton" type="button">打开申请助手</button>
+L0050 |           <div class="language-tabs" aria-label="申请语言切换">
+L0051 |             <button class="language-tab active" type="button" data-language-tab="zh">中文申请</button>
+L0052 |             <button class="language-tab" type="button" data-language-tab="en">English Application</button>
+L0053 |           </div>
+L0054 |           <a href="../profile/profile.html" target="_blank">编辑个人信息</a>
+L0055 |           <a href="../memory/memory.html" target="_blank">记忆库</a>
+L0056 |           <a href="../ai/ai.html" target="_blank">AI 设置</a>
+L0057 |           <span id="autofillMessage" class="message" hidden></span>
+L0058 |         </div>
+L0059 |         <div id="applicationInfoList" class="application-info-list"></div>
+L0060 |       </section>
+L0061 |     </main>
+L0062 |     <script type="module" src="./popup.js"></script>
+L0063 |   </body>
+L0064 | </html>
+L0065 | 
+
+========================================================================
+FILE: application-tracker-extension/src/popup/popup.js
+SHA256: faf00280b84a99935c239865154c8da788cfeef1ec2298c16a4af924de0786f8
+L0001 | import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES } from "../constants.js";
+L0002 | import { buildApplicationInfoGroups } from "../applicationInfo.js";
+L0003 | import { collectJobSignals } from "../jobInfo/collectSignals.js";
+L0004 | import { extractJobInfo, sortRecentJobs } from "../jobInfo/extractJobInfo.js";
+L0005 | import { rememberJob, loadRecentJobs } from "../jobInfo/recentJobs.js";
+L0006 | import { requestJobInfo } from "../jobInfo/aiJobInfo.js";
+L0007 | import { findPotentialDuplicate } from "../duplicates.js";
+L0008 | import { emptyRecordDraft, validateRecordForSave } from "../model.js";
+L0009 | import { detectSourceFromUrl } from "../sourceDetection.js";
+L0010 | import { getProfile, getRecords, saveNewRecord, getAiSettings } from "../storage.js";
+L0011 | import { toDateInputValue } from "../dateUtils.js";
+L0012 | import { scopeFor } from "../assistant/planner.js";
+L0013 | 
+L0014 | const form = document.querySelector("#applicationForm");
+L0015 | const tabWarning = document.querySelector("#tabWarning");
+L0016 | const saveMessage = document.querySelector("#saveMessage");
+L0017 | const formErrors = document.querySelector("#formErrors");
+L0018 | const autofillButton = document.querySelector("#autofillButton");
+L0019 | const autofillMessage = document.querySelector("#autofillMessage");
+L0020 | const recordPanel = document.querySelector("#recordPanel");
+L0021 | const applicationInfoPanel = document.querySelector("#applicationInfoPanel");
+L0022 | const applicationInfoList = document.querySelector("#applicationInfoList");
+L0023 | let activeApplicationLanguage = "zh";
+L0024 | let targetPageTab = null;
+L0025 | let draftKey;
+L0026 | let initialDraft;
+L0027 | let draftWrite = Promise.resolve();
+L0028 | const editedJobFields = new Set();
+L0029 | let jobInfo = null;
+L0030 | let initialJobInfo = null;
+L0031 | let signals = null;
+L0032 | let popupGeneration = 0;
+L0033 | 
+L0034 | init();
+L0035 | 
+L0036 | async function init() {
+L0037 |   fillSelect(form.elements.source, SOURCES, DEFAULT_SOURCE);
+L0038 |   fillSelect(form.elements.status, STATUSES, DEFAULT_STATUS);
+L0039 | 
+L0040 |   const draft = emptyRecordDraft();
+L0041 |   draft.source = DEFAULT_SOURCE;
+L0042 |   draft.appliedDate = toDateInputValue();
+L0043 | 
+L0044 |   try {
+L0045 |     const tab = await getTargetPageTab();
+L0046 |     targetPageTab = tab;
+L0047 |     draft.portalLink = tab?.url || "";
+L0048 |     draft.pageTitle = tab?.title || "";
+L0049 |     draft.source = detectSourceFromUrl(draft.portalLink);
+L0050 |     if (tab?.id) {
+L0051 |       const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: collectJobSignals });
+L0052 |       signals = result?.result;
+L0053 |       if (signals) {
+L0054 |         jobInfo = extractJobInfo(signals);
+L0055 |         for (const key of ["company", "role", "base"]) draft[key] = jobInfo[key] || "";
+L0056 |         await rememberJob(chrome.storage.session, targetPageTab?.url, jobInfo);
+L0057 |       }
+L0058 |     }
+L0059 |   } catch {
+L0060 |     tabWarning.hidden = false;
+L0061 |   }
+L0062 | 
+L0063 |   initialDraft = { ...draft };
+L0064 |   initialJobInfo = structuredClone(jobInfo);
+L0065 |   const identity = scopeFor(draft.portalLink) || "manual";
+L0066 |   const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity)))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+L0067 |   draftKey = `applicationTracker.popup.draft.${hash}`;
+L0068 |   const saved = (await chrome.storage.session.get(draftKey))[draftKey];
+L0069 |   if (saved?.draft) {
+L0070 |     Object.assign(draft, saved.draft);
+L0071 |     for (const key of ["company", "role", "base"]) if (draft[key] !== initialDraft[key]) editedJobFields.add(key);
+L0072 |     saveMessage.textContent = "已恢复此岗位的未保存草稿";
+L0073 |     saveMessage.hidden = false;
+L0074 |   }
+L0075 |   setFormValues(draft);
+L0076 |   renderSources();
+L0077 |   await renderRecentJobs();
+L0078 |   form.addEventListener("input", (event) => {
+L0079 |     const key = event.target.name;
+L0080 |     if (["company", "role", "base"].includes(key)) { editedJobFields.add(key); renderSources(); }
+L0081 |   });
+L0082 |   form.addEventListener("input", saveDraft);
+L0083 |   form.addEventListener("change", saveDraft);
+L0084 |   document.querySelector("#clearDraft").addEventListener("click", async () => {
+L0085 |     popupGeneration++;
+L0086 |     await draftWrite.catch(() => {});
+L0087 |     await chrome.storage.session.remove(draftKey);
+L0088 |     editedJobFields.clear();
+L0089 |     jobInfo = structuredClone(initialJobInfo);
+L0090 |     setFormValues(initialDraft);
+L0091 |     renderSources();
+L0092 |     saveMessage.textContent = "已清空草稿，保留网页预填信息";
+L0093 |     saveMessage.hidden = false;
+L0094 |   });
+L0095 |   form.addEventListener("submit", handleSubmit);
+L0096 |   void fillAiJobInfo();
+L0097 |   autofillButton.addEventListener("click", openAssistant);
+L0098 |   applicationInfoList.addEventListener("click", handleApplicationInfoClick);
+L0099 |   document.querySelectorAll(".tab-button").forEach((button) => {
+L0100 |     button.addEventListener("click", () => switchTab(button.dataset.tab));
+L0101 |   });
+L0102 |   document.querySelectorAll(".language-tab").forEach((button) => {
+L0103 |     button.addEventListener("click", () => switchApplicationLanguage(button.dataset.languageTab));
+L0104 |   });
+L0105 | }
+L0106 | 
+L0107 | function saveDraft() {
+L0108 |   if (!draftKey) return;
+L0109 |   // Dispatch immediately so closing the popup does not discard a debounce timer.
+L0110 |   draftWrite = chrome.storage.session.set({ [draftKey]: { draft: getFormValues(), updatedAt: Date.now() } });
+L0111 |   draftWrite.catch(() => { saveMessage.textContent = "草稿暂存失败，请先保存记录"; saveMessage.hidden = false; });
+L0112 | }
+L0113 | 
+L0114 | async function getTargetPageTab() {
+L0115 |   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+L0116 |   return tab && /^https?:\/\//.test(tab.url || "") ? tab : null;
+L0117 | }
+L0118 | 
+L0119 | function openAssistant() {
+L0120 |   if (!targetPageTab?.id) {
+L0121 |     autofillMessage.textContent = "请在申请网站中打开插件";
+L0122 |     autofillMessage.hidden = false;
+L0123 |     return;
+L0124 |   }
+L0125 |   const tab = targetPageTab;
+L0126 |   // Start open() in the click gesture; save the binding without delaying the gesture.
+L0127 |   Promise.all([
+L0128 |     chrome.storage.session.set({ [`applicationTracker.assistant.target.${tab.windowId}`]: tab.id }),
+L0129 |     chrome.sidePanel.open({ tabId: tab.id })
+L0130 |   ]).then(() => {
+L0131 |     autofillMessage.textContent = "已打开申请助手，请在侧栏核对填写";
+L0132 |     autofillMessage.hidden = false;
+L0133 |   }).catch(() => {
+L0134 |     autofillMessage.textContent = "无法打开侧栏，请刷新插件并使用 Chrome 120 或更新版本";
+L0135 |     autofillMessage.hidden = false;
+L0136 |   });
+L0137 | }
+L0138 | 
+L0139 | function isExtensionTab(tab) {
+L0140 |   return /^chrome-extension:\/\//i.test(tab?.url || "");
+L0141 | }
+L0142 | 
+L0143 | async function switchTab(tab) {
+L0144 |   const isApplicationInfo = tab === "applicationInfo";
+L0145 |   recordPanel.hidden = isApplicationInfo;
+L0146 |   applicationInfoPanel.hidden = !isApplicationInfo;
+L0147 |   document.querySelectorAll(".tab-button").forEach((button) => {
+L0148 |     button.classList.toggle("active", button.dataset.tab === tab);
+L0149 |   });
+L0150 |   if (isApplicationInfo) {
+L0151 |     await renderApplicationInfo();
+L0152 |   }
+L0153 | }
+L0154 | 
+L0155 | async function renderApplicationInfo() {
+L0156 |   const groups = buildApplicationInfoGroups(await getProfile());
+L0157 |   const group = groups.find((item) => languageKeyForGroup(item) === activeApplicationLanguage) || groups[0];
+L0158 |   if (!group) {
+L0159 |     applicationInfoList.innerHTML = `
+L0160 |       <section class="application-info-empty">
+L0161 |         <p>还没有个人信息。</p>
+L0162 |         <a href="../profile/profile.html" target="_blank">去填写</a>
+L0163 |       </section>
+L0164 |     `;
+L0165 |     return;
+L0166 |   }
+L0167 |   applicationInfoList.innerHTML = renderApplicationInfoGroup(group);
+L0168 | }
+L0169 | 
+L0170 | function renderApplicationInfoGroup(group) {
+L0171 |   return `
+L0172 |     <section class="application-info-group">
+L0173 |       ${group.sections.map(renderApplicationInfoSection).join("")}
+L0174 |     </section>
+L0175 |   `;
+L0176 | }
+L0177 | 
+L0178 | async function switchApplicationLanguage(language) {
+L0179 |   activeApplicationLanguage = language;
+L0180 |   document.querySelectorAll(".language-tab").forEach((button) => {
+L0181 |     button.classList.toggle("active", button.dataset.languageTab === language);
+L0182 |   });
+L0183 |   await renderApplicationInfo();
+L0184 | }
+L0185 | 
+L0186 | function languageKeyForGroup(group) {
+L0187 |   return group.title === "English Application" ? "en" : "zh";
+L0188 | }
+L0189 | function renderApplicationInfoSection(section) {
+L0190 |   return `
+L0191 |     <section class="application-info-card">
+L0192 |       <header>
+L0193 |         <h2>${escapeHtml(section.title)}</h2>
+L0194 |       </header>
+L0195 |       ${renderApplicationInfoItems(section)}
+L0196 |     </section>
+L0197 |   `;
+L0198 | }
+L0199 | 
+L0200 | function renderApplicationInfoItems(section) {
+L0201 |   if (section.entries?.length) {
+L0202 |     return section.entries.map((entry) => `
+L0203 |       <div class="application-info-entry">
+L0204 |         <h3>${escapeHtml(entry.title || "实习经历")}</h3>
+L0205 |         <dl>
+L0206 |           ${entry.items.map(renderCopyableItem).join("")}
+L0207 |         </dl>
+L0208 |       </div>
+L0209 |     `).join("");
+L0210 |   }
+L0211 |   return `
+L0212 |     <dl>
+L0213 |       ${section.items.map(renderCopyableItem).join("")}
+L0214 |     </dl>
+L0215 |   `;
+L0216 | }
+L0217 | 
+L0218 | function renderCopyableItem(item) {
+L0219 |   return `
+L0220 |     <div>
+L0221 |       <dt>${escapeHtml(item.label)}</dt>
+L0222 |       <dd>${escapeHtml(item.value)}</dd>
+L0223 |       <button class="copy-item-button" type="button" data-action="copy-item" data-copy-text="${escapeAttribute(item.copyText || item.value)}">复制</button>
+L0224 |     </div>
+L0225 |   `;
+L0226 | }
+L0227 | 
+L0228 | async function handleApplicationInfoClick(event) {
+L0229 |   const button = event.target.closest("button[data-action='copy-item']");
+L0230 |   if (!button) return;
+L0231 |   await navigator.clipboard.writeText(button.dataset.copyText || "");
+L0232 |   autofillMessage.textContent = "已复制";
+L0233 |   autofillMessage.hidden = false;
+L0234 | }
+L0235 | 
+L0236 | function renderSources() {
+L0237 |   for (const key of ["company", "role", "base"]) {
+L0238 |     const label = document.querySelector('[data-job-source="' + key + '"]');
+L0239 |     label.textContent = !editedJobFields.has(key) && form.elements[key].value ? jobInfo?.source?.[key] || "" : "";
+L0240 |     label.hidden = !label.textContent;
+L0241 |   }
+L0242 | }
+L0243 | 
+L0244 | async function renderRecentJobs() {
+L0245 |   const box = document.querySelector("#recentJobBox");
+L0246 |   const select = document.querySelector("#recentJob");
+L0247 |   const jobs = sortRecentJobs(await loadRecentJobs(chrome.storage.session), signals?.hostname || "").filter((job) => job.role);
+L0248 |   box.hidden = !!jobInfo?.role || !jobs.length;
+L0249 |   select.replaceChildren(new Option("请选择最近识别的岗位", ""), ...jobs.map((job, index) => new Option([job.company, job.role, job.base].filter(Boolean).join(" · "), String(index))));
+L0250 |   select.onchange = () => {
+L0251 |     if (!select.value) return;
+L0252 |     const job = jobs[Number(select.value)];
+L0253 |     popupGeneration++;
+L0254 |     for (const key of ["company", "role", "base"]) { form.elements[key].value = job[key] || ""; editedJobFields.delete(key); }
+L0255 |     jobInfo = { ...job, source: { company: "最近岗位", role: "最近岗位", base: "最近岗位" } };
+L0256 |     renderSources();
+L0257 |     saveDraft();
+L0258 |   };
+L0259 | }
+L0260 | 
+L0261 | async function fillAiJobInfo() {
+L0262 |   const generation = popupGeneration;
+L0263 |   if (!signals || !["company", "role"].some((key) => !jobInfo?.[key] || jobInfo.confidence?.[key] === "low")) return;
+L0264 |   try {
+L0265 |     const result = await requestJobInfo(await getAiSettings(), signals);
+L0266 |     if (!result || generation !== popupGeneration) return;
+L0267 |     const source = { company: "AI 识别，请核对", role: "AI 识别，请核对", base: "AI 识别，请核对" };
+L0268 |     const confidence = Object.fromEntries(["company", "role", "base"].map((key) => [key, result.confidence]));
+L0269 |     for (const key of ["company", "role", "base"]) {
+L0270 |       if (!form.elements[key].value && !editedJobFields.has(key) && result[key]) {
+L0271 |         form.elements[key].value = result[key];
+L0272 |         jobInfo ||= { source: {}, confidence: {} };
+L0273 |         jobInfo[key] = result[key]; jobInfo.source[key] = source[key]; jobInfo.confidence[key] = confidence[key];
+L0274 |       }
+L0275 |     }
+L0276 |     renderSources();
+L0277 |     await rememberJob(chrome.storage.session, targetPageTab?.url, jobInfo);
+L0278 |     if (generation === popupGeneration) saveDraft();
+L0279 |   } catch { /* Local extraction and manual entry remain available. */ }
+L0280 | }
+L0281 | 
+L0282 | async function handleSubmit(event) {
+L0283 |   event.preventDefault();
+L0284 |   popupGeneration++;
+L0285 |   hideMessages();
+L0286 | 
+L0287 |   const draft = getFormValues();
+L0288 |   const errors = validateRecordForSave(draft);
+L0289 |   if (Object.keys(errors).length > 0) {
+L0290 |     formErrors.innerHTML = Object.values(errors).map((error) => `<div>${escapeHtml(error)}</div>`).join("");
+L0291 |     formErrors.hidden = false;
+L0292 |     return;
+L0293 |   }
+L0294 | 
+L0295 |   try {
+L0296 |     const duplicate = findPotentialDuplicate(draft, await getRecords());
+L0297 |     if (duplicate && !confirm(buildDuplicateMessage(duplicate))) {
+L0298 |       return;
+L0299 |     }
+L0300 | 
+L0301 |     await saveNewRecord(draft);
+L0302 |     await draftWrite.catch(() => {});
+L0303 |     await chrome.storage.session.remove(draftKey);
+L0304 |     saveMessage.textContent = "已保存";
+L0305 |     saveMessage.hidden = false;
+L0306 |     form.reset();
+L0307 |     setFormValues({
+L0308 |       ...emptyRecordDraft(),
+L0309 |       source: DEFAULT_SOURCE,
+L0310 |       appliedDate: toDateInputValue(),
+L0311 |       status: DEFAULT_STATUS,
+L0312 |       portalLink: draft.portalLink,
+L0313 |       pageTitle: draft.pageTitle
+L0314 |     });
+L0315 |   } catch (error) {
+L0316 |     formErrors.textContent = `保存失败：${error.message}`;
+L0317 |     formErrors.hidden = false;
+L0318 |   }
+L0319 | }
+L0320 | 
+L0321 | function buildDuplicateMessage(duplicate) {
+L0322 |   const reason = duplicate.reason === "portalLink" ? "链接相同" : "公司和岗位相同";
+L0323 |   return `可能已记录过这条投递（${reason}）：${duplicate.record.company} - ${duplicate.record.role}\n\n仍然保存吗？`;
+L0324 | }
+L0325 | 
+L0326 | function fillSelect(select, options, selectedKey) {
+L0327 |   select.innerHTML = options
+L0328 |     .map((option) => `<option value="${option.key}">${option.label}</option>`)
+L0329 |     .join("");
+L0330 |   select.value = selectedKey;
+L0331 | }
+L0332 | 
+L0333 | function setFormValues(values) {
+L0334 |   for (const [key, value] of Object.entries(values)) {
+L0335 |     if (form.elements[key]) {
+L0336 |       form.elements[key].value = value;
+L0337 |     }
+L0338 |   }
+L0339 | }
+L0340 | 
+L0341 | function getFormValues() {
+L0342 |   return {
+L0343 |     company: form.elements.company.value,
+L0344 |     role: form.elements.role.value,
+L0345 |     base: form.elements.base.value,
+L0346 |     portalLink: form.elements.portalLink.value,
+L0347 |     pageTitle: form.elements.pageTitle.value,
+L0348 |     source: form.elements.source.value,
+L0349 |     appliedDate: form.elements.appliedDate.value,
+L0350 |     status: form.elements.status.value,
+L0351 |     nextActionDate: form.elements.nextActionDate.value,
+L0352 |     jdText: form.elements.jdText.value,
+L0353 |     notes: form.elements.notes.value
+L0354 |   };
+L0355 | }
+L0356 | 
+L0357 | function hideMessages() {
+L0358 |   saveMessage.hidden = true;
+L0359 |   autofillMessage.hidden = true;
+L0360 |   formErrors.hidden = true;
+L0361 |   formErrors.textContent = "";
+L0362 | }
+L0363 | 
+L0364 | function escapeHtml(value) {
+L0365 |   return String(value ?? "")
+L0366 |     .replaceAll("&", "&amp;")
+L0367 |     .replaceAll("<", "&lt;")
+L0368 |     .replaceAll(">", "&gt;")
+L0369 |     .replaceAll('"', "&quot;")
+L0370 |     .replaceAll("'", "&#039;");
+L0371 | }
+L0372 | 
+L0373 | function escapeAttribute(value) {
+L0374 |   return escapeHtml(value);
+L0375 | }
+L0376 | 
+
+========================================================================
+FILE: application-tracker-extension/src/presentation.js
+SHA256: e3d7d63f44a5a84f124bdff05afb21e59da97ebdd66817fbc6b75308c56cad9e
+L0001 | const ACTIVE_STATUSES = new Set(["applied", "oa", "first_interview", "second_interview", "final_interview", "on_hold"]);
+L0002 | const REJECTED_STATUSES = new Set(["rejected", "withdrawn"]);
+L0003 | 
+L0004 | const STATUS_TONES = {
+L0005 |   applied: "neutral",
+L0006 |   oa: "active",
+L0007 |   first_interview: "active",
+L0008 |   second_interview: "active",
+L0009 |   final_interview: "active",
+L0010 |   offer: "success",
+L0011 |   rejected: "danger",
+L0012 |   withdrawn: "danger",
+L0013 |   on_hold: "warning"
+L0014 | };
+L0015 | 
+L0016 | export function getStatusTone(status) {
+L0017 |   return STATUS_TONES[status] || "neutral";
+L0018 | }
+L0019 | 
+L0020 | export function summarizeRecords(records) {
+L0021 |   return {
+L0022 |     total: records.length,
+L0023 |     active: records.filter((record) => ACTIVE_STATUSES.has(record.status)).length,
+L0024 |     offers: records.filter((record) => record.status === "offer").length,
+L0025 |     rejected: records.filter((record) => REJECTED_STATUSES.has(record.status)).length
+L0026 |   };
+L0027 | }
+L0028 | 
+L0029 | export function getCompanyInitial(company) {
+L0030 |   return company?.trim()?.at(0)?.toUpperCase() || "?";
+L0031 | }
+
+========================================================================
+FILE: application-tracker-extension/src/questionMemory.js
+SHA256: 041daad33ad5427f7b52fd124ab3c98d96da901188de030e00d526fb49df6468
+L0001 | const UNSAFE_TYPES = new Set(["hidden", "password", "file", "submit", "button", "reset"]);
+L0002 | 
+L0003 | export function buildQuestionMemoryEntry(draft, now = new Date().toISOString()) {
+L0004 |   const question = cleanText(draft.question);
+L0005 |   const answer = cleanText(draft.answer);
+L0006 |   const section = cleanText(draft.section);
+L0007 |   const group = cleanText(draft.group);
+L0008 |   const contextPath = cleanText(draft.contextPath) || buildContextPath(section, group, question);
+L0009 |   return {
+L0010 |     id: draft.id || createId(),
+L0011 |     question,
+L0012 |     answer,
+L0013 |     section,
+L0014 |     group,
+L0015 |     contextPath,
+L0016 |     displayQuestion: contextPath || question,
+L0017 |     language: draft.language || detectLanguage(question),
+L0018 |     category: draft.category || categorizeQuestion(question),
+L0019 |     source: draft.source || "user_filled",
+L0020 |     pageUrl: cleanText(draft.pageUrl),
+L0021 |     createdAt: draft.createdAt || now,
+L0022 |     updatedAt: now,
+L0023 |     lastUsedAt: draft.lastUsedAt || ""
+L0024 |   };
+L0025 | }
+L0026 | 
+L0027 | export function extractFilledQuestionAnswers(fields) {
+L0028 |   return fields
+L0029 |     .filter(isSafeFilledField)
+L0030 |     .map((field) => withContextFields({
+L0031 |       question: bestQuestionText(field),
+L0032 |       answer: cleanText(field.value)
+L0033 |     }, field))
+L0034 |     .filter((pair) => pair.question && pair.answer);
+L0035 | }
+L0036 | 
+L0037 | export function mergeQuestionMemories(existing, incoming, now = new Date().toISOString()) {
+L0038 |   const merged = existing.map((entry) => buildQuestionMemoryEntry(entry, entry.updatedAt || now));
+L0039 | 
+L0040 |   for (const incomingEntry of incoming) {
+L0041 |     const normalizedIncoming = buildQuestionMemoryEntry(incomingEntry, now);
+L0042 |     const index = merged.findIndex((entry) => isSameMemorySlot(entry, normalizedIncoming));
+L0043 |     if (index === -1) {
+L0044 |       merged.push(normalizedIncoming);
+L0045 |     } else {
+L0046 |       merged[index] = {
+L0047 |         ...merged[index],
+L0048 |         question: normalizedIncoming.question,
+L0049 |         answer: normalizedIncoming.answer,
+L0050 |         section: normalizedIncoming.section,
+L0051 |         group: normalizedIncoming.group,
+L0052 |         contextPath: normalizedIncoming.contextPath,
+L0053 |         displayQuestion: normalizedIncoming.displayQuestion,
+L0054 |         language: normalizedIncoming.language,
+L0055 |         category: normalizedIncoming.category,
+L0056 |         pageUrl: normalizedIncoming.pageUrl || merged[index].pageUrl,
+L0057 |         updatedAt: now
+L0058 |       };
+L0059 |     }
+L0060 |   }
+L0061 | 
+L0062 |   return merged;
+L0063 | }
+L0064 | 
+L0065 | function isSameMemorySlot(a, b) {
+L0066 |   if (a.contextPath || b.contextPath) {
+L0067 |     return a.contextPath === b.contextPath;
+L0068 |   }
+L0069 |   return isSimilarQuestion(a.question, b.question);
 L0070 | }
 L0071 | 
-L0072 | export function normalizeDraft(draft) {
-L0073 |   const normalized = {
-L0074 |     company: stringValue(draft.company),
-L0075 |     role: stringValue(draft.role),
-L0076 |     base: stringValue(draft.base),
-L0077 |     portalLink: stringValue(draft.portalLink),
-L0078 |     pageTitle: stringValue(draft.pageTitle),
-L0079 |     source: stringValue(draft.source),
-L0080 |     appliedDate: stringValue(draft.appliedDate),
-L0081 |     status: stringValue(draft.status || DEFAULT_STATUS),
-L0082 |     nextActionDate: stringValue(draft.nextActionDate),
-L0083 |     jdText: stringValue(draft.jdText),
-L0084 |     notes: stringValue(draft.notes)
-L0085 |   };
-L0086 | 
-L0087 |   if (normalized.status && !STATUS_KEYS.has(normalized.status)) {
-L0088 |     throw new Error(`Invalid status: ${normalized.status}`);
-L0089 |   }
-L0090 |   if (normalized.source && !SOURCE_KEYS.has(normalized.source)) {
-L0091 |     throw new Error(`Invalid source: ${normalized.source}`);
-L0092 |   }
-L0093 | 
-L0094 |   return normalized;
-L0095 | }
-L0096 | 
-L0097 | export function normalizeImportedRecord(row, now = new Date().toISOString()) {
-L0098 |   const normalized = normalizeDraft(row);
-L0099 |   const history = parseStatusHistory(row.statusHistory, normalized.status, now);
-L0100 |   return {
-L0101 |     id: stringValue(row.id) || createId(),
-L0102 |     ...normalized,
-L0103 |     statusHistory: history,
-L0104 |     createdAt: stringValue(row.createdAt) || now,
-L0105 |     updatedAt: stringValue(row.updatedAt) || now
-L0106 |   };
-L0107 | }
-L0108 | 
-L0109 | function parseStatusHistory(value, fallbackStatus, now) {
-L0110 |   if (!value) {
-L0111 |     return [{ status: fallbackStatus, date: now }];
-L0112 |   }
-L0113 |   const parsed = typeof value === "string" ? JSON.parse(value) : value;
-L0114 |   if (!Array.isArray(parsed)) {
-L0115 |     throw new Error("Invalid statusHistory: expected array");
-L0116 |   }
-L0117 |   for (const item of parsed) {
-L0118 |     if (!STATUS_KEYS.has(item.status)) {
-L0119 |       throw new Error(`Invalid status: ${item.status}`);
-L0120 |     }
-L0121 |   }
-L0122 |   return parsed;
+L0072 | function isSafeFilledField(field) {
+L0073 |   const type = cleanText(field.type || "text").toLowerCase();
+L0074 |   if (UNSAFE_TYPES.has(type)) return false;
+L0075 |   return Boolean(cleanText(field.value));
+L0076 | }
+L0077 | 
+L0078 | function bestQuestionText(field) {
+L0079 |   return cleanText(field.label || field.question || field.placeholder || field.name || field.id);
+L0080 | }
+L0081 | 
+L0082 | function isSimilarQuestion(a, b) {
+L0083 |   const aTokens = tokenSet(a);
+L0084 |   const bTokens = tokenSet(b);
+L0085 |   if (aTokens.size === 0 || bTokens.size === 0) return false;
+L0086 |   const intersection = [...aTokens].filter((token) => bTokens.has(token)).length;
+L0087 |   const smaller = Math.min(aTokens.size, bTokens.size);
+L0088 |   return intersection / smaller >= 0.6;
+L0089 | }
+L0090 | 
+L0091 | function tokenSet(value) {
+L0092 |   return new Set(cleanText(value).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((token) => token.length > 2));
+L0093 | }
+L0094 | 
+L0095 | function detectLanguage(value) {
+L0096 |   return /[\u4e00-\u9fff]/.test(value) ? "zh" : "en";
+L0097 | }
+L0098 | 
+L0099 | function categorizeQuestion(value) {
+L0100 |   const text = cleanText(value).toLowerCase();
+L0101 |   if (/sponsor|visa|work authorization|right to work|合法工作|签证|簽證/.test(text)) return "work_authorization";
+L0102 |   if (/salary|compensation|expected pay|期望薪资|期望薪資|薪酬/.test(text)) return "salary";
+L0103 |   if (/start date|available|notice period|入职|入職|到岗|到崗/.test(text)) return "availability";
+L0104 |   if (/language|mandarin|cantonese|english|语言|語言|普通话|普通話|粤语|粵語/.test(text)) return "language";
+L0105 |   return "general";
+L0106 | }
+L0107 | 
+L0108 | function buildContextPath(section, group, question) {
+L0109 |   if (!section && !group) return "";
+L0110 |   return [section, group, question].filter(Boolean).join(" > ");
+L0111 | }
+L0112 | 
+L0113 | function withContextFields(pair, field) {
+L0114 |   const section = cleanText(field.section);
+L0115 |   const group = cleanText(field.group);
+L0116 |   const contextPath = cleanText(field.contextPath) || buildContextPath(section, group, pair.question);
+L0117 |   return {
+L0118 |     ...pair,
+L0119 |     ...(section ? { section } : {}),
+L0120 |     ...(group ? { group } : {}),
+L0121 |     ...(contextPath ? { contextPath } : {})
+L0122 |   };
 L0123 | }
 L0124 | 
-L0125 | function stringValue(value) {
-L0126 |   return value == null ? "" : String(value).trim();
+L0125 | function createId() {
+L0126 |   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+L0127 |   return `memory-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+L0128 | }
+L0129 | 
+L0130 | function cleanText(value) {
+L0131 |   return String(value ?? "").replace(/\s+/g, " ").trim();
+L0132 | }
+
+========================================================================
+FILE: application-tracker-extension/src/records/records.css
+SHA256: 7b6669e7290aedff8154aae73f2bb2de3d6310872ebb5604cd9448c56217d19f
+L0001 | * {
+L0002 |   box-sizing: border-box;
+L0003 | }
+L0004 | 
+L0005 | body {
+L0006 |   margin: 0;
+L0007 |   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+L0008 |   color: #202124;
+L0009 |   background: #f8fafc;
+L0010 | }
+L0011 | 
+L0012 | .records-shell {
+L0013 |   max-width: 1180px;
+L0014 |   margin: 0 auto;
+L0015 |   padding: 24px;
+L0016 | }
+L0017 | 
+L0018 | .page-header,
+L0019 | .toolbar,
+L0020 | .actions,
+L0021 | menu {
+L0022 |   display: flex;
+L0023 |   align-items: center;
+L0024 |   gap: 12px;
+L0025 | }
+L0026 | 
+L0027 | .tabs {
+L0028 |   display: inline-flex;
+L0029 |   gap: 4px;
+L0030 |   margin-bottom: 16px;
+L0031 |   border: 1px solid #cbd5e1;
+L0032 |   border-radius: 8px;
+L0033 |   padding: 4px;
+L0034 |   background: white;
+L0035 | }
+L0036 | 
+L0037 | .tab-button {
+L0038 |   border: 0;
+L0039 |   border-radius: 6px;
+L0040 |   padding: 8px 12px;
+L0041 |   color: #475569;
+L0042 |   font-weight: 800;
+L0043 |   background: transparent;
+L0044 | }
+L0045 | 
+L0046 | .tab-button.active {
+L0047 |   color: white;
+L0048 |   background: #166534;
+L0049 | }
+L0050 | 
+L0051 | .page-header {
+L0052 |   justify-content: space-between;
+L0053 |   margin-bottom: 16px;
+L0054 | }
+L0055 | 
+L0056 | h1,
+L0057 | h2,
+L0058 | h3 {
+L0059 |   margin: 0;
+L0060 | }
+L0061 | 
+L0062 | h1 {
+L0063 |   font-size: 24px;
+L0064 | }
+L0065 | 
+L0066 | .summary-line {
+L0067 |   margin: 6px 0 0;
+L0068 |   color: #475569;
+L0069 |   font-size: 14px;
+L0070 | }
+L0071 | 
+L0072 | h2 {
+L0073 |   font-size: 20px;
+L0074 | }
+L0075 | 
+L0076 | h3 {
+L0077 |   font-size: 15px;
+L0078 | }
+L0079 | 
+L0080 | button,
+L0081 | .import-label,
+L0082 | .primary-action,
+L0083 | .secondary-action {
+L0084 |   border: 1px solid #cbd5e1;
+L0085 |   border-radius: 6px;
+L0086 |   padding: 8px 10px;
+L0087 |   font: inherit;
+L0088 |   color: #111827;
+L0089 |   background: white;
+L0090 |   cursor: pointer;
+L0091 |   text-decoration: none;
+L0092 | }
+L0093 | 
+L0094 | .actions button,
+L0095 | .import-label,
+L0096 | .primary-action,
+L0097 | .secondary-action {
+L0098 |   font-weight: 700;
+L0099 | }
+L0100 | 
+L0101 | .primary-action {
+L0102 |   border-color: #166534;
+L0103 |   color: white;
+L0104 |   background: #166534;
+L0105 | }
+L0106 | 
+L0107 | .secondary-action {
+L0108 |   color: #1a73e8;
+L0109 | }
+L0110 | 
+L0111 | .toolbar {
+L0112 |   margin-bottom: 16px;
+L0113 | }
+L0114 | 
+L0115 | .application-info-header {
+L0116 |   display: flex;
+L0117 |   align-items: flex-start;
+L0118 |   justify-content: space-between;
+L0119 |   gap: 16px;
+L0120 |   margin-bottom: 16px;
+L0121 | }
+L0122 | 
+L0123 | .application-info-header p,
+L0124 | .application-info-empty p {
+L0125 |   margin: 6px 0 0;
+L0126 |   color: #475569;
 L0127 | }
 L0128 | 
+L0129 | .application-info-list {
+L0130 |   display: grid;
+L0131 |   grid-template-columns: repeat(2, minmax(0, 1fr));
+L0132 |   gap: 14px;
+L0133 | }
+L0134 | 
+L0135 | .application-info-group {
+L0136 |   display: grid;
+L0137 |   gap: 14px;
+L0138 | }
+L0139 | 
+L0140 | .application-info-card,
+L0141 | .application-info-empty {
+L0142 |   border: 1px solid #e2e8f0;
+L0143 |   border-radius: 8px;
+L0144 |   padding: 16px;
+L0145 |   background: white;
+L0146 | }
+L0147 | 
+L0148 | .application-info-card header {
+L0149 |   display: flex;
+L0150 |   align-items: center;
+L0151 |   justify-content: space-between;
+L0152 |   gap: 12px;
+L0153 |   margin-bottom: 12px;
+L0154 | }
+L0155 | 
+L0156 | .application-info-card h3,
+L0157 | .application-info-card h4 {
+L0158 |   margin: 0;
+L0159 | }
+L0160 | 
+L0161 | .application-info-card h4 {
+L0162 |   margin-top: 12px;
+L0163 |   font-size: 14px;
+L0164 | }
+L0165 | 
+L0166 | .application-info-card dl {
+L0167 |   display: grid;
+L0168 |   gap: 8px;
+L0169 |   margin: 0;
+L0170 | }
+L0171 | 
+L0172 | .application-info-card dl div {
+L0173 |   display: grid;
+L0174 |   grid-template-columns: 88px minmax(0, 1fr) auto;
+L0175 |   align-items: start;
+L0176 |   gap: 10px;
+L0177 | }
+L0178 | 
+L0179 | .application-info-card dt {
+L0180 |   color: #64748b;
+L0181 |   font-size: 13px;
+L0182 |   font-weight: 800;
+L0183 | }
+L0184 | 
+L0185 | .application-info-card dd {
+L0186 |   margin: 0;
+L0187 |   white-space: pre-wrap;
+L0188 |   overflow-wrap: anywhere;
+L0189 | }
+L0190 | 
+L0191 | .application-info-card button[data-action="copy-item"] {
+L0192 |   border: 1px solid #cbd5e1;
+L0193 |   padding: 5px 8px;
+L0194 |   color: #111827;
+L0195 |   font-size: 12px;
+L0196 |   background: white;
+L0197 | }
+L0198 | 
+L0199 | .bulk-toolbar {
+L0200 |   display: flex;
+L0201 |   align-items: center;
+L0202 |   gap: 10px;
+L0203 |   margin-bottom: 12px;
+L0204 |   border: 1px solid #bfdbfe;
+L0205 |   border-radius: 8px;
+L0206 |   padding: 10px;
+L0207 |   color: #1e3a8a;
+L0208 |   background: #eff6ff;
+L0209 | }
+L0210 | 
+L0211 | .bulk-toolbar select {
+L0212 |   border: 1px solid #93c5fd;
+L0213 |   border-radius: 6px;
+L0214 |   padding: 7px;
+L0215 |   font: inherit;
+L0216 |   background: white;
+L0217 | }
+L0218 | 
+L0219 | .danger-button {
+L0220 |   border-color: #fecaca;

@@ -1,0 +1,1862 @@
+
+========================================================================
+FILE: application-tracker-extension/test/adapterValidation.test.js
+SHA256: ec4c942a2da4d24ab9c0f0871dbd08c99424d9318271f1586d9473460ad67720
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { answerForFact, validateValue } from "../src/assistant/planner.js";
+L0004 | import { isFillable } from "../src/assistant/preview.js";
+L0005 | 
+L0006 | const field = (extra) => ({ supported: true, value: "", kind: "text", type: "text", constraints: {}, options: [], ...extra });
+L0007 | test("new date adapters validate formats and impossible dates before confirmation", () => {
+L0008 |   const date = field({ kind: "date", adapter: "my97-date", dateFormat: "yyyy-MM" });
+L0009 |   assert.equal(answerForFact(date, "2022/09"), "2022-09");
+L0010 |   assert.equal(validateValue(date, "2022-09"), "");
+L0011 |   assert.ok(validateValue(date, "2022-13"));
+L0012 |   const range = field({ kind: "date", dateRange: true, dateFormat: "YYYY-MM-DD" });
+L0013 |   assert.equal(isFillable({ ...range, answer: '["2022-09-01","2023-06-30"]' }), true);
+L0014 |   assert.equal(isFillable({ ...range, answer: '["2022-09-01","2023-06-31"]' }), false);
+L0015 | });
+L0016 | test("cascaders require an explicit ordered path", () => {
+L0017 |   const cascader = field({ kind: "cascader", options: [{ text: "广东省", id: "a" }] });
+L0018 |   assert.equal(validateValue(cascader, '["广东省","深圳市"]'), "");
+L0019 |   for (const value of ["深圳市", "[]", '["广东省",null]']) assert.ok(validateValue(cascader, value));
+L0020 | });
+L0021 | test("local choice answers use the unique real synonym and reject ambiguous alternatives", () => {
+L0022 |   const select = field({ kind: "custom-select", options: [{ text: "硕士", id: "master" }, { text: "本科", id: "bachelor" }] });
+L0023 |   assert.equal(answerForFact(select, "硕士研究生"), "硕士");
+L0024 |   assert.equal(isFillable({ ...select, answer: "硕士研究生" }), true);
+L0025 |   assert.equal(isFillable({ ...select, options: [...select.options, { text: "Master", id: "second" }], answer: "硕士研究生" }), false);
+L0026 | });
+
+========================================================================
+FILE: application-tracker-extension/test/aiDraft.test.js
+SHA256: fcddd4eb42a26ca8b57308af14f83972fd17b37fa01e26389c09d5f592199bfb
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { buildDraftBatch, requestDraft } from "../src/assistant/ai.js";
+L0004 | import { factsFromProfile, preparePlan } from "../src/assistant/planner.js";
+L0005 | import { acceptPairs } from "../src/assistant/aiPairing.js";
+L0006 | 
+L0007 | const profile = { fullNameZh: "SENTINEL_NAME", email: "SENTINEL_EMAIL", masterUniversityZh: "示例大学", commonAnswers: { selfIntroduction: { zh: "已确认介绍资料" }, expectedSalary: { zh: "SENTINEL_SALARY" } }, internships: [{ companyZh: "示例实习公司", roleZh: "分析实习生", descriptionZh: "分析虚构项目数据" }, { companyZh: "SENTINEL_OTHER_COMPANY", descriptionZh: "SENTINEL_OTHER_DESCRIPTION" }] };
+L0008 | const facts = factsFromProfile(profile, "zh");
+L0009 | const snapshot = { title: "示例岗位", url: "https://example.com/apply?token=SENTINEL_URL", jobText: "公开岗位说明", fields: [] };
+L0010 | const field = (label, extra = {}) => ({ fieldId: label, groupId: "group", label, labelSource: "label", kind: "textarea", type: "textarea", supported: true, value: "", options: [], constraints: {}, section: "基本信息", group: "", ...extra });
+L0011 | const planFor = (sourceField) => preparePlan({ ...snapshot, fields: [sourceField] }, facts, [], "zh")[0];
+L0012 | const settings = { enabled: true, apiKey: "fixture", model: "configured-model" };
+L0013 | const proposal = (item, extra = {}) => ({ fieldId: item.fieldId, entityId: item.entityId, kind: "draft", factIds: ["common_answer.selfIntroduction.zh"], text: "本轮示例草稿", optionId: null, ...extra });
+L0014 | const response = (items, data = {}) => ({ ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify({ items }), ...data }) });
+L0015 | const draftFor = (item) => buildDraftBatch(item, facts, snapshot, "zh");
+L0016 | 
+L0017 | test("draft builder is pure and produces one question with only related facts and public job context", () => {
+L0018 |   const item = planFor(field("工作内容", { section: "实习经历" }));
+L0019 |   Object.assign(item, { entityId: "experience.internship.0", intent: "experience.internship.0.description", narrative: true, needsSemanticReview: false, answer: "SENTINEL_PREVIEW_ANSWER" });
+L0020 |   const before = JSON.stringify({ item, facts, profile, snapshot });
+L0021 |   const batch = draftFor(item);
+L0022 |   assert.equal(batch.fields.length, 1); assert.equal(batch.fields[0].fieldId, item.fieldId);
+L0023 |   assert.deepEqual(batch.facts.map((fact) => fact.id), ["experience.internship.0.company.zh", "experience.internship.0.role.zh", "experience.internship.0.description.zh"]);
+L0024 |   assert.equal(batch.facts.find((fact) => fact.id.endsWith("description.zh")).value, "分析虚构项目数据"); assert.equal(batch.jobContext, "公开岗位说明");
+L0025 |   const sent = JSON.stringify(batch);
+L0026 |   for (const excluded of ["SENTINEL_NAME", "SENTINEL_EMAIL", "SENTINEL_SALARY", "SENTINEL_URL", "SENTINEL_OTHER_COMPANY", "SENTINEL_OTHER_DESCRIPTION", "SENTINEL_PREVIEW_ANSWER"]) assert.ok(!sent.includes(excluded), excluded);
+L0027 |   assert.equal(JSON.stringify({ item, facts, profile, snapshot }), before);
+L0028 | });
+L0029 | 
+L0030 | test("local, confirmed-memory and edited preview answers allow an explicit draft but are not sent", () => {
+L0031 |   for (const change of [{ answer: "SENTINEL_LOCAL" }, { answer: "SENTINEL_MEMORY", memoryId: "m1", source: "已确认问答记忆" }, { answer: "SENTINEL_EDITED", edited: true }]) {
+L0032 |     const item = { ...planFor(field("自我介绍")), ...change };
+L0033 |     const batch = draftFor(item);
+L0034 |     assert.equal(batch.fields.length, 1);
+L0035 |     assert.ok(!JSON.stringify(batch).includes(change.answer));
+L0036 |   }
+L0037 | });
+L0038 | 
+L0039 | test("unsupported, filled, factual and unrelated narrative fields have no draft batch", () => {
+L0040 |   const intro = planFor(field("自我介绍"));
+L0041 |   for (const change of [{ supported: false }, { value: "SENTINEL_WEB_VALUE" }, { kind: "text", narrative: false }, { intent: "", label: "学校所在地", needsSemanticReview: true }, { entityId: "family.father" }]) assert.equal(draftFor({ ...intro, ...change }), null);
+L0042 |   assert.equal(buildDraftBatch(intro, [], snapshot, "zh"), null);
+L0043 | });
+L0044 | 
+L0045 | test("draft metadata excludes filled-value properties from options, evidence and constraints", () => {
+L0046 |   const item = planFor(field("自我介绍", { constraints: { maxLength: 400, value: "SENTINEL_CONSTRAINT_VALUE" }, contextEvidence: [{ source: "label", text: "自我介绍", value: "SENTINEL_EVIDENCE_VALUE" }], options: [{ id: "a", text: "普通选项", value: "SENTINEL_OPTION_VALUE" }] }));
+L0047 |   const encoded = JSON.stringify(draftFor(item));
+L0048 |   for (const excluded of ["SENTINEL_CONSTRAINT_VALUE", "SENTINEL_EVIDENCE_VALUE", "SENTINEL_OPTION_VALUE"]) assert.ok(!encoded.includes(excluded));
+L0049 | });
+L0050 | 
+L0051 | test("draft builder performs no network call; only requestDraft sends the confirmed single batch", async () => {
+L0052 |   const item = planFor(field("自我介绍"));
+L0053 |   const before = JSON.stringify({ item, profile });
+L0054 |   let calls = 0;
+L0055 |   const batch = draftFor(item);
+L0056 |   assert.equal(calls, 0);
+L0057 |   const result = await requestDraft(settings, batch, item, facts, undefined, async (endpoint, options) => {
+L0058 |     calls++;
+L0059 |     assert.equal(endpoint, "https://api.openai.com/v1/responses");
+L0060 |     const sent = JSON.parse(options.body);
+L0061 |     assert.equal(sent.store, false); assert.equal(sent.model, settings.model); assert.equal(sent.text.format.strict, true);
+L0062 |     assert.deepEqual(sent.text.format.schema.properties.items.items.properties.kind.enum, ["draft"]);
+L0063 |     const user = JSON.parse(sent.input[1].content);
+L0064 |     assert.equal(user.fields.length, 1); assert.equal(user.fields[0].fieldId, item.fieldId);
+L0065 |     assert.deepEqual(user.facts, batch.facts);
+L0066 |     return response([proposal(item)]);
+L0067 |   });
+L0068 |   assert.equal(calls, 1); assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, "本轮示例草稿");
+L0069 |   assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
+L0070 |   assert.equal(JSON.stringify({ item, profile }), before);
+L0071 | });
+L0072 | 
+L0073 | test("an explicitly requested draft can replace an edited preview through a returned update", async () => {
+L0074 |   const item = { ...planFor(field("自我介绍")), answer: "人工旧答案", edited: true, memoryId: "m1" };
+L0075 |   const result = await requestDraft(settings, draftFor(item), item, facts, undefined, async () => response([proposal(item)]));
+L0076 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, "本轮示例草稿");
+L0077 |   assert.equal(item.answer, "人工旧答案"); assert.equal(item.edited, true);
+L0078 | });
+L0079 | 
+L0080 | test("responses cannot return facts, options, different fields or a different subject", async () => {
+L0081 |   const item = planFor(field("自我介绍"));
+L0082 |   for (const change of [{ kind: "fact" }, { kind: "option", optionId: "a" }, { fieldId: "other" }, { entityId: "education.master" }, { selector: "#submit" }, { optionId: "a" }, { text: null }]) {
+L0083 |     const result = await requestDraft(settings, draftFor(item), item, facts, undefined, async () => response([proposal(item, change)]));
+L0084 |     assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 1);
+L0085 |   }
+L0086 | });
+L0087 | 
+L0088 | test("duplicate responses and citations outside the sent fact subset are rejected", async () => {
+L0089 |   const item = planFor(field("自我介绍"));
+L0090 |   for (const items of [[proposal(item), proposal(item)], [proposal(item, { factIds: ["contact.email"] })], [proposal(item, { factIds: [] })], [proposal(item, { factIds: ["unknown"] })]]) {
+L0091 |     const result = await requestDraft(settings, draftFor(item), item, facts, undefined, async () => response(items));
+L0092 |     assert.equal(result.accepted.length, 0); assert.ok(result.errors.length);
+L0093 |   }
+L0094 | });
+L0095 | 
+L0096 | test("caller-supplied batches cannot expand fields or facts beyond the confirmation", async () => {
+L0097 |   const item = planFor(field("自我介绍"));
+L0098 |   const batch = draftFor(item);
+L0099 |   for (const modified of [{ ...batch, fields: [...batch.fields, { ...batch.fields[0], fieldId: "extra" }] }, { ...batch, facts: [...batch.facts, facts.find((fact) => fact.id === "contact.email")] }, { ...batch, facts: batch.facts.map((fact) => ({ ...fact, value: "different" })) }]) {
+L0100 |     await assert.rejects(requestDraft(settings, modified, item, facts, undefined, () => assert.fail("must not request")), /仅能使用已确认/);
+L0101 |   }
+L0102 | });
+L0103 | 
+L0104 | test("late results preserve edits and newly filled webpage content", async () => {
+L0105 |   for (const change of [{ answer: "新的人工答案", edited: true }, { value: "网站新答案" }, { supported: false }, { entityId: "family.father" }]) {
+L0106 |     const item = planFor(field("自我介绍"));
+L0107 |     const batch = draftFor(item);
+L0108 |     const result = await requestDraft(settings, batch, item, facts, undefined, async () => {
+L0109 |       const reply = response([proposal(item)]);
+L0110 |       Object.assign(item, change);
+L0111 |       return reply;
+L0112 |     });
+L0113 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /已保留当前内容/);
+L0114 |     for (const [key, value] of Object.entries(change)) assert.equal(item[key], value);
+L0115 |   }
+L0116 | });
+L0117 | 
+L0118 | test("draft results are rejected if the question or cited facts change while awaiting the response", async () => {
+L0119 |   for (const modify of [(item) => { item.label = "不同的问题"; }, (item) => { item.constraints.maxLength = 3; }, (item, source) => { source.find((fact) => fact.id === "common_answer.selfIntroduction.zh").value = "更新后的资料"; }]) {
+L0120 |     const item = planFor(field("自我介绍"));
+L0121 |     const source = structuredClone(facts);
+L0122 |     const batch = buildDraftBatch(item, source, snapshot, "zh");
+L0123 |     const result = await requestDraft(settings, batch, item, source, undefined, async () => {
+L0124 |       const reply = response([proposal(item)]);
+L0125 |       modify(item, source);
+L0126 |       return reply;
+L0127 |     });
+L0128 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /已保留当前内容/);
+L0129 |   }
+L0130 | });
+L0131 | 
+L0132 | test("draft failures preserve the preview and profile, with completed status required", async () => {
+L0133 |   const item = { ...planFor(field("自我介绍")), answer: "现有预览", edited: true };
+L0134 |   const before = JSON.stringify({ item, profile, facts });
+L0135 |   const failures = [
+L0136 |     { ok: false, status: 429, json: async () => ({}) },
+L0137 |     response([], { status: "incomplete" }), response([], { status: undefined }),
+L0138 |     { ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "refusal" }] }] }) },
+L0139 |     { ok: true, json: async () => ({ status: "completed", output_text: "not json" }) },
+L0140 |     { ok: true, json: async () => ({ status: "completed", output_text: '{}' }) }
+L0141 |   ];
+L0142 |   for (const failure of failures) {
+L0143 |     await assert.rejects(requestDraft(settings, draftFor(item), item, facts, undefined, async () => failure), /AI/);
+L0144 |     assert.equal(JSON.stringify({ item, profile, facts }), before);
+L0145 |   }
+L0146 | });
+L0147 | 
+L0148 | test("empty related facts and disabled settings stop before sending", async () => {
+L0149 |   const item = planFor(field("自我介绍"));
+L0150 |   await assert.rejects(requestDraft(settings, null, item, [], undefined, () => assert.fail("must not request")), /仅能使用已确认/);
+L0151 |   await assert.rejects(requestDraft({ enabled: false, apiKey: "fixture" }, draftFor(item), item, facts, undefined, () => assert.fail("must not request")), /请先/);
+L0152 |   await assert.rejects(requestDraft({ enabled: true, apiKey: "" }, draftFor(item), item, facts, undefined, () => assert.fail("must not request")), /请先/);
+L0153 | });
+L0154 | 
+L0155 | test("a high-confidence narrative without a stored answer can draft from related education and experience facts", () => {
+L0156 |   const source = factsFromProfile({ masterUniversityZh: "示例大学", internships: [{ companyZh: "示例公司" }], fullNameZh: "SENTINEL_NAME", email: "SENTINEL_EMAIL" }, "zh");
+L0157 |   const item = preparePlan({ ...snapshot, fields: [field("自我介绍")] }, source, [], "zh")[0];
+L0158 |   assert.equal(item.answer, ""); assert.equal(item.ruleConfidence, "high");
+L0159 |   const batch = buildDraftBatch(item, source, snapshot, "zh");
+L0160 |   assert.deepEqual(batch.facts.map((fact) => fact.id), ["education.master.university.zh", "experience.internship.0.company.zh"]);
+L0161 |   assert.ok(!JSON.stringify(batch).includes("SENTINEL_NAME")); assert.ok(!JSON.stringify(batch).includes("SENTINEL_EMAIL"));
+L0162 | });
+L0163 | 
+L0164 | test("none pairing leaves high-confidence narrative drafting available without restoring the plan's intent", async () => {
+L0165 |   const source = factsFromProfile({ masterUniversityZh: "示例大学", internships: [{ companyZh: "示例公司" }] }, "zh");
+L0166 |   const item = preparePlan({ ...snapshot, fields: [field("自我介绍")] }, source, [], "zh")[0];
+L0167 |   const result = acceptPairs({ pairs: [{ fieldId: item.fieldId, source: "none", factId: null, memoryId: null, transform: "none" }] }, [item], source, [], { url: snapshot.url, language: "zh", batchIds: new Set([item.fieldId]) });
+L0168 |   Object.assign(item, result.accepted[0]);
+L0169 |   assert.equal(item.intent, ""); assert.equal(item.answer, "");
+L0170 |   const before = JSON.stringify(item);
+L0171 |   const batch = buildDraftBatch(item, source, snapshot, "zh");
+L0172 |   assert.equal(batch.fields[0].intent, "common_answer.selfIntroduction");
+L0173 |   const drafted = await requestDraft(settings, batch, item, source, undefined, async () => response([proposal(item, { factIds: ["education.master.university.zh"] })]));
+L0174 |   assert.equal(drafted.accepted[0].answer, "本轮示例草稿");
+L0175 |   assert.equal(JSON.stringify(item), before);
+L0176 | });
+L0177 | 
+L0178 | test("draft intent recovery rejects unknown subjects, low-confidence questions and factual text fields", () => {
+L0179 |   const cleared = { ...planFor(field("自我介绍")), answer: "", intent: "", ruleConfidence: "none", needsSemanticReview: false };
+L0180 |   for (const change of [{ entityId: "education.unknown" }, { entityId: "family.father" }, { label: "请介绍你为什么想加入这家公司" }, { label: "学校所在地" }, { label: "邮箱", kind: "text", narrative: false }, { label: "自我介绍", kind: "text", narrative: false }]) assert.equal(draftFor({ ...cleared, ...change }), null);
+L0181 | });
+L0182 | 
+L0183 | test("a textarea never grants drafting permission for salary, contact or other direct facts", () => {
+L0184 |   for (const label of ["期望薪资", "邮箱", "学历", "姓名"]) {
+L0185 |     const item = planFor(field(label));
+L0186 |     assert.equal(draftFor(item), null);
+L0187 |   }
+L0188 |   const salary = planFor(field("期望薪资"));
+L0189 |   assert.equal(salary.answer, "SENTINEL_SALARY");
+L0190 |   assert.equal(draftFor({ ...salary, narrative: true, kind: "textarea" }), null);
+L0191 | });
+
+========================================================================
+FILE: application-tracker-extension/test/aiJobInfo.test.js
+SHA256: 2668002cb1e2949e3566d64feb9f54ff7781e80cbb25939b4be0bc896aaeeeec
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { buildJobInfoPayload, requestJobInfo, shouldRequestJobInfo } from "../src/jobInfo/aiJobInfo.js";
+L0004 | 
+L0005 | const settings = { enabled: true, apiKey: "fixture-only-key", model: "selected-model" };
+L0006 | const answer = { company: "某某集团", role: "财务实习生", base: "深圳", confidence: "medium" };
+L0007 | const response = (value = answer, extra = {}) => async () => ({ ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify(value), ...extra }) });
+L0008 | 
+L0009 | test("job AI sends only allowed public signals and the complete user JSON stays under 2000 characters", () => {
+L0010 |   const signals = {
+L0011 |     documentTitle: "财务实习生 · 某某集团", meta: { "og:title": "岗位标题", "og:site_name": "某某集团", "twitter:title": "推送标题", "application-name": "招聘", description: "PRIVATE meta" },
+L0012 |     headings: ["财务实习生", { text: "岗位介绍", value: "PRIVATE heading" }], labels: { company: ["某某集团"], role: ["财务实习生"], base: ["深圳"], name: ["PRIVATE applicant"] },
+L0013 |     breadcrumbs: ["首页 / 职位"], hostname: "jobs.example.com", pathname: "/apply/123?token=PRIVATE query#PRIVATE hash",
+L0014 |     jobPostings: [{ description: "PRIVATE posting" }], classCandidates: { role: ["PRIVATE class"] }, siteCandidates: { role: ["PRIVATE site"] }, logoAlts: ["PRIVATE logo"],
+L0015 |     inputs: { name: "PRIVATE input" }, formText: "PRIVATE form", profile: "PRIVATE profile"
+L0016 |   };
+L0017 |   const payload = buildJobInfoPayload(settings.model, signals);
+L0018 |   assert.equal(payload.model, settings.model);
+L0019 |   assert.equal(payload.store, false);
+L0020 |   assert.equal(payload.text.format.type, "json_schema");
+L0021 |   assert.equal(payload.text.format.strict, true);
+L0022 |   assert.equal(payload.text.format.schema.additionalProperties, false);
+L0023 |   assert.deepEqual(payload.text.format.schema.required, ["company", "role", "base", "confidence"]);
+L0024 |   assert.deepEqual(payload.text.format.schema.properties.company.type, ["string", "null"]);
+L0025 |   assert.ok(!JSON.stringify(payload).includes("PRIVATE"));
+L0026 |   assert.ok(!JSON.stringify(payload).includes(settings.apiKey));
+L0027 |   const sent = JSON.parse(payload.input[1].content);
+L0028 |   assert.deepEqual(Object.keys(sent), ["documentTitle", "meta", "headings", "labels", "breadcrumbs", "hostname", "pathname"]);
+L0029 |   assert.equal(sent.pathname, "/apply/123");
+L0030 |   assert.deepEqual(sent.headings, ["财务实习生", "岗位介绍"]);
+L0031 |   const enormous = '"\\招聘'.repeat(3000);
+L0032 |   const large = buildJobInfoPayload("model", {
+L0033 |     documentTitle: enormous, meta: Object.fromEntries(Object.keys(sent.meta).map((key) => [key, enormous])),
+L0034 |     headings: Array(50).fill(enormous), labels: { company: Array(50).fill(enormous), role: Array(50).fill(enormous), base: Array(50).fill(enormous) },
+L0035 |     breadcrumbs: Array(50).fill(enormous), hostname: enormous, pathname: enormous
+L0036 |   });
+L0037 |   assert.ok(large.input[1].content.length <= 2000);
+L0038 |   assert.doesNotThrow(() => JSON.parse(large.input[1].content));
+L0039 | });
+L0040 | 
+L0041 | test("disabled AI, blank keys and already reliable company and role avoid a request", async () => {
+L0042 |   const noFetch = () => { throw new Error("should not fetch"); };
+L0043 |   for (const change of [{ enabled: false }, { apiKey: "" }, { apiKey: "  " }]) {
+L0044 |     assert.equal(await requestJobInfo({ ...settings, ...change }, {}, undefined, noFetch), null);
+L0045 |   }
+L0046 |   assert.equal(shouldRequestJobInfo(settings, { company: "某某集团", role: "财务实习生", confidence: { company: "medium", role: "high" } }), false);
+L0047 |   assert.equal(shouldRequestJobInfo(settings, { company: "某某集团", role: "财务实习生", confidence: { company: "low", role: "high" } }), true);
+L0048 |   assert.equal(shouldRequestJobInfo(settings, { company: "某某集团", role: "", confidence: { company: "high", role: "high" } }), true);
+L0049 |   assert.equal(await requestJobInfo(settings, { labels: { company: ["某某集团"], role: ["财务实习生"], base: [] } }, undefined, noFetch), null);
+L0050 | });
+L0051 | 
+L0052 | test("job AI uses Responses API, the configured model, a 20 second timeout and accepts nullable output", async (t) => {
+L0053 |   const timeoutController = new AbortController();
+L0054 |   t.mock.method(AbortSignal, "timeout", (milliseconds) => { assert.equal(milliseconds, 20000); return timeoutController.signal; });
+L0055 |   let request;
+L0056 |   const result = await requestJobInfo(settings, {}, undefined, async (url, init) => {
+L0057 |     request = { url, init };
+L0058 |     return response()();
+L0059 |   });
+L0060 |   assert.deepEqual(result, answer);
+L0061 |   assert.equal(request.url, "https://api.openai.com/v1/responses");
+L0062 |   assert.equal(request.init.method, "POST");
+L0063 |   assert.equal(request.init.headers.Authorization, `Bearer ${settings.apiKey}`);
+L0064 |   assert.equal(request.init.signal, timeoutController.signal);
+L0065 |   assert.equal(JSON.parse(request.init.body).model, settings.model);
+L0066 |   const empty = { company: null, role: null, base: null, confidence: "low" };
+L0067 |   assert.deepEqual(await requestJobInfo(settings, {}, undefined, response(empty)), empty);
+L0068 |   assert.deepEqual(await requestJobInfo(settings, {}, undefined, response(null, { output_text: undefined, output: [{ content: [{ type: "output_text", text: JSON.stringify(answer) }] }] })), answer);
+L0069 | });
+L0070 | 
+L0071 | test("job AI rejects invalid schemas and does not coerce missing or non-string fields", async () => {
+L0072 |   for (const invalid of [null, [], {}, { ...answer, confidence: "certain" }, { ...answer, role: 12 }, { ...answer, company: {} }, { ...answer, selector: "input" }, { ...answer, base: undefined }, { ...answer, role: "长".repeat(161) }]) {
+L0073 |     await assert.rejects(requestJobInfo(settings, {}, undefined, response(invalid)), /格式无效/);
+L0074 |   }
+L0075 | });
+L0076 | 
+L0077 | test("platform names and application page names cannot become AI companies or roles", async () => {
+L0078 |   for (const fake of ["填写简历", "简历填写", "个人中心", "职位详情", "申请职位", "招聘官网", "校园招聘", "JobsDB", "LinkedIn", "Careers", "Application form", "填写简历 - 某某集团"]) {
+L0079 |     const actual = await requestJobInfo(settings, {}, undefined, response({ ...answer, company: fake, role: fake }));
+L0080 |     assert.equal(actual.company, null, fake);
+L0081 |     assert.equal(actual.role, null, fake);
+L0082 |   }
+L0083 | });
+L0084 | 
+L0085 | test("incomplete, refused, malformed and HTTP error responses leave local results untouched", async () => {
+L0086 |   for (const extra of [{ status: "incomplete" }, { status: "queued" }, { output_text: "not JSON" }, { output: [{ content: [{ type: "refusal" }] }] }]) {
+L0087 |     await assert.rejects(requestJobInfo(settings, {}, undefined, response(answer, extra)), /AI/);
+L0088 |   }
+L0089 |   await assert.rejects(requestJobInfo(settings, {}, undefined, async () => ({ ok: false, status: 429 })), /受限/);
+L0090 |   await assert.rejects(requestJobInfo(settings, {}, undefined, async () => ({ ok: false, status: 401 })), /401/);
+L0091 |   await assert.rejects(requestJobInfo(settings, {}, undefined, async () => ({ ok: true, json: async () => { throw new Error("invalid response"); } })), /格式无效/);
+L0092 | });
+L0093 | 
+L0094 | test("user cancellation and timeout discard responses even when the transport completes late", async (t) => {
+L0095 |   const already = new AbortController();
+L0096 |   already.abort();
+L0097 |   await assert.rejects(requestJobInfo(settings, {}, already.signal, () => { throw new Error("should not fetch"); }), { name: "AbortError" });
+L0098 |   const user = new AbortController();
+L0099 |   await assert.rejects(requestJobInfo(settings, {}, user.signal, async (_url, init) => {
+L0100 |     user.abort();
+L0101 |     assert.equal(init.signal.aborted, true);
+L0102 |     return response()();
+L0103 |   }), { name: "AbortError" });
+L0104 |   const timeout = new AbortController();
+L0105 |   t.mock.method(AbortSignal, "timeout", () => timeout.signal);
+L0106 |   await assert.rejects(requestJobInfo(settings, {}, undefined, async () => {
+L0107 |     timeout.abort(new DOMException("Timed out", "TimeoutError"));
+L0108 |     return response()();
+L0109 |   }), { name: "TimeoutError" });
+L0110 | });
+
+========================================================================
+FILE: application-tracker-extension/test/aiPairing.test.js
+SHA256: d115019ef51a9666880edb8e4c40fd687030d0e7915ba9fbad6af9cf7ef709eb
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { acceptPairs, BLOCKED_LABEL, buildCatalog, buildPairingPayload, PAIRING_FORMAT, pairingCandidates, requestPairing, splitName } from "../src/assistant/aiPairing.js";
+L0004 | import { factsFromProfile, MEMORY_SCOPE_VERSION, preparePlan, scopeFor } from "../src/assistant/planner.js";
+L0005 | 
+L0006 | // The eight former recognition tests from assistant.test.js are migrated here:
+L0007 | // labels/canonical names and no values -> metadata privacy test;
+L0008 | // options/context without answers -> low-confidence payload test;
+L0009 | // tentative vs exact facts -> candidate exclusion test;
+L0010 | // explicitly clearing an uncertain rule -> none clearing test;
+L0011 | // fact answer still needs review -> local-content/review test;
+L0012 | // school-location and subject -> mismatch and subject tests;
+L0013 | // late edits/filled fields -> late pairing test;
+L0014 | // confirmed memories not erased -> reliable-fact/memory none test.
+L0015 | 
+L0016 | const profile = { fullNameZh: "林示例", fullName: "Shili Lin", email: "sentinel@example.com", phone: "13900007731", masterUniversityZh: "SENTINEL_UNIVERSITY_7731", masterDegreeZh: "硕士", masterStartDate: "2020-09", bachelorUniversityZh: "SENTINEL_BACHELOR_7731", commonAnswers: { selfIntroduction: { zh: "SENTINEL_INTRODUCTION_7731" } } };
+L0017 | const facts = factsFromProfile(profile, "zh");
+L0018 | const url = "https://example.com/apply?job=one&token=SENTINEL_URL_TOKEN";
+L0019 | const field = (label, extra = {}) => ({ fieldId: label, groupId: "group", label, labelSource: "label", kind: "text", type: "text", supported: true, value: "", options: [], constraints: {}, section: "基本信息", group: "", ...extra });
+L0020 | const planFor = (fields, source = facts, memories = [], language = "zh") => preparePlan({ fields, url, title: "示例申请页", jobText: "SENTINEL_JOB_DESCRIPTION" }, source, memories, language);
+L0021 | const pair = (item, factId, extra = {}) => ({ fieldId: item.fieldId, source: "fact", factId, memoryId: null, transform: "none", ...extra });
+L0022 | const none = (item) => pair(item, null, { source: "none" });
+L0023 | const accept = (pairs, plan, source = facts, memories = [], options = {}) => acceptPairs({ pairs }, plan, source, memories, { url, language: "zh", batchIds: new Set(plan.map((item) => item.fieldId)), ...options });
+L0024 | const memory = (extra = {}) => ({ id: "m1", question: "其他技能", answer: "SENTINEL_MEMORY_ANSWER", confirmed: true, language: "zh", entityId: "self", scope: "global", updatedAt: "2026-10-13T00:00:00Z", ...extra });
+L0025 | 
+L0026 | test("pairing requests contain only questions and catalog metadata, never local facts or memory answers", () => {
+L0027 |   const privateFacts = factsFromProfile({ ...profile, fullNameZh: "SENTINEL_NAME_7731" }, "zh");
+L0028 |   const [item] = planFor([field("请填写您的学校名称", { help: "官方名称", nearbyText: "已显示的提示", contextEvidence: [{ source: "section", text: "教育经历", value: "SENTINEL_CONTEXT_VALUE" }], options: [{ text: "甲", value: "SENTINEL_OPTION_VALUE" }], constraints: { required: true, maxLength: 100, value: "SENTINEL_CONSTRAINT_VALUE" } })], privateFacts);
+L0029 |   item.answer = "SENTINEL_LOCAL_DRAFT";
+L0030 |   item.url = url; item.jobText = "SENTINEL_JOB_DESCRIPTION";
+L0031 |   const catalog = buildCatalog(privateFacts, [memory()], url, "zh");
+L0032 |   catalog.facts[0].value = "SENTINEL_UNSAFE_CATALOG_VALUE";
+L0033 |   catalog.memories[0].answer = "SENTINEL_UNSAFE_CATALOG_ANSWER";
+L0034 |   const payload = buildPairingPayload("configured-model", [item, field("已填", { value: "SENTINEL_WEB_VALUE" })], catalog, "zh");
+L0035 |   const encoded = JSON.stringify(payload);
+L0036 |   for (const sentinel of ["SENTINEL_NAME_7731", profile.email, profile.phone, profile.masterUniversityZh, profile.bachelorUniversityZh, profile.commonAnswers.selfIntroduction.zh, "SENTINEL_MEMORY_ANSWER", "SENTINEL_LOCAL_DRAFT", "SENTINEL_WEB_VALUE", "SENTINEL_JOB_DESCRIPTION", "SENTINEL_URL_TOKEN", "SENTINEL_OPTION_VALUE", "SENTINEL_CONTEXT_VALUE", "SENTINEL_CONSTRAINT_VALUE", "SENTINEL_UNSAFE_CATALOG_VALUE", "SENTINEL_UNSAFE_CATALOG_ANSWER"]) assert.ok(!encoded.includes(sentinel), sentinel);
+L0037 |   const sent = JSON.parse(payload.input[1].content);
+L0038 |   assert.equal(payload.model, "configured-model");
+L0039 |   assert.equal(sent.fields.length, 1);
+L0040 |   assert.deepEqual(sent.fields[0].options, ["甲"]);
+L0041 |   assert.deepEqual(sent.fields[0].contextEvidence, [{ source: "section", text: "教育经历" }]);
+L0042 |   assert.deepEqual(sent.fields[0].constraints, { required: true, maxLength: 100 });
+L0043 |   assert.equal(sent.fields[0].help, "官方名称");
+L0044 |   assert.equal("nearbyText" in sent.fields[0], false);
+L0045 | });
+L0046 | 
+L0047 | test("catalog kind and names use metadata without even reading value or answer getters", () => {
+L0048 |   const ids = ["contact.email", "contact.phone", "contact.linkedin", "contact.github", "contact.website", "education.master.start_date", "education.master.graduation_date", "experience.internship.0.period", "experience.internship.0.description.zh", "common_answer.selfIntroduction.zh", "identity.full_name.zh"];
+L0049 |   const source = ids.map((id) => ({ id, label: `目录 ${id}`, entityId: "self", get value() { throw new Error("must not read facts"); } }));
+L0050 |   const remembered = { ...memory(), get answer() { throw new Error("must not read answers"); } };
+L0051 |   const catalog = buildCatalog(source, [remembered], url, "zh");
+L0052 |   assert.deepEqual(catalog.facts.map((entry) => entry.kind), ["email", "phone", "url", "url", "url", "date", "date", "period", "long_text", "long_text", "text"]);
+L0053 |   assert.deepEqual(catalog.facts.map((entry) => entry.label), source.map((entry) => entry.label));
+L0054 |   assert.equal(catalog.memories[0].question, remembered.question);
+L0055 | });
+L0056 | 
+L0057 | test("catalog includes only confirmed memories in the current language and versioned page scope", () => {
+L0058 |   const good = memory({ scope: scopeFor(url), scopeVersion: MEMORY_SCOPE_VERSION });
+L0059 |   const catalog = buildCatalog(facts, [good, memory({ id: "unconfirmed", confirmed: false }), memory({ id: "english", language: "en" }), memory({ id: "other-page", scope: "https://example.com/other", scopeVersion: MEMORY_SCOPE_VERSION }), memory({ id: "legacy-scope", scope: scopeFor(url) })], url, "zh");
+L0060 |   assert.deepEqual(catalog.memories, [{ id: "m1", question: "其他技能", entityId: "self" }]);
+L0061 | });
+L0062 | 
+L0063 | test("pairing excludes high-confidence local answers, filled and edited fields, and existing memories", () => {
+L0064 |   const plan = planFor([field("姓名"), field("邮箱"), field("请填写您的学校名称"), field("已填", { value: "网页值" }), field("已编辑", { edited: true }), field("其他技能")], facts, [memory()]);
+L0065 |   assert.deepEqual(pairingCandidates(plan).map((item) => item.fieldId), ["请填写您的学校名称"]);
+L0066 |   assert.equal(plan[0].selected, true); assert.equal(plan[1].selected, true); assert.equal(plan.at(-1).memoryId, "m1");
+L0067 | });
+L0068 | 
+L0069 | test("low-confidence candidates include full options and context but never an existing answer", () => {
+L0070 |   const [item] = planFor([field("请填写您的学校名称", { labelSource: "placeholder", nearbyText: "n".repeat(200), section: "硕士教育", group: "学校资料", help: "官方名称", options: [{ text: "大学甲", value: "secret" }], constraints: { required: true }, visualEvidence: "截图V1：学校名称 / 硕士教育" })]);
+L0071 |   item.answer = "LOCAL DRAFT VALUE";
+L0072 |   const payload = buildPairingPayload("fixture", [item], buildCatalog(facts, [], url, "zh"), "zh");
+L0073 |   const [sent] = JSON.parse(payload.input[1].content).fields;
+L0074 |   assert.equal(sent.nearbyText.length, 160);
+L0075 |   assert.equal(sent.section, item.section); assert.equal(sent.group, item.group); assert.equal(sent.visualEvidence, item.visualEvidence);
+L0076 |   assert.ok(!JSON.stringify(payload).includes("LOCAL DRAFT VALUE"));
+L0077 | });
+L0078 | 
+L0079 | test("pairing payload is capped at thirty fields", () => {
+L0080 |   const fields = Array.from({ length: 65 }, (_, index) => field("未知", { fieldId: String(index) }));
+L0081 |   assert.equal(JSON.parse(buildPairingPayload("fixture", fields, { facts: [], memories: [] }, "zh").input[1].content).fields.length, 30);
+L0082 | });
+L0083 | 
+L0084 | test("none explicitly clears a tentative rule answer and selection", () => {
+L0085 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0086 |   Object.assign(item, { answer: "旧猜测", selected: true, factIds: ["education.master.university.zh"], source: "旧规则" });
+L0087 |   const result = accept([none(item)], [item]);
+L0088 |   assert.equal(result.errors.length, 0);
+L0089 |   Object.assign(item, result.accepted[0]);
+L0090 |   assert.equal(item.answer, ""); assert.equal(item.intent, ""); assert.equal(item.selected, false); assert.equal(item.status, "missing");
+L0091 |   assert.equal(item.reason, "资料里没有对应内容"); assert.equal(item.semanticReviewed, true); assert.deepEqual(item.factIds, []);
+L0092 | });
+L0093 | 
+L0094 | test("none cannot clear reliable facts or an already used confirmed memory", () => {
+L0095 |   const plan = planFor([field("姓名"), field("其他技能")], facts, [memory()]);
+L0096 |   const result = accept(plan.map(none), plan, facts, [memory()]);
+L0097 |   assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 2);
+L0098 |   assert.equal(plan[0].answer, profile.fullNameZh); assert.equal(plan[1].answer, "SENTINEL_MEMORY_ANSWER");
+L0099 | });
+L0100 | 
+L0101 | test("none clears unresolved visual guesses while retaining the partial-group safety explanation", () => {
+L0102 |   const source = factsFromProfile({ bachelorUniversityZh: "本科大学", masterMajorZh: "硕士专业" }, "zh");
+L0103 |   const fields = [field("学校名称", { section: "本科教育", visualEvidence: "截图V1：学校名称 / 本科教育" }), field("专业", { section: "教育经历" })];
+L0104 |   const item = planFor(fields, source)[1];
+L0105 |   assert.equal(item.visualGroupUnresolved, true); assert.equal(item.entityId, "education.unknown");
+L0106 |   const reason = item.reason;
+L0107 |   Object.assign(item, { answer: "旧的专业猜测", selected: true, factIds: ["education.master.major.zh"], source: "旧规则", ruleConfidence: "low" });
+L0108 |   const result = accept([none(item)], [item], source);
+L0109 |   assert.equal(result.errors.length, 0);
+L0110 |   assert.equal(result.accepted[0].reason, reason); assert.match(result.accepted[0].reason, /截图仅确认/);
+L0111 |   assert.equal(result.accepted[0].answer, ""); assert.equal(result.accepted[0].selected, false);
+L0112 |   assert.equal(result.accepted[0].intent, ""); assert.deepEqual(result.accepted[0].factIds, []);
+L0113 |   assert.equal(item.entityId, "education.unknown");
+L0114 | });
+L0115 | 
+L0116 | test("fact pairing resolves local content and requires review without selecting itself", () => {
+L0117 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0118 |   const result = accept([pair(item, "education.master.university.zh")], [item]);
+L0119 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, profile.masterUniversityZh);
+L0120 |   assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
+L0121 |   assert.equal(result.accepted[0].needsSemanticReview, false); assert.equal(result.accepted[0].semanticReviewed, true);
+L0122 |   assert.equal(result.accepted[0].ruleConfidence, "none");
+L0123 | });
+L0124 | 
+L0125 | test("unknown, duplicated and out-of-batch fields or facts are rejected", () => {
+L0126 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0127 |   const good = pair(item, "education.master.university.zh");
+L0128 |   for (const pairs of [[{ ...good, fieldId: "unknown" }], [{ ...good, factId: "unknown" }], [good, good]]) assert.equal(accept(pairs, [item]).accepted.length, 0);
+L0129 |   assert.equal(accept([good], [item], facts, [], { batchIds: new Set() }).accepted.length, 0);
+L0130 |   assert.equal(accept([good], [item], [...facts, facts.find((fact) => fact.id === good.factId)]).accepted.length, 0);
+L0131 | });
+L0132 | 
+L0133 | test("fact subject and language cannot be changed by AI", () => {
+L0134 |   const [item] = planFor([field("请填写您的学校名称", { section: "本科教育" })]);
+L0135 |   assert.equal(accept([pair(item, "education.master.university.zh")], [item]).accepted.length, 0);
+L0136 |   const englishFacts = factsFromProfile({ masterUniversity: "English University" }, "en");
+L0137 |   const [master] = planFor([field("请填写您的学校名称", { section: "硕士教育" })]);
+L0138 |   assert.equal(accept([pair(master, "education.master.university.en")], [master], englishFacts).accepted.length, 0);
+L0139 |   const [family] = planFor([field("父亲在哪家公司任职")]);
+L0140 |   const company = { id: "experience.internship.0.company.zh", entityId: "experience.internship.0", value: "公司甲", label: "实习1公司" };
+L0141 |   assert.equal(accept([pair(family, company.id)], [family], [company]).accepted.length, 0);
+L0142 | });
+L0143 | 
+L0144 | test("school-location, ranking and grade mismatches cannot become profile facts", () => {
+L0145 |   const source = factsFromProfile({ masterUniversityZh: "大学甲", masterMajorZh: "专业甲", masterDegreeZh: "硕士" }, "zh");
+L0146 |   for (const [label, factId] of [["学校所在地", "education.master.university.zh"], ["专业排名", "education.master.major.zh"], ["学位成绩", "education.master.degree.zh"]]) {
+L0147 |     const [item] = planFor([field(label, { section: "硕士教育" })], source);
+L0148 |     assert.equal(accept([pair(item, factId)], [item], source).accepted.length, 0);
+L0149 |   }
+L0150 | });
+L0151 | 
+L0152 | test("blocked questions stay manual even if AI chooses an existing fact", () => {
+L0153 |   for (const label of ["奖惩情况", "证件号码", "民族", "研究论文", "出生日期", "certificate number", "first name"]) {
+L0154 |     assert.equal(BLOCKED_LABEL.test(label), true);
+L0155 |     const [item] = planFor([field(label)]);
+L0156 |     assert.equal(accept([pair(item, "identity.full_name.zh")], [item]).accepted.length, 0);
+L0157 |   }
+L0158 | });
+L0159 | 
+L0160 | test("late pairing cannot overwrite a user's edit, filled field or changed candidate status", async () => {
+L0161 |   for (const change of [{ edited: true, answer: "人工答案" }, { value: "网页答案" }, { answer: "可靠本地答案", ruleConfidence: "high" }]) {
+L0162 |     const [item] = planFor([field("请填写您的学校名称")]);
+L0163 |     const raw = await requestPairing({ enabled: true, apiKey: "fixture", model: "fixture" }, [item], buildCatalog(facts, [], url, "zh"), "zh", undefined, async () => {
+L0164 |       Object.assign(item, change);
+L0165 |       return { ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify({ pairs: [pair(item, "education.master.university.zh")] }) }) };
+L0166 |     });
+L0167 |     assert.equal(acceptPairs(raw, [item], facts, [], { url, language: "zh", batchIds: new Set([item.fieldId]) }).accepted.length, 0);
+L0168 |   }
+L0169 | });
+L0170 | 
+L0171 | test("fact option pairing maps degree synonyms locally", () => {
+L0172 |   const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", type: "select-one", options: [{ id: "master", text: "Master's degree", disabled: false }] })]);
+L0173 |   const result = accept([pair(item, "education.master.degree.zh")], [item]);
+L0174 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, "Master's degree");
+L0175 | });
+L0176 | 
+L0177 | test("unmatched, duplicate, disabled and unread options yield explicit missing without a guess", () => {
+L0178 |   for (const options of [[], [{ text: "本科" }], [{ text: "硕士", disabled: true }], [{ text: "硕士" }, { text: "硕士" }]]) {
+L0179 |     const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", type: "select-one", options })]);
+L0180 |     item.answer = "旧答案";
+L0181 |     const result = accept([pair(item, "education.master.degree.zh")], [item]);
+L0182 |     assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
+L0183 |     assert.equal(result.accepted[0].answer, ""); assert.equal(result.accepted[0].selected, false);
+L0184 |     assert.match(result.accepted[0].reason, /资料里是「硕士」.*没有对应项/);
+L0185 |   }
+L0186 | });
+L0187 | 
+L0188 | test("a valid option exceeding the length constraint is rejected without claiming a missing option", () => {
+L0189 |   const [item] = planFor([field("请填写您的学历", { section: "硕士教育", kind: "select", options: [{ text: "硕士" }], constraints: { maxLength: 1 } })]);
+L0190 |   const result = accept([pair(item, "education.master.degree.zh")], [item]);
+L0191 |   assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /字数限制/);
+L0192 | });
+L0193 | 
+L0194 | test("month-only dates preserve precision and use the page's date format", () => {
+L0195 |   const [item] = planFor([field("请填写入学年月", { section: "硕士教育", kind: "date", type: "text", dateFormat: "YYYY.MM" })]);
+L0196 |   const result = accept([pair(item, "education.master.start_date")], [item]);
+L0197 |   assert.equal(result.accepted[0].answer, "2020.09");
+L0198 |   const requiringDay = { ...item, dateFormat: "YYYY-MM-DD" };
+L0199 |   assert.equal(accept([pair(requiringDay, "education.master.start_date")], [requiringDay]).accepted.length, 0);
+L0200 | });
+L0201 | 
+L0202 | test("splitName handles single and compound Chinese surnames and multi-part English names", () => {
+L0203 |   for (const [name, surname, given] of [["林示例", "林", "示例"], ["欧阳示例", "欧阳", "示例"], ["𠮷示例", "𠮷", "示例"], ["Shili Lin", "Lin", "Shili"], ["Shili Example Lin", "Lin", "Shili Example"]]) {
+L0204 |     assert.equal(splitName(name, "surname"), surname); assert.equal(splitName(name, "given_name"), given);
+L0205 |   }
+L0206 |   for (const name of ["", "林", "Lin"]) { assert.equal(splitName(name, "surname"), ""); assert.equal(splitName(name, "given_name"), ""); }
+L0207 |   assert.equal(splitName("林示例", "unknown"), "");
+L0208 | });
+L0209 | 
+L0210 | test("name transforms work only on the corresponding name-part questions", () => {
+L0211 |   for (const [label, transform, answer] of [["姓", "surname", "林"], ["名", "given_name", "示例"], ["surname", "surname", "林"], ["first name", "given_name", "示例"]]) {
+L0212 |     const [item] = planFor([field(label)]);
+L0213 |     assert.equal(accept([pair(item, "identity.full_name.zh", { transform })], [item]).accepted[0].answer, answer);
+L0214 |   }
+L0215 |   for (const [label, transform] of [["名", "surname"], ["姓", "given_name"], ["别的题", "surname"], ["last name", "given_name"], ["姓名", "surname"], ["first name (national id)", "given_name"]]) {
+L0216 |     const [item] = planFor([field(label)]);
+L0217 |     assert.equal(accept([pair(item, "identity.full_name.zh", { transform })], [item]).accepted.length, 0);
+L0218 |   }
+L0219 |   const [item] = planFor([field("姓")]);
+L0220 |   assert.equal(accept([pair(item, "contact.email", { transform: "surname" })], [item]).accepted.length, 0);
+L0221 |   for (const label of ["姓氏", "名字", "family name"]) {
+L0222 |     const [part] = planFor([field(label)]);
+L0223 |     assert.equal(accept([pair(part, "identity.full_name.zh")], [part]).accepted.length, 0);
+L0224 |   }
+L0225 | });
+L0226 | 
+L0227 | test("empty facts and invalid local values are rejected", () => {
+L0228 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0229 |   for (const value of ["", null, "   "]) {
+L0230 |     const source = facts.map((fact) => fact.id === "education.master.university.zh" ? { ...fact, value } : fact);
+L0231 |     assert.equal(accept([pair(item, "education.master.university.zh")], [item], source).accepted.length, 0);
+L0232 |   }
+L0233 |   const [email] = planFor([field("请填邮箱", { type: "email" })]);
+L0234 |   assert.equal(accept([pair(email, "contact.email")], [email], [{ ...facts.find((fact) => fact.id === "contact.email"), value: "invalid" }]).accepted.length, 0);
+L0235 | });
+L0236 | 
+L0237 | test("memory pairing uses the locally stored answer and stays under review", () => {
+L0238 |   const [item] = planFor([field("其他技能")]);
+L0239 |   const remembered = memory();
+L0240 |   const result = accept([pair(item, null, { source: "memory", memoryId: remembered.id })], [item], facts, [remembered]);
+L0241 |   assert.equal(result.errors.length, 0); assert.equal(result.accepted[0].answer, remembered.answer);
+L0242 |   assert.equal(result.accepted[0].memoryVersion, remembered.updatedAt); assert.equal(result.accepted[0].status, "review"); assert.equal(result.accepted[0].selected, false);
+L0243 | });
+L0244 | 
+L0245 | test("memory confirmation, language, subject, scope and full question meaning are rechecked locally", () => {
+L0246 |   const [item] = planFor([field("其他技能")]);
+L0247 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
+L0248 |   for (const change of [{ confirmed: false }, { language: "en" }, { entityId: "family.father" }, { scope: "https://example.com/other", scopeVersion: MEMORY_SCOPE_VERSION }, { scope: scopeFor(url) }, { question: "期望薪资" }, { answer: "" }]) {
+L0249 |     assert.equal(accept([proposal], [item], facts, [memory(change)]).accepted.length, 0);
+L0250 |   }
+L0251 |   assert.equal(accept([proposal], [item], facts, []).accepted.length, 0);
+L0252 | });
+L0253 | 
+L0254 | test("memory pairing can reuse a high-confidence local equivalent but rejects low-confidence and school-location aliases", () => {
+L0255 |   const [item] = planFor([field("学校名称", { section: "硕士教育" })], []);
+L0256 |   const remembered = memory({ question: "University", entityId: "education.master", answer: "大学乙" });
+L0257 |   const proposal = pair(item, null, { source: "memory", memoryId: remembered.id });
+L0258 |   assert.equal(accept([proposal], [item], facts, [remembered]).accepted[0].answer, "大学乙");
+L0259 |   const low = { ...item, label: "请填写您的学校名称", ruleConfidence: "low" };
+L0260 |   assert.equal(accept([proposal], [low], facts, [remembered]).accepted.length, 0);
+L0261 |   const wrong = { ...item, label: "学校所在地" };
+L0262 |   assert.equal(accept([{ ...proposal, fieldId: wrong.fieldId }], [wrong], facts, [remembered]).accepted.length, 0);
+L0263 | });
+L0264 | 
+L0265 | test("memory option answers map locally and cannot invent a missing selection", () => {
+L0266 |   const [item] = planFor([field("其他技能", { kind: "select", options: [{ text: "Yes" }, { text: "No" }] })]);
+L0267 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
+L0268 |   assert.equal(accept([proposal], [item], facts, [memory({ answer: "是" })]).accepted[0].answer, "Yes");
+L0269 |   const result = accept([proposal], [item], facts, [memory({ answer: "未知" })]);
+L0270 |   assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
+L0271 | });
+L0272 | 
+L0273 | test("multiple memory choices require a unique match for every requested option", () => {
+L0274 |   const [item] = planFor([field("其他技能", { kind: "checkboxes", constraints: { multiple: true }, options: [{ text: "Yes" }, { text: "No" }] })]);
+L0275 |   const proposal = pair(item, null, { source: "memory", memoryId: "m1" });
+L0276 |   assert.equal(accept([proposal], [item], facts, [memory({ answer: '["是","否"]' })]).accepted[0].answer, '["Yes","No"]');
+L0277 |   for (const answer of ['["是","Yes"]', '["是","未知"]', "是"]) {
+L0278 |     const result = accept([proposal], [item], facts, [memory({ answer })]);
+L0279 |     assert.equal(result.errors.length, 1); assert.equal(result.accepted[0].status, "missing");
+L0280 |   }
+L0281 | });
+L0282 | 
+L0283 | test("malformed sources, mixed references and transformations are rejected", () => {
+L0284 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0285 |   const good = pair(item, "education.master.university.zh");
+L0286 |   for (const change of [{ source: "invented" }, { transform: "invented" }, { memoryId: "m1" }, { source: "none" }, { source: "memory", memoryId: "m1" }, { transform: undefined }]) assert.equal(accept([{ ...good, ...change }], [item], facts, [memory()]).accepted.length, 0);
+L0287 |   assert.equal(accept([null], [item]).accepted.length, 0);
+L0288 | });
+L0289 | 
+L0290 | test("pairing request uses strict schema, configured model, no storage and a cancellable timeout", async () => {
+L0291 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0292 |   const controller = new AbortController();
+L0293 |   let sent;
+L0294 |   const result = await requestPairing({ enabled: true, apiKey: "fixture", model: "configured-model" }, [item], buildCatalog(facts, [], url, "zh"), "zh", controller.signal, async (endpoint, options) => {
+L0295 |     assert.equal(endpoint, "https://api.openai.com/v1/responses"); assert.equal(options.method, "POST");
+L0296 |     assert.equal(options.headers.Authorization, "Bearer fixture"); assert.ok(options.signal instanceof AbortSignal);
+L0297 |     controller.abort(); assert.equal(options.signal.aborted, true);
+L0298 |     sent = JSON.parse(options.body);
+L0299 |     return { ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "output_text", text: '{"pairs":[]}' }] }] }) };
+L0300 |   });
+L0301 |   assert.equal(sent.model, "configured-model"); assert.equal(sent.store, false); assert.equal(sent.max_output_tokens, 2500);
+L0302 |   assert.equal(sent.text.format.name, PAIRING_FORMAT); assert.equal(sent.text.format.strict, true);
+L0303 |   assert.deepEqual(sent.text.format.schema.properties.pairs.items.required, ["fieldId", "source", "factId", "memoryId", "transform"]);
+L0304 |   assert.deepEqual(result, { pairs: [] });
+L0305 | });
+L0306 | 
+L0307 | test("HTTP, incomplete, refusal, malformed JSON and missing lists surface Chinese errors", async () => {
+L0308 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0309 |   const invoke = (response) => requestPairing({ enabled: true, apiKey: "fixture", model: "fixture" }, [item], buildCatalog(facts, [], url, "zh"), "zh", undefined, async () => response);
+L0310 |   await assert.rejects(invoke({ ok: false, status: 429, json: async () => ({}) }), /请求受限/);
+L0311 |   await assert.rejects(invoke({ ok: false, status: 401, json: async () => ({}) }), /请求失败（401）/);
+L0312 |   for (const data of [{ status: "incomplete" }, { status: "failed" }, {}, null]) await assert.rejects(invoke({ ok: true, json: async () => data }), /未完成本批配对/);
+L0313 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output: [{ content: [{ type: "refusal" }] }] }) }), /未提供本批配对/);
+L0314 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output_text: "not json" }) }), /无法校验/);
+L0315 |   await assert.rejects(invoke({ ok: true, json: async () => ({ status: "completed", output_text: '{"items":[]}' }) }), /缺少配对列表/);
+L0316 |   await assert.rejects(invoke({ ok: true, json: async () => { throw new Error("bad JSON"); } }), /无法校验/);
+L0317 | });
+L0318 | 
+L0319 | test("disabled settings fail and an empty candidate list performs no request", async () => {
+L0320 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0321 |   const catalog = buildCatalog(facts, [], url, "zh");
+L0322 |   for (const settings of [{ enabled: false, apiKey: "fixture" }, { enabled: true, apiKey: "" }]) await assert.rejects(requestPairing(settings, [item], catalog, "zh", undefined, () => assert.fail("must not request")), /请先/);
+L0323 |   const result = await requestPairing({ enabled: true, apiKey: "fixture" }, planFor([field("姓名")]), catalog, "zh", undefined, () => assert.fail("must not request"));
+L0324 |   assert.deepEqual(result, { pairs: [] });
+L0325 | });
+L0326 | 
+L0327 | test("high-confidence empty email and salary questions cannot be paired to a phone fact", () => {
+L0328 |   const phoneFacts = factsFromProfile({ phone: "13900007731" }, "zh");
+L0329 |   for (const label of ["邮箱", "期望薪资"]) {
+L0330 |     const [item] = planFor([field(label)], phoneFacts);
+L0331 |     assert.equal(item.answer, ""); assert.equal(item.ruleConfidence, "high");
+L0332 |     assert.equal(pairingCandidates([item]).length, 1);
+L0333 |     const result = accept([pair(item, "contact.phone")], [item], phoneFacts);
+L0334 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /明确的题意/);
+L0335 |     if (label === "期望薪资") assert.equal(item.sensitive, true);
+L0336 |   }
+L0337 | });
+L0338 | 
+L0339 | test("pairing preserves an existing sensitive designation even when its fact intent is ordinary", () => {
+L0340 |   const [item] = planFor([field("请填写您的学校名称")]);
+L0341 |   item.sensitive = true;
+L0342 |   const result = accept([pair(item, "education.master.university.zh")], [item]);
+L0343 |   assert.equal(result.accepted[0].sensitive, true);
+L0344 | });
+L0345 | 
+L0346 | test("unknown repeated experience subjects cannot be supplied by a global alias memory", () => {
+L0347 |   const source = factsFromProfile({ internships: [{ companyZh: "公司甲" }, { companyZh: "公司乙" }] }, "zh");
+L0348 |   const items = planFor([field("公司", { fieldId: "company1", groupId: "internship1", section: "实习经历" }), field("公司", { fieldId: "company2", groupId: "internship2", section: "实习经历" })], source);
+L0349 |   const remembered = memory({ question: "公司名称", entityId: "experience.unknown", answer: "公司甲" });
+L0350 |   const result = accept(items.map((item) => pair(item, null, { source: "memory", memoryId: "m1" })), items, source, [remembered]);
+L0351 |   assert.equal(result.accepted.length, 0); assert.equal(result.errors.length, 2);
+L0352 |   assert.ok(result.errors.every((entry) => /尚未确定/.test(entry.reason)));
+L0353 |   assert.equal(buildCatalog(source, [remembered], url, "zh").memories.length, 0);
+L0354 |   assert.equal(accept(items.map(none), items, source, [remembered]).accepted.length, 2);
+L0355 | });
+L0356 | 
+L0357 | test("a current-salary question cannot borrow an expected-salary memory through a loose rule", () => {
+L0358 |   const [item] = planFor([field("Current salary")], []);
+L0359 |   const remembered = memory({ question: "Expected salary", answer: "面议" });
+L0360 |   const result = accept([pair(item, null, { source: "memory", memoryId: "m1" })], [item], [], [remembered]);
+L0361 |   assert.equal(item.ruleConfidence, "low"); assert.equal(result.accepted.length, 0);
+L0362 | });
+L0363 | 
+L0364 | test("splitting date parts validates the whole source date and cannot invent a missing day", () => {
+L0365 |   for (const [value, datePart] of [["2020-02-31", "year"], ["2020-13", "month"], ["2020-02", "day"]]) {
+L0366 |     const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value }];
+L0367 |     const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart, options: [{ text: "2020" }, { text: "13" }, { text: "1" }] })], source);
+L0368 |     const result = accept([pair(item, source[0].id)], [item], source);
+L0369 |     assert.equal(result.accepted.length, 0); assert.match(result.errors[0].reason, /日期资料无效|缺少已确认的日/);
+L0370 |   }
+L0371 |   const source = [{ id: "education.master.start_date", label: "硕士入学日期", entityId: "education.master", value: "2020-02-29" }];
+L0372 |   const [item] = planFor([field("请填写入学日期", { section: "硕士教育", kind: "select", type: "select-one", datePart: "day", options: [{ text: "29" }] })], source);
+L0373 |   assert.equal(accept([pair(item, source[0].id)], [item], source).accepted[0].answer, "29");
+L0374 | });
+
+========================================================================
+FILE: application-tracker-extension/test/aiProfileMemory.test.js
+SHA256: 8f92fb1d6da21d6b48eaa871a1cbbab953a8a3154556a2ae77b5cee3cc0653fd
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import {
+L0004 |   buildLocalProfileMemory,
+L0005 |   buildProfileMemoryPayload,
+L0006 |   extractProfileMemory,
+L0007 |   mergeProfileMemoryWithQuestionMemories,
+L0008 |   normalizeProfileMemory
+L0009 | } from "../src/aiProfileMemory.js";
+L0010 | 
+L0011 | const profile = {
+L0012 |   fullNameZh: "罗凯文",
+L0013 |   englishName: "Kaiwen Luo",
+L0014 |   phone: "+86 18825202614",
+L0015 |   email: "luogaotommy@gmail.com",
+L0016 |   masterUniversity: "University of Hong Kong",
+L0017 |   masterUniversityZh: "香港大学",
+L0018 |   masterDegree: "Master",
+L0019 |   masterMajor: "Master of Accounting",
+L0020 |   internships: [
+L0021 |     {
+L0022 |       company: "ABC",
+L0023 |       companyZh: "ABC 公司",
+L0024 |       role: "Finance Intern",
+L0025 |       roleZh: "财务实习生",
+L0026 |       period: "2025.06 - 2025.08",
+L0027 |       description: "Built weekly reporting dashboards.",
+L0028 |       descriptionZh: "搭建周度报表。"
+L0029 |     }
+L0030 |   ],
+L0031 |   commonAnswers: {
+L0032 |     languageAbility: { zh: "普通话、英语、粤语", en: "Mandarin, English, Cantonese" }
+L0033 |   }
+L0034 | };
+L0035 | 
+L0036 | test("buildProfileMemoryPayload includes profile fields and learned memories", () => {
+L0037 |   const payload = buildProfileMemoryPayload({
+L0038 |     model: "gpt-5_5",
+L0039 |     profile,
+L0040 |     questionMemories: [{ question: "Why this role?", answer: "I like analytical finance work.", language: "en" }]
+L0041 |   });
+L0042 | 
+L0043 |   assert.equal(payload.model, "gpt-5_5");
+L0044 |   assert.equal(payload.max_output_tokens, 5000);
+L0045 |   assert.match(payload.input[0].content, /structured personal knowledge library/i);
+L0046 |   assert.match(payload.input[1].content, /罗凯文/);
+L0047 |   assert.match(payload.input[1].content, /University of Hong Kong/);
+L0048 |   assert.match(payload.input[1].content, /Why this role/);
+L0049 | });
+L0050 | 
+L0051 | test("extractProfileMemory parses fenced JSON into normalized entries", () => {
+L0052 |   const memory = extractProfileMemory({
+L0053 |     output_text: "```json\n{\"summary\":\"Profile memory generated.\",\"entries\":[{\"key\":\"identity.full_name.zh\",\"label\":\"中文姓名\",\"value\":\"罗凯文\",\"language\":\"zh\",\"category\":\"identity\",\"aliases\":[\"姓名\",\"中文名\"],\"sourceFields\":[\"fullNameZh\"]}]}\n```"
+L0054 |   });
+L0055 | 
+L0056 |   assert.equal(memory.summary, "Profile memory generated.");
+L0057 |   assert.deepEqual(memory.entries, [{
+L0058 |     key: "identity.full_name.zh",
+L0059 |     label: "中文姓名",
+L0060 |     value: "罗凯文",
+L0061 |     language: "zh",
+L0062 |     category: "identity",
+L0063 |     aliases: ["姓名", "中文名"],
+L0064 |     sourceFields: ["fullNameZh"]
+L0065 |   }]);
+L0066 |   assert.ok(memory.updatedAt);
+L0067 | });
+L0068 | 
+L0069 | test("extractProfileMemory keeps a raw preview when AI returns non-JSON text", () => {
+L0070 |   const memory = extractProfileMemory({
+L0071 |     output_text: "I can summarize the applicant, but I did not return the requested entries array."
+L0072 |   });
+L0073 | 
+L0074 |   assert.equal(memory.entries.length, 0);
+L0075 |   assert.equal(memory.debug.parseStatus, "no-json-object");
+L0076 |   assert.match(memory.debug.rawTextPreview, /did not return the requested entries array/);
+L0077 | });
+L0078 | 
+L0079 | test("extractProfileMemory salvages entries from a truncated JSON response", () => {
+L0080 |   const memory = extractProfileMemory({
+L0081 |     output_text: "{\"summary\":\"Profile memory\",\"entries\":[{\"key\":\"identity.full_name.zh\",\"label\":\"中文姓名\",\"value\":\"罗凯文\",\"language\":\"zh\",\"category\":\"identity\",\"aliases\":[\"姓名\"],\"sourceFields\":[\"fullNameZh\"]},{\"key\":\"contact.email\",\"label\":\"邮箱\",\"value\":\"kai@example.com\",\"language\":\"\",\"category\":\"contact\",\"aliases\":[\"Email\"],\"sourceFields\":[\"email\"]}"
+L0082 |   });
+L0083 | 
+L0084 |   assert.equal(memory.summary, "Profile memory");
+L0085 |   assert.deepEqual(memory.entries.map((entry) => [entry.key, entry.value]), [
+L0086 |     ["identity.full_name.zh", "罗凯文"],
+L0087 |     ["contact.email", "kai@example.com"]
+L0088 |   ]);
+L0089 |   assert.equal(memory.debug.parseStatus, "salvaged-partial-json");
+L0090 | });
+L0091 | 
+L0092 | test("normalizeProfileMemory drops blank and malformed entries", () => {
+L0093 |   const memory = normalizeProfileMemory({
+L0094 |     summary: " ok ",
+L0095 |     entries: [
+L0096 |       { key: " identity.email ", label: "Email", value: " test@example.com ", aliases: [" 邮箱 ", ""], sourceFields: ["email"] },
+L0097 |       { key: "", label: "Bad", value: "x" },
+L0098 |       { key: "empty", label: "Empty", value: "" }
+L0099 |     ]
+L0100 |   }, "2026-06-04T12:00:00.000Z");
+L0101 | 
+L0102 |   assert.deepEqual(memory, {
+L0103 |     summary: "ok",
+L0104 |     entries: [{
+L0105 |       key: "identity.email",
+L0106 |       label: "Email",
+L0107 |       value: "test@example.com",
+L0108 |       language: "",
+L0109 |       category: "",
+L0110 |       aliases: ["邮箱"],
+L0111 |       sourceFields: ["email"]
+L0112 |     }],
+L0113 |     updatedAt: "2026-06-04T12:00:00.000Z"
+L0114 |   });
+L0115 | });
+L0116 | 
+L0117 | test("buildLocalProfileMemory creates fallback entries from profile and learned answers", () => {
+L0118 |   const memory = buildLocalProfileMemory({
+L0119 |     profile,
+L0120 |     questionMemories: [{
+L0121 |       question: "家庭关系 > 父亲 > 职位*",
+L0122 |       displayQuestion: "家庭关系 > 父亲 > 职位*",
+L0123 |       answer: "区域总监",
+L0124 |       language: "zh",
+L0125 |       category: "general"
+L0126 |     }]
+L0127 |   }, "2026-06-04T12:00:00.000Z");
+L0128 | 
+L0129 |   assert.ok(memory.entries.length >= 8);
+L0130 |   assert.equal(memory.entries.find((entry) => entry.key === "identity.full_name.zh")?.value, "罗凯文");
+L0131 |   assert.equal(memory.entries.find((entry) => entry.key === "contact.email")?.value, "luogaotommy@gmail.com");
+L0132 |   assert.equal(memory.entries.find((entry) => entry.key === "education.master.university.en")?.value, "University of Hong Kong");
+L0133 |   assert.equal(memory.entries.find((entry) => entry.key === "learned_answer.0")?.value, "区域总监");
+L0134 | });
+L0135 | 
+L0136 | test("mergeProfileMemoryWithQuestionMemories refreshes learned answers for AI form analysis", () => {
+L0137 |   const memory = mergeProfileMemoryWithQuestionMemories({
+L0138 |     summary: "Existing structured memory.",
+L0139 |     entries: [
+L0140 |       {
+L0141 |         key: "contact.email",
+L0142 |         label: "邮箱",
+L0143 |         value: "kai@example.com",
+L0144 |         category: "contact",
+L0145 |         aliases: ["邮箱"]
+L0146 |       },
+L0147 |       {
+L0148 |         key: "learned_answer.0",
+L0149 |         label: "旧学校名称",
+L0150 |         value: "旧答案",
+L0151 |         category: "learned_answer",
+L0152 |         aliases: ["旧学校名称"]
+L0153 |       }
+L0154 |     ]
+L0155 |   }, [
+L0156 |     {
+L0157 |       question: "学校名称",
+L0158 |       displayQuestion: "教育背景 > 学校名称",
+L0159 |       contextPath: "教育背景 > 学校名称",
+L0160 |       answer: "香港大学",
+L0161 |       language: "zh"
+L0162 |     },
+L0163 |     {
+L0164 |       question: "专业名称",
+L0165 |       displayQuestion: "教育背景 > 专业名称",
+L0166 |       contextPath: "教育背景 > 专业名称",
+L0167 |       answer: "金融学",
+L0168 |       language: "zh"
+L0169 |     }
+L0170 |   ]);
+L0171 | 
+L0172 |   assert.equal(memory.summary, "Existing structured memory.");
+L0173 |   assert.equal(memory.entries.find((entry) => entry.key === "contact.email")?.value, "kai@example.com");
+L0174 |   assert.equal(memory.entries.some((entry) => entry.value === "旧答案"), false);
+L0175 |   assert.deepEqual(
+L0176 |     memory.entries
+L0177 |       .filter((entry) => entry.category === "learned_answer")
+L0178 |       .map((entry) => [entry.label, entry.value]),
+L0179 |     [
+L0180 |       ["教育背景 > 学校名称", "香港大学"],
+L0181 |       ["教育背景 > 专业名称", "金融学"]
+L0182 |     ]
+L0183 |   );
+L0184 | });
+
+========================================================================
+FILE: application-tracker-extension/test/aiSettings.test.js
+SHA256: d4eaa885d02f3b0bb680a90e86152c17e746a7c0036002f6607859eec61f0be5
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { DEFAULT_AI_SETTINGS, normalizeAiSettings } from "../src/aiSettings.js";
+L0004 | 
+L0005 | test("normalizeAiSettings keeps AI disabled by default", () => {
+L0006 |   assert.deepEqual(normalizeAiSettings(), DEFAULT_AI_SETTINGS);
+L0007 | });
+L0008 | 
+L0009 | test("normalizeAiSettings trims key and preserves explicit settings", () => {
+L0010 |   assert.deepEqual(normalizeAiSettings({
+L0011 |     enabled: true,
+L0012 |     apiKey: " sk-test ",
+L0013 |     model: " gpt-4.1-mini "
+L0014 |   }), {
+L0015 |     enabled: true,
+L0016 |     visionEnabled: false,
+L0017 |     apiKey: "sk-test",
+L0018 |     model: "gpt-4.1-mini"
+L0019 |   });
+L0020 | });
+L0021 | 
+L0022 | test("screenshots require an explicit saved opt-in and survive settings normalization", () => {
+L0023 |   assert.equal(normalizeAiSettings({ enabled: true }).visionEnabled, false);
+L0024 |   assert.equal(normalizeAiSettings({ visionEnabled: "true" }).visionEnabled, false);
+L0025 |   assert.equal(normalizeAiSettings({ enabled: true, visionEnabled: true }).visionEnabled, true);
+L0026 |   assert.equal(normalizeAiSettings({ enabled: false, visionEnabled: true }).enabled, false);
+L0027 | });
+L0028 | 
+L0029 | test("normalizeAiSettings falls back to default model", () => {
+L0030 |   assert.equal(normalizeAiSettings({ enabled: true, apiKey: "sk-test", model: "" }).model, DEFAULT_AI_SETTINGS.model);
+L0031 | });
+L0032 | 
+L0033 | test("normalization repairs the legacy default model typo without changing chosen models", () => {
+L0034 |   assert.equal(normalizeAiSettings({ model: "gpt-5_5" }).model, "gpt-5.5");
+L0035 |   assert.equal(normalizeAiSettings({ model: "gpt-4.1-mini" }).model, "gpt-4.1-mini");
+L0036 | });
+
+========================================================================
+FILE: application-tracker-extension/test/aiSuggest.test.js
+SHA256: b5786ae87441f6f4c936a79df4f3f3f9bfae11cbb0e682c58c7a982089e42eb6
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import {
+L0004 |   buildAiSuggestionPayload,
+L0005 |   extractAiSuggestionText,
+L0006 |   trimForAiContext
+L0007 | } from "../src/aiSuggest.js";
+L0008 | 
+L0009 | test("buildAiSuggestionPayload asks for a direct answer and includes compact context", () => {
+L0010 |   const payload = buildAiSuggestionPayload({
+L0011 |     model: "gpt-5-nano",
+L0012 |     question: "Why do you want to join this company?",
+L0013 |     language: "en",
+L0014 |     profile: {
+L0015 |       englishName: "Kaiwen Luo",
+L0016 |       phone: "+86 18825202614",
+L0017 |       commonAnswers: {
+L0018 |         whyCompany: {
+L0019 |           en: "I am interested in financial technology and structured training."
+L0020 |         }
+L0021 |       },
+L0022 |       internships: [
+L0023 |         {
+L0024 |           company: "ABC",
+L0025 |           role: "Finance Intern",
+L0026 |           description: "Built weekly reporting dashboards."
+L0027 |         }
+L0028 |       ]
+L0029 |     },
+L0030 |     memories: [
+L0031 |       {
+L0032 |         question: "Why this firm?",
+L0033 |         answer: "I value data-driven finance work."
+L0034 |       }
+L0035 |     ]
+L0036 |   });
+L0037 | 
+L0038 |   assert.equal(payload.model, "gpt-5-nano");
+L0039 |   assert.equal(payload.max_output_tokens, 160);
+L0040 |   assert.match(payload.input[0].content, /only the answer/i);
+L0041 |   assert.match(payload.input[1].content, /Why do you want to join this company/);
+L0042 |   assert.match(payload.input[1].content, /Kaiwen Luo/);
+L0043 |   assert.match(payload.input[1].content, /Finance Intern/);
+L0044 | });
+L0045 | 
+L0046 | test("extractAiSuggestionText reads Responses API output_text first", () => {
+L0047 |   assert.equal(extractAiSuggestionText({ output_text: "  Hong Kong  " }), "Hong Kong");
+L0048 | });
+L0049 | 
+L0050 | test("extractAiSuggestionText falls back to nested content text", () => {
+L0051 |   assert.equal(extractAiSuggestionText({
+L0052 |     output: [
+L0053 |       {
+L0054 |         content: [
+L0055 |           { type: "output_text", text: "Master of Accounting" }
+L0056 |         ]
+L0057 |       }
+L0058 |     ]
+L0059 |   }), "Master of Accounting");
+L0060 | });
+L0061 | 
+L0062 | test("trimForAiContext removes long noisy values", () => {
+L0063 |   const trimmed = trimForAiContext(" a ".repeat(500), 12);
+L0064 |   assert.ok(trimmed.endsWith("..."));
+L0065 |   assert.ok(trimmed.length <= 15);
+L0066 | });
+
+========================================================================
+FILE: application-tracker-extension/test/applicationInfo.test.js
+SHA256: 2eb9cf61031b5b1dc3ef63dc97bbdeb79a83a3d5ef40f50b71aff385b09ab9b2
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { buildApplicationInfoGroups } from "../src/applicationInfo.js";
+L0004 | import { emptyProfile } from "../src/profile.js";
+L0005 | 
+L0006 | test("buildApplicationInfoGroups separates Chinese and English application info", () => {
+L0007 |   const groups = buildApplicationInfoGroups({
+L0008 |     ...emptyProfile(),
+L0009 |     fullNameZh: "李凯",
+L0010 |     fullName: "Kai Li",
+L0011 |     phone: "12345678",
+L0012 |     email: "kai@example.com",
+L0013 |     masterUniversityZh: "香港大学",
+L0014 |     masterUniversity: "The University of Hong Kong",
+L0015 |     masterDegreeZh: "硕士",
+L0016 |     masterDegree: "Master",
+L0017 |     masterMajorZh: "金融学",
+L0018 |     masterMajor: "Finance",
+L0019 |     masterStartDate: "2025-09",
+L0020 |     masterGraduationDate: "2026-06",
+L0021 |     bachelorUniversityZh: "中山大学",
+L0022 |     bachelorUniversity: "Sun Yat-sen University",
+L0023 |     bachelorDegreeZh: "本科",
+L0024 |     bachelorDegree: "Bachelor",
+L0025 |     bachelorMajorZh: "经济学",
+L0026 |     bachelorMajor: "Economics",
+L0027 |     bachelorStartDate: "2021-09",
+L0028 |     bachelorGraduationDate: "2025-06",
+L0029 |     internships: [
+L0030 |       {
+L0031 |         companyZh: "中金公司",
+L0032 |         company: "CICC",
+L0033 |         roleZh: "暑期分析师",
+L0034 |         role: "Summer Analyst",
+L0035 |         period: "2025.06 - 2025.08",
+L0036 |         descriptionZh: "制作市场更新材料。",
+L0037 |         description: "Built market update decks."
+L0038 |       }
+L0039 |     ]
+L0040 |   });
+L0041 | 
+L0042 |   assert.deepEqual(groups.map((group) => group.title), ["中文申请", "English Application"]);
+L0043 |   assert.deepEqual(groups[0].sections.map((section) => section.title), ["基础信息", "硕士教育", "本科教育", "实习经历"]);
+L0044 |   assert.deepEqual(groups[1].sections.map((section) => section.title), ["Basic Info", "Master Education", "Bachelor Education", "Internship Experience"]);
+L0045 | 
+L0046 |   const chineseBasic = groups[0].sections[0];
+L0047 |   assert.equal(chineseBasic.items.find((item) => item.label === "姓名").value, "李凯");
+L0048 |   assert.equal(chineseBasic.items.some((item) => item.value === "Kai Li"), false);
+L0049 | 
+L0050 |   const chineseInternship = groups[0].sections[3].entries[0];
+L0051 |   assert.equal(chineseInternship.items.find((item) => item.label === "职位").value, "暑期分析师");
+L0052 |   assert.equal(chineseInternship.items.find((item) => item.label === "经历").value, "制作市场更新材料。");
+L0053 |   assert.equal(chineseInternship.items.some((item) => item.value === "Summer Analyst"), false);
+L0054 | 
+L0055 |   const englishInternship = groups[1].sections[3].entries[0];
+L0056 |   assert.equal(englishInternship.items.find((item) => item.label === "Role").value, "Summer Analyst");
+L0057 |   assert.equal(englishInternship.items.find((item) => item.label === "Experience").value, "Built market update decks.");
+L0058 |   assert.equal(englishInternship.items.some((item) => item.value === "暑期分析师"), false);
+L0059 | });
+L0060 | 
+L0061 | test("buildApplicationInfoGroups does not put English-only values into the Chinese group", () => {
+L0062 |   const groups = buildApplicationInfoGroups({
+L0063 |     ...emptyProfile(),
+L0064 |     fullName: "Kai Li",
+L0065 |     masterUniversity: "The University of Hong Kong",
+L0066 |     internships: [
+L0067 |       {
+L0068 |         company: "CICC",
+L0069 |         role: "Summer Analyst",
+L0070 |         period: "2025.06 - 2025.08",
+L0071 |         description: "Built market update decks."
+L0072 |       }
+L0073 |     ]
+L0074 |   });
+L0075 | 
+L0076 |   const chineseGroup = groups.find((group) => group.title === "中文申请");
+L0077 |   const englishGroup = groups.find((group) => group.title === "English Application");
+L0078 | 
+L0079 |   assert.equal(chineseGroup, undefined);
+L0080 |   assert.ok(englishGroup);
+L0081 |   assert.equal(englishGroup.sections[0].items.find((item) => item.label === "Full Name").value, "Kai Li");
+L0082 | });
+
+========================================================================
+FILE: application-tracker-extension/test/assistant.test.js
+SHA256: dcbd8a072160f971a8fea5f0e55e34077747683e7f2b673e995b8a245d881688
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { factsFromProfile, preparePlan, acceptAiItems, validateValue, interpretField, scopeFor, eligibleFacts, versionOf, MEMORY_SCOPE_VERSION } from "../src/assistant/planner.js";
+L0004 | import { buildAiBatches, buildPayload, requestBatch } from "../src/assistant/ai.js";
+L0005 | const profile = { fullName: "Example Person", fullNameZh: "示例姓名", email: "test@example.com", masterUniversity: "Example University", masterUniversityZh: "示例大学", bachelorUniversityZh: "本科大学", commonAnswers: { expectedSalary: { zh: "面议" }, visaSponsorship: { zh: "是" }, selfIntroduction: { zh: "这是自我介绍" } }, internships: [{ companyZh: "公司甲", roleZh: "分析实习生" }, { companyZh: "公司乙", roleZh: "研究实习生" }] };
+L0006 | const field = (label, extra = {}) => ({ fieldId: label, groupId: "group", label, kind: "text", type: "text", supported: true, value: "", options: [], constraints: {}, section: "基本信息", group: "", ...extra });
+L0007 | const snapshot = (fields) => ({ fields, url: "https://example.com/jobs/one?token=secret", title: "Application" });
+L0008 | const facts = factsFromProfile(profile, "zh");
+L0009 | 
+L0010 | test("new assistant reads existing profile without mutating it or mixing languages", () => {
+L0011 |   const before = JSON.stringify(profile);
+L0012 |   assert.equal(facts.find((f) => f.id === "identity.full_name.zh").value, "示例姓名");
+L0013 |   assert.equal(facts.some((f) => f.id.endsWith(".en")), false);
+L0014 |   assert.equal(JSON.stringify(profile), before);
+L0015 | });
+L0016 | test("ordinary facts are selected, sensitive answers and narratives require review", () => {
+L0017 |   const plan = preparePlan(snapshot([field("姓名"), field("期望薪资"), field("自我介绍", { kind: "textarea" })]), facts);
+L0018 |   assert.deepEqual(plan.map((p) => p.selected), [true, false, false]);
+L0019 |   assert.equal(plan[1].status, "review");
+L0020 | });
+L0021 | test("family name never receives the applicant's name", () => {
+L0022 |   const [item] = preparePlan(snapshot([field("姓名", { section: "家庭关系", group: "父亲" })]), facts);
+L0023 |   assert.equal(item.entityId, "family.father"); assert.equal(item.answer, "");
+L0024 | });
+L0025 | test("explicit degree labels and default single group choose correct education", () => {
+L0026 |   const [item] = preparePlan(snapshot([field("学校名称")]), facts);
+L0027 |   assert.equal(item.answer, "示例大学");
+L0028 |   const [bachelor] = preparePlan(snapshot([field("学校名称", { section: "本科教育" })]), facts);
+L0029 |   assert.equal(bachelor.answer, "本科大学");
+L0030 | });
+L0031 | test("clean native degree label pairs master's degree locally in education section", () => {
+L0032 |   const degreeFacts = factsFromProfile({ masterDegreeZh: "硕士" }, "zh");
+L0033 |   const [item] = preparePlan(snapshot([field("学历", { section: "教育经历", kind: "select", type: "select-one", options: [{ id: "placeholder", text: "请选择", value: "", disabled: true }, { id: "bachelor", text: "本科", value: "本科", disabled: false }, { id: "master", text: "硕士", value: "硕士", disabled: false }] })]), degreeFacts);
+L0034 |   assert.equal(item.answer, "硕士"); assert.equal(item.status, "ready");
+L0035 |   assert.match(item.source, /^个人信息/); assert.equal(item.selected, true);
+L0036 | });
+L0037 | test("ambiguous repeated groups do not receive the same degree or internship", () => {
+L0038 |   const fields = [field("学校名称", { groupId: "a" }), field("学校名称", { fieldId: "second", groupId: "b" }), field("职位", { section: "实习经历" })];
+L0039 |   assert.ok(preparePlan(snapshot(fields), facts).every((p) => !p.answer));
+L0040 |   const result = preparePlan(snapshot(fields), facts, [], "zh", { a: "education.master", b: "education.bachelor", group: "experience.internship.1" });
+L0041 |   assert.deepEqual(result.map((p) => p.answer), ["示例大学", "本科大学", "研究实习生"]);
+L0042 | });
+L0043 | test("partial visual degree evidence cannot mix bachelor school with default master's major", () => {
+L0044 |   const degreeFacts = factsFromProfile({ ...profile, bachelorMajorZh: "本科专业", masterMajorZh: "硕士专业" }, "zh");
+L0045 |   const fields = [field("学校名称", { section: "本科教育", visualEvidence: "截图V1：学校名称 / 本科教育" }), field("专业", { section: "教育经历" }), field("邮箱")];
+L0046 |   const plan = preparePlan(snapshot(fields), degreeFacts);
+L0047 |   assert.equal(plan[0].answer, "本科大学");
+L0048 |   assert.equal(plan[1].entityId, "education.unknown");
+L0049 |   assert.equal(plan[1].answer, "");
+L0050 |   assert.equal(plan[1].selected, false);
+L0051 |   assert.match(plan[1].reason, /截图仅确认/);
+L0052 |   assert.deepEqual(eligibleFacts(plan[1], degreeFacts), []);
+L0053 |   assert.equal(plan[2].answer, profile.email);
+L0054 |   assert.ok(!buildAiBatches(plan, degreeFacts, snapshot(fields), "zh").some((batch) => batch.fields.some((item) => item.fieldId === "专业")));
+L0055 |   const bound = preparePlan(snapshot(fields), degreeFacts, [], "zh", { group: "education.bachelor" });
+L0056 |   assert.equal(bound[1].answer, "本科专业");
+L0057 |   assert.equal(bound[1].bindingExplicit, true);
+L0058 | });
+L0059 | test("explicit degree labels remain authoritative alongside visual evidence", () => {
+L0060 |   const degreeFacts = factsFromProfile({ ...profile, masterMajorZh: "硕士专业" }, "zh");
+L0061 |   const fields = [field("学校名称", { section: "本科教育", visualEvidence: "截图V1：学校名称 / 本科教育" }), field("专业", { section: "硕士教育" })];
+L0062 |   const plan = preparePlan(snapshot(fields), degreeFacts);
+L0063 |   assert.equal(plan[1].answer, "硕士专业");
+L0064 |   assert.equal(plan[1].visualGroupUnresolved, false);
+L0065 | });
+L0066 | test("award and ethnicity labels override noisy internship context", () => {
+L0067 |   const plan = preparePlan(snapshot([field("奖惩情况", { section: "实习经历" }), field("民族", { section: "姓名" })]), facts);
+L0068 |   assert.ok(plan.every((p) => !p.answer));
+L0069 | });
+L0070 | test("filled and unsupported fields stay unselected", () => {
+L0071 |   const plan = preparePlan(snapshot([field("姓名", { value: "User entered" }), field("邮箱", { supported: false })]), facts);
+L0072 |   assert.deepEqual(plan.map((p) => p.status), ["filled", "unsupported"]);
+L0073 | });
+L0074 | test("memory needs confirmation, exact subject, language and scope", () => {
+L0075 |   const f = field("其他技能");
+L0076 |   const base = { question: f.label, answer: "SQL", entityId: "self", language: "zh", scope: "https://example.com/jobs/one", scopeVersion: MEMORY_SCOPE_VERSION, confirmed: true };
+L0077 |   const get = (m) => preparePlan(snapshot([f]), facts, [m])[0].answer;
+L0078 |   assert.equal(get(base), "SQL");
+L0079 |   for (const patch of [{ confirmed: false }, { language: "en" }, { entityId: "family.father" }, { scope: "https://example.com/jobs/two" }]) assert.equal(get({ ...base, ...patch }), "");
+L0080 | });
+L0081 | test("conflicting memories remain unresolved", () => {
+L0082 |   const base = { question: "其他技能", entityId: "self", language: "zh", scope: "global", confirmed: true };
+L0083 |   assert.equal(preparePlan(snapshot([field("其他技能")]), facts, [{ ...base, answer: "a" }, { ...base, answer: "b" }])[0].answer, "");
+L0084 | });
+L0085 | test("option validation uses unique exact text and rejects negative substrings", () => {
+L0086 |   const f = field("是否", { options: [{ id: "a", text: "不是", disabled: false }, { id: "b", text: "请选择", disabled: true }] });
+L0087 |   assert.ok(validateValue(f, "是")); assert.ok(validateValue(f, "请选择")); assert.equal(validateValue(f, "不是"), "");
+L0088 | });
+L0089 | test("invalid dates, precision, length and numeric range are rejected", () => {
+L0090 |   assert.ok(validateValue(field("生日", { type: "date" }), "2026-02-30"));
+L0091 |   assert.ok(validateValue(field("生日", { type: "date" }), "2026-02"));
+L0092 |   assert.equal(validateValue(field("生日", { type: "date" }), "2024-02-29"), "");
+L0093 |   assert.ok(validateValue(field("text", { constraints: { maxLength: 3 } }), "abcd"));
+L0094 |   assert.ok(validateValue(field("number", { type: "number", constraints: { min: "3" } }), "2"));
+L0095 | });
+L0096 | test("AI cannot use salary or eligibility facts interchangeably", () => {
+L0097 |   const [item] = preparePlan(snapshot([field("期望薪资")]), facts);
+L0098 |   assert.deepEqual(eligibleFacts(item, facts).map((f) => f.id), ["common_answer.expectedSalary.zh"]);
+L0099 |   const result = acceptAiItems({ items: [{ fieldId: item.fieldId, entityId: "self", kind: "fact", factIds: ["common_answer.visaSponsorship.zh"] }] }, [item], facts);
+L0100 |   assert.equal(result.accepted.length, 0);
+L0101 | });
+L0102 | test("AI duplicate, invented, stale source and wrong entity suggestions are rejected", () => {
+L0103 |   const plan = preparePlan(snapshot([field("姓名")]), facts);
+L0104 |   const base = { fieldId: "姓名", entityId: "self", kind: "fact", factIds: ["identity.full_name.zh"] };
+L0105 |   for (const items of [[base, base], [{ ...base, fieldId: "unknown" }], [{ ...base, factIds: ["madeup"] }], [{ ...base, entityId: "father" }]]) assert.equal(acceptAiItems({ items }, plan, facts).accepted.length, 0);
+L0106 | });
+L0107 | test("AI fact text is derived locally and AI never selects its own suggestions", () => {
+L0108 |   const plan = preparePlan(snapshot([field("姓名")]), facts);
+L0109 |   const result = acceptAiItems({ items: [{ fieldId: "姓名", entityId: "self", kind: "fact", factIds: ["identity.full_name.zh"], text: "Invented" }] }, plan, facts);
+L0110 |   assert.equal(result.accepted[0].answer, "示例姓名"); assert.equal(result.accepted[0].selected, false);
+L0111 | });
+L0112 | test("AI cannot rewrite edited answers or generate factual free text", () => {
+L0113 |   const plan = preparePlan(snapshot([field("姓名")]), facts);
+L0114 |   const item = { fieldId: "姓名", entityId: "self", kind: "draft", factIds: ["identity.full_name.zh"], text: "Fake" };
+L0115 |   assert.equal(acceptAiItems({ items: [item] }, plan, facts).accepted.length, 0);
+L0116 |   plan[0].edited = true;
+L0117 |   assert.equal(acceptAiItems({ items: [{ ...item, kind: "fact" }] }, plan, facts).accepted.length, 0);
+L0118 | });
+L0119 | test("AI batching covers more than 120 fields without sending existing answers or URL tokens", () => {
+L0120 |   const s = snapshot(Array.from({ length: 125 }, (_, i) => field("自我介绍", { fieldId: String(i), kind: "textarea" })));
+L0121 |   const plan = preparePlan(s, facts);
+L0122 |   const batches = buildAiBatches(plan, facts, s, "zh");
+L0123 |   assert.equal(batches.reduce((n, b) => n + b.fields.length, 0), 125);
+L0124 |   const text = JSON.stringify(batches);
+L0125 |   assert.ok(!text.includes("token=secret")); assert.ok(!text.includes("test@example.com"));
+L0126 | });
+L0127 | test("API request uses strict schema, preserves selected model and disables response storage", () => {
+L0128 |   const body = buildPayload("user-configured-model", {});
+L0129 |   assert.equal(body.store, false); assert.equal(body.model, "user-configured-model"); assert.equal(body.text.format.strict, true);
+L0130 | });
+L0131 | test("truncated, malformed and refused API responses surface failures", async () => {
+L0132 |   const settings = { enabled: true, apiKey: "fixture", model: "fixture" };
+L0133 |   for (const data of [{ status: "incomplete" }, { output_text: "not json" }, { output: [{ content: [{ type: "refusal" }] }] }]) {
+L0134 |     await assert.rejects(requestBatch(settings, { fields: [] }, [], [], undefined, async () => ({ ok: true, json: async () => data })));
+L0135 |   }
+L0136 | });
+L0137 | test("scope strips tokens and versions change with personal information", () => {
+L0138 |   assert.equal(scopeFor("https://example.com/apply?token=abc#secret"), "https://example.com/apply");
+L0139 |   assert.notEqual(versionOf(profile), versionOf({ ...profile, phone: "123" }));
+L0140 | });
+L0141 | 
+L0142 | test("school location, major ranking and degree grade never become selected facts", () => {
+L0143 |   const source = factsFromProfile({ masterUniversityZh: "示例大学", masterMajorZh: "统计学", masterDegreeZh: "硕士" }, "zh");
+L0144 |   const questions = ["学校所在地", "毕业院校所在城市", "专业排名", "学位成绩", "University address", "Major GPA", "Degree grade"];
+L0145 |   const plan = preparePlan(snapshot(questions.map((label) => field(label, { section: "教育经历" }))), source);
+L0146 |   assert.ok(plan.every((p) => !p.answer && !p.selected && !p.intent && p.needsSemanticReview));
+L0147 |   assert.equal(buildAiBatches(plan, source, snapshot([]), "zh").length, 0);
+L0148 | });
+L0149 | 
+L0150 | 
+L0151 | 
+L0152 | 
+L0153 | 
+L0154 | 
+L0155 | 
+L0156 | 
+L0157 | 
+L0158 | test("confirmed narrative memory is reused without another AI drafting request", () => {
+L0159 |   const source = factsFromProfile({ masterUniversityZh: "示例大学" }, "zh");
+L0160 |   const memory = { id: "intro-memory", question: "自我介绍", answer: "已确认的介绍", confirmed: true, language: "zh", entityId: "self", scope: "global" };
+L0161 |   const s = snapshot([field("自我介绍", { kind: "textarea" })]);
+L0162 |   const plan = preparePlan(s, source, [memory]);
+L0163 |   assert.equal(plan[0].answer, memory.answer);
+L0164 |   assert.ok(eligibleFacts(plan[0], source).length);
+L0165 |   assert.deepEqual(buildAiBatches(plan, source, s, "zh"), []);
+L0166 | });
+L0167 | 
+L0168 | test("real custom-select options allow semantic mapping but never automatic selection", () => {
+L0169 |   const degreeFacts = factsFromProfile({ masterDegreeZh: "硕士" }, "zh");
+L0170 |   const [item] = preparePlan(snapshot([field("学历", { kind: "custom-select", options: [{ id: "master", text: "硕士研究生", disabled: false }, { id: "bachelor", text: "本科", disabled: false }] })]), degreeFacts);
+L0171 |   const batches = buildAiBatches([item], degreeFacts, snapshot([]), "zh");
+L0172 |   assert.deepEqual(batches[0].fields[0].options, item.options);
+L0173 |   const proposal = { fieldId: item.fieldId, entityId: item.entityId, kind: "option", optionId: "master", factIds: ["education.master.degree.zh"] };
+L0174 |   const result = acceptAiItems({ items: [proposal] }, [item], degreeFacts);
+L0175 |   assert.equal(result.accepted[0].answer, "硕士研究生");
+L0176 |   assert.equal(result.accepted[0].selected, false);
+L0177 |   assert.equal(result.accepted[0].status, "review");
+L0178 |   assert.equal(acceptAiItems({ items: [{ ...proposal, optionId: "invented" }] }, [item], degreeFacts).accepted.length, 0);
+L0179 |   assert.equal(acceptAiItems({ items: [proposal] }, [item], []).accepted.length, 0);
+L0180 | });
+L0181 | 
+L0182 | test("application scopes preserve business query and SPA routes, removing only private and tracking parameters", () => {
+L0183 |   assert.equal(scopeFor("https://example.com/apply?token=secret&jobId=A&utm_source=site&company=One"), "https://example.com/apply?company=One&jobId=A");
+L0184 |   assert.notEqual(scopeFor("https://example.com/apply?jobId=A"), scopeFor("https://example.com/apply?jobId=B"));
+L0185 |   assert.notEqual(scopeFor("https://example.com/#/job/A"), scopeFor("https://example.com/#/job/B"));
+L0186 |   assert.equal(scopeFor("https://example.com/#/apply?jobId=A&access_token=secret"), "https://example.com/#/apply?jobId=A");
+L0187 |   assert.equal(scopeFor("https://example.com/#jobId=A&token=secret"), "https://example.com/#jobId=A");
+L0188 |   assert.equal(scopeFor("javascript:alert(1)"), "");
+L0189 | });
+L0190 | 
+L0191 | test("memory from another job or a legacy path-only scope requires fresh confirmation", () => {
+L0192 |   const item = field("为什么申请这个岗位");
+L0193 |   const memory = { question: item.label, answer: "只适用于 A 岗位", entityId: "self", language: "zh", confirmed: true, scope: scopeFor("https://example.com/apply?jobId=A"), scopeVersion: MEMORY_SCOPE_VERSION };
+L0194 |   const forJob = (url, entry = memory) => preparePlan({ ...snapshot([item]), url }, [], [entry])[0].answer;
+L0195 |   assert.equal(forJob("https://example.com/apply?jobId=A&token=secret"), memory.answer);
+L0196 |   assert.equal(forJob("https://example.com/apply?jobId=B"), "");
+L0197 |   assert.equal(forJob("https://example.com/apply", { ...memory, scope: "https://example.com/apply", scopeVersion: undefined }), "");
+L0198 |   assert.equal(forJob("https://example.com/apply?jobId=B", { ...memory, scope: "global", scopeVersion: undefined }), memory.answer);
+L0199 | });
+L0200 | 
+L0201 | 
+L0202 | test("versions ignore storage object key ordering but preserve meaningful changes", () => {
+L0203 |   assert.equal(versionOf([{ id: "m", metadata: { b: 2, a: 1 }, answer: "A" }]), versionOf([{ answer: "A", metadata: { a: 1, b: 2 }, id: "m" }]));
+L0204 |   assert.notEqual(versionOf([{ id: "m", answer: "A" }]), versionOf([{ id: "m", answer: "B" }]));
+L0205 | });
+
+========================================================================
+FILE: application-tracker-extension/test/backup.test.js
+SHA256: 7f42e1017009f0eb08bb7aec3de279e3a9d3dc20a11b369dcf0e12ec18bcfecd
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { createBackup, validateBackup, prepareRestore } from "../src/backup.js";
+L0004 | import { createRecord } from "../src/model.js";
+L0005 | 
+L0006 | const now = "2026-09-20T12:00:00Z";
+L0007 | const record = (id, notes = "") => ({ ...createRecord({ company: "示例公司", role: "分析师", source: "company_portal", portalLink: `https://example.com/apply?id=${id}`, appliedDate: "2026-09-20", status: "applied", notes }, now), id });
+L0008 | const memory = (id, answer = "示例答案") => ({ id, question: "其他技能", answer, language: "zh", entityId: "self", scope: "https://example.com/apply?id=1", scopeVersion: 2, confirmed: true, origin: "user_confirmed", updatedAt: now, history: [] });
+L0009 | const state = (overrides = {}) => ({ records: [], profile: {}, memories: [], legacyMemories: [], legacyMemoryBackup: [], ...overrides });
+L0010 | 
+L0011 | test("full backup round-trips records, profile, scopes and both legacy stores without credentials", () => {
+L0012 |   const original = state({ records: [record("one")], profile: { fullNameZh: "测试用户", internships: [{ companyZh: "示例公司" }], apiKey: "SECRET" }, memories: [memory("m1")], legacyMemories: [memory("old")], legacyMemoryBackup: [memory("original")], apiKey: "SECRET", settings: { apiKey: "SECRET" } });
+L0013 |   const backup = createBackup(original, now);
+L0014 |   assert.equal(JSON.stringify(backup).includes("SECRET"), false);
+L0015 |   const checked = validateBackup(JSON.parse(JSON.stringify(backup)));
+L0016 |   assert.deepEqual(checked.data.records, original.records);
+L0017 |   assert.equal(checked.data.profile.fullNameZh, "测试用户");
+L0018 |   assert.equal(checked.data.memories[0].scope, "https://example.com/apply?id=1");
+L0019 |   assert.equal(checked.data.memories[0].scopeVersion, 2);
+L0020 |   assert.equal(checked.data.legacyMemoryBackup[0].id, "original");
+L0021 | });
+L0022 | 
+L0023 | test("validation rejects unexpected settings, incompatible versions and broken records before restore", () => {
+L0024 |   const good = createBackup(state({ records: [record("one")] }), now);
+L0025 |   assert.throws(() => validateBackup({ ...good, settings: { apiKey: "SECRET" } }), /未知字段/);
+L0026 |   assert.throws(() => validateBackup({ ...good, schemaVersion: 999 }), /版本/);
+L0027 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, profile: { apiKey: "SECRET" } } }), /未知字段/);
+L0028 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, records: [{ ...good.data.records[0], appliedDate: "2026-02-30" }] } }), /日期/);
+L0029 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, records: [...good.data.records, ...good.data.records] } }), /重复 ID/);
+L0030 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, records: [{ ...good.data.records[0], portalLink: "javascript:alert(1)" }] } }), /http/);
+L0031 | });
+L0032 | 
+L0033 | test("malformed or incomplete confirmed memories cannot be imported", () => {
+L0034 |   const good = createBackup(state(), now);
+L0035 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, memories: [{ ...memory("m"), entityId: "" }] } }), /主体/);
+L0036 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, memories: [{ ...memory("m"), language: "other" }] } }), /语言/);
+L0037 |   assert.throws(() => validateBackup({ ...good, data: { ...good.data, profile: { internships: "unexpected" } } }), /实习经历/);
+L0038 | });
+L0039 | 
+L0040 | test("merge keeps current IDs and profile and leaves imported memories unconfirmed when profiles differ", () => {
+L0041 |   const current = state({ records: [record("one", "最新备注")], profile: { fullNameZh: "当前资料" }, memories: [memory("m1", "最新答案")] });
+L0042 |   const incoming = createBackup(state({ records: [record("one", "旧备注"), record("two")], profile: { fullNameZh: "备份资料" }, memories: [memory("m1", "旧答案"), memory("m2")] }), now);
+L0043 |   const restored = prepareRestore(current, incoming, "merge");
+L0044 |   assert.equal(restored.data.records.length, 2);
+L0045 |   assert.equal(restored.data.records[0].notes, "最新备注");
+L0046 |   assert.equal(restored.data.profile.fullNameZh, "当前资料");
+L0047 |   assert.equal(restored.data.memories[0].answer, "最新答案");
+L0048 |   assert.equal(restored.data.memories[1].confirmed, false);
+L0049 |   assert.equal(restored.summary.conflictCount, 2);
+L0050 |   assert.equal(restored.summary.profileConflict, true);
+L0051 | });
+L0052 | 
+L0053 | test("replace restores all data while a version-2 partial backup preserves current records", () => {
+L0054 |   const current = state({ records: [record("current")], profile: { fullNameZh: "当前资料" }, legacyMemoryBackup: [memory("historical")] });
+L0055 |   const incoming = createBackup(state({ records: [record("backup")], profile: { fullNameZh: "备份资料" }, memories: [memory("m1")] }), now);
+L0056 |   const full = prepareRestore(current, incoming, "replace");
+L0057 |   assert.deepEqual(full.data, incoming.data);
+L0058 |   const old = { schemaVersion: 2, exportedAt: now, profile: { fullNameZh: "旧版资料" }, memories: [memory("old")], legacyMemories: [] };
+L0059 |   const partial = prepareRestore(current, old, "replace");
+L0060 |   assert.equal(partial.summary.partial, true);
+L0061 |   assert.equal(partial.data.records[0].id, "current");
+L0062 |   assert.equal(partial.data.profile.fullNameZh, "旧版资料");
+L0063 |   assert.equal(partial.data.legacyMemoryBackup[0].id, "historical");
+L0064 | });
+L0065 | 
+L0066 | test("text referral references round-trip and do not block restore previews", () => {
+L0067 |   const current = state({ records: [{ ...record("referral"), portalLink: "微信内推", source: "referral" }] });
+L0068 |   const backup = createBackup(current, now);
+L0069 |   assert.equal(validateBackup(backup).data.records[0].portalLink, "微信内推");
+L0070 |   const incoming = createBackup(state({ records: [record("new")] }), now);
+L0071 |   assert.equal(prepareRestore(current, incoming, "merge").data.records.length, 2);
+L0072 |   assert.equal(prepareRestore(current, incoming, "replace").data.records[0].id, "new");
+L0073 | });
+
+========================================================================
+FILE: application-tracker-extension/test/board.test.js
+SHA256: 481984ef56f73ebe9400409ab9aa163261013450ce3e97e2ef49b1136d035699
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { BOARD_COLUMNS, groupRecordsForBoard } from "../src/board.js";
+L0004 | 
+L0005 | test("BOARD_COLUMNS keeps the intended kanban order", () => {
+L0006 |   assert.deepEqual(BOARD_COLUMNS.map((column) => column.key), [
+L0007 |     "applied",
+L0008 |     "assessment",
+L0009 |     "interview",
+L0010 |     "offer",
+L0011 |     "rejected",
+L0012 |     "on_hold"
+L0013 |   ]);
+L0014 | });
+L0015 | 
+L0016 | test("groupRecordsForBoard groups records by job progress stage", () => {
+L0017 |   const grouped = groupRecordsForBoard([
+L0018 |     { id: "1", status: "applied" },
+L0019 |     { id: "2", status: "oa" },
+L0020 |     { id: "3", status: "first_interview" },
+L0021 |     { id: "4", status: "second_interview" },
+L0022 |     { id: "5", status: "final_interview" },
+L0023 |     { id: "6", status: "offer" },
+L0024 |     { id: "7", status: "rejected" },
+L0025 |     { id: "8", status: "withdrawn" },
+L0026 |     { id: "9", status: "on_hold" }
+L0027 |   ]);
+L0028 | 
+L0029 |   assert.deepEqual(grouped.applied.map((record) => record.id), ["1"]);
+L0030 |   assert.deepEqual(grouped.assessment.map((record) => record.id), ["2"]);
+L0031 |   assert.deepEqual(grouped.interview.map((record) => record.id), ["3", "4", "5"]);
+L0032 |   assert.deepEqual(grouped.offer.map((record) => record.id), ["6"]);
+L0033 |   assert.deepEqual(grouped.rejected.map((record) => record.id), ["7", "8"]);
+L0034 |   assert.deepEqual(grouped.on_hold.map((record) => record.id), ["9"]);
+L0035 | });
+
+========================================================================
+FILE: application-tracker-extension/test/bulk.test.js
+SHA256: 2b4374491279ca478dfdaa68c3bccfce1c5adca27103e84d8f8c75b67b64058f
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import {
+L0004 |   getBulkSelectionState,
+L0005 |   getSelectedVisibleIds,
+L0006 |   toggleAllVisibleIds
+L0007 | } from "../src/bulk.js";
+L0008 | 
+L0009 | test("getSelectedVisibleIds returns selected ids that are currently visible", () => {
+L0010 |   const selectedIds = new Set(["1", "3", "hidden"]);
+L0011 |   const visibleRecords = [{ id: "1" }, { id: "2" }, { id: "3" }];
+L0012 | 
+L0013 |   assert.deepEqual(getSelectedVisibleIds(selectedIds, visibleRecords), ["1", "3"]);
+L0014 | });
+L0015 | 
+L0016 | test("getBulkSelectionState detects unchecked, checked, and indeterminate", () => {
+L0017 |   assert.deepEqual(getBulkSelectionState(new Set(), [{ id: "1" }, { id: "2" }]), {
+L0018 |     checked: false,
+L0019 |     indeterminate: false,
+L0020 |     count: 0
+L0021 |   });
+L0022 | 
+L0023 |   assert.deepEqual(getBulkSelectionState(new Set(["1"]), [{ id: "1" }, { id: "2" }]), {
+L0024 |     checked: false,
+L0025 |     indeterminate: true,
+L0026 |     count: 1
+L0027 |   });
+L0028 | 
+L0029 |   assert.deepEqual(getBulkSelectionState(new Set(["1", "2"]), [{ id: "1" }, { id: "2" }]), {
+L0030 |     checked: true,
+L0031 |     indeterminate: false,
+L0032 |     count: 2
+L0033 |   });
+L0034 | });
+L0035 | 
+L0036 | test("toggleAllVisibleIds selects or clears visible ids without touching hidden ids", () => {
+L0037 |   const visibleRecords = [{ id: "1" }, { id: "2" }];
+L0038 |   const selectedIds = new Set(["hidden"]);
+L0039 | 
+L0040 |   assert.deepEqual([...toggleAllVisibleIds(selectedIds, visibleRecords, true)].sort(), ["1", "2", "hidden"]);
+L0041 |   assert.deepEqual([...toggleAllVisibleIds(new Set(["1", "2", "hidden"]), visibleRecords, false)], ["hidden"]);
+L0042 | });
+
+========================================================================
+FILE: application-tracker-extension/test/commonAnswers.test.js
+SHA256: b4185ea429ac99dcc8e8df89e66ce3470280acfde5fd6a950adc437ccf7719b9
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { buildApplicationInfoGroups } from "../src/applicationInfo.js";
+L0004 | import { emptyProfile, normalizeProfile } from "../src/profile.js";
+L0005 | 
+L0006 | test("normalizeProfile stores common application answers in Chinese and English", () => {
+L0007 |   const profile = normalizeProfile({
+L0008 |     commonAnswers: {
+L0009 |       visaSponsorship: { zh: " 不需要 ", en: " No " },
+L0010 |       rightToWork: { zh: " 有香港工作资格 ", en: " Authorized to work in Hong Kong " },
+L0011 |       expectedSalary: { zh: " 面议 ", en: " Negotiable " },
+L0012 |       earliestStartDate: { zh: " 2026-08 ", en: " August 2026 " },
+L0013 |       currentLocation: { zh: " 香港 ", en: " Hong Kong " },
+L0014 |       relocation: { zh: " 愿意 ", en: " Yes " },
+L0015 |       languageAbility: { zh: " 普通话、英语、粤语 ", en: " Mandarin, English, Cantonese " },
+L0016 |       whyRole: { zh: " 我对岗位感兴趣。 ", en: " I am interested in this role. " },
+L0017 |       whyCompany: { zh: " 我认可公司业务。 ", en: " I am interested in the company. " },
+L0018 |       selfIntroduction: { zh: " 我是金融学生。 ", en: " I am a finance student. " }
+L0019 |     }
+L0020 |   });
+L0021 | 
+L0022 |   assert.deepEqual(profile.commonAnswers.visaSponsorship, { zh: "不需要", en: "No" });
+L0023 |   assert.deepEqual(profile.commonAnswers.languageAbility, { zh: "普通话、英语、粤语", en: "Mandarin, English, Cantonese" });
+L0024 | });
+L0025 | 
+L0026 | test("emptyProfile includes empty common application answers", () => {
+L0027 |   const profile = emptyProfile();
+L0028 | 
+L0029 |   assert.equal(profile.commonAnswers.visaSponsorship.en, "");
+L0030 |   assert.equal(profile.commonAnswers.rightToWork.zh, "");
+L0031 |   assert.equal(profile.commonAnswers.selfIntroduction.en, "");
+L0032 | });
+L0033 | 
+L0034 | test("buildApplicationInfoGroups shows common answers in both language groups", () => {
+L0035 |   const groups = buildApplicationInfoGroups({
+L0036 |     ...emptyProfile(),
+L0037 |     commonAnswers: {
+L0038 |       visaSponsorship: { zh: "不需要", en: "No" },
+L0039 |       rightToWork: { zh: "有香港工作资格", en: "Authorized to work in Hong Kong" },
+L0040 |       expectedSalary: { zh: "面议", en: "Negotiable" }
+L0041 |     }
+L0042 |   });
+L0043 | 
+L0044 |   const chineseCommon = groups[0].sections.find((section) => section.title === "常见申请问题");
+L0045 |   const englishCommon = groups[1].sections.find((section) => section.title === "Common Application Questions");
+L0046 | 
+L0047 |   assert.equal(chineseCommon.items.find((item) => item.label === "是否需要签证赞助").value, "不需要");
+L0048 |   assert.equal(englishCommon.items.find((item) => item.label === "Visa Sponsorship").value, "No");
+L0049 |   assert.equal(englishCommon.items.find((item) => item.label === "Expected Salary").value, "Negotiable");
+L0050 | });
+
+========================================================================
+FILE: application-tracker-extension/test/dateFormat.test.js
+SHA256: abef6f3e07fed7900331d2ef28824c81c8807aa7c926997b2475284bcfa4f1d7
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { readFile } from "node:fs/promises";
+L0004 | import { normalizeDateFormat, parseDateValue, formatDateValue, validateDateValue } from "../src/assistant/dateValue.js";
+L0005 | import { answerForFact } from "../src/assistant/planner.js";
+L0006 | 
+L0007 | test("date hints keep only their date tokens", () => {
+L0008 |   for (const [hint, expected] of [
+L0009 |     ["YYYY-MM", "YYYY-MM"], ["yyyy-MM-dd", "YYYY-MM-DD"], ["yyyy.MM", "YYYY.MM"], ["yyyy-mm-dd", "YYYY-MM-DD"],
+L0010 |     ["入学时间(YYYY-MM)", "YYYY-MM"], ["Start Date (YYYY-MM)", "YYYY-MM"], ["YYYY年MM月", "YYYY年MM月"],
+L0011 |     ["DD/MM/YYYY", "DD/MM/YYYY"], ["yyyy-MM-dd HH:mm", "YYYY-MM-DD"], ["My YYYY.MM field", "YYYY.MM"], ["Start Date", ""], ["请选择日期", ""]
+L0012 |   ]) assert.equal(normalizeDateFormat(hint), expected, hint);
+L0013 | });
+L0014 | 
+L0015 | test("date parsing and output retain precision across site hints", () => {
+L0016 |   assert.equal(formatDateValue("2020-09", "My yyyy.mm field"), "2020.09");
+L0017 |   assert.equal(formatDateValue("2020-09", "Start Date"), "2020-09");
+L0018 |   assert.equal(formatDateValue("15/09/2020", "Start Date (dd/mm/yyyy)"), "15/09/2020");
+L0019 |   assert.equal(parseDateValue("1900-02-29"), null);
+L0020 |   assert.deepEqual(parseDateValue("0004-02-29"), { year: 4, month: 2, day: 29 });
+L0021 | });
+L0022 | 
+L0023 | test("serialized page date helpers stay identical to the planner helpers", async () => {
+L0024 |   const source = await readFile(new URL("../src/assistant/pageBridge.js", import.meta.url), "utf8");
+L0025 |   for (const helper of [normalizeDateFormat, parseDateValue, formatDateValue]) assert.ok(source.includes(helper.toString()), helper.name);
+L0026 | });
+L0027 | 
+L0028 | test("month facts follow the site format instead of copying placeholder text", () => {
+L0029 |   const field = (dateFormat) => ({ kind: "date", type: "text", supported: true, dateFormat, dateRange: false, constraints: {}, options: [] });
+L0030 |   assert.equal(answerForFact(field("入学时间(YYYY-MM)"), "2020-09"), "2020-09");
+L0031 |   assert.equal(answerForFact(field("Start Date (YYYY-MM)"), "2020.09"), "2020-09");
+L0032 |   assert.equal(answerForFact(field("yyyy.MM"), "2020-09"), "2020.09");
+L0033 |   assert.equal(validateDateValue(field("入学时间(YYYY-MM)"), "2020-09"), "");
+L0034 | });
+
+========================================================================
+FILE: application-tracker-extension/test/dateUtils.test.js
+SHA256: da22a4196861d0c582216cc10ec63921418b7267f8004f97224ed10d38a00180
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { spawnSync } from "node:child_process";
+L0004 | import { classifyNextActionDate, toDateInputValue } from "../src/dateUtils.js";
+L0005 | 
+L0006 | test("classifyNextActionDate ignores empty dates", () => {
+L0007 |   assert.equal(classifyNextActionDate("", "2026-06-02"), "none");
+L0008 | });
+L0009 | 
+L0010 | test("classifyNextActionDate detects overdue dates", () => {
+L0011 |   assert.equal(classifyNextActionDate("2026-06-01", "2026-06-02"), "overdue");
+L0012 | });
+L0013 | 
+L0014 | test("classifyNextActionDate detects today and next three days", () => {
+L0015 |   assert.equal(classifyNextActionDate("2026-06-02", "2026-06-02"), "upcoming");
+L0016 |   assert.equal(classifyNextActionDate("2026-06-05", "2026-06-02"), "upcoming");
+L0017 | });
+L0018 | 
+L0019 | test("classifyNextActionDate ignores dates beyond three days", () => {
+L0020 |   assert.equal(classifyNextActionDate("2026-06-06", "2026-06-02"), "none");
+L0021 | });
+L0022 | 
+L0023 | test("toDateInputValue returns YYYY-MM-DD", () => {
+L0024 |   assert.equal(toDateInputValue(new Date(2026, 5, 2, 23, 10)), "2026-06-02");
+L0025 | });
+L0026 | 
+L0027 | test("Shanghai midnight uses the local day for drafts and overdue classification", () => {
+L0028 |   const dates = new URL("../src/dateUtils.js", import.meta.url).href;
+L0029 |   const model = new URL("../src/model.js", import.meta.url).href;
+L0030 |   const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+L0031 |     import assert from "node:assert/strict";
+L0032 |     import { toDateInputValue, classifyNextActionDate } from ${JSON.stringify(dates)};
+L0033 |     import { todayString } from ${JSON.stringify(model)};
+L0034 |     const now = new Date("2026-09-20T16:05:00Z");
+L0035 |     assert.equal(now.getHours(), 0);
+L0036 |     assert.equal(toDateInputValue(now), "2026-09-21");
+L0037 |     assert.equal(todayString(now), "2026-09-21");
+L0038 |     assert.equal(classifyNextActionDate("2026-09-20", toDateInputValue(now)), "overdue");
+L0039 |   `], { encoding: "utf8", env: { ...process.env, TZ: "Asia/Shanghai" } });
+L0040 |   assert.equal(result.status, 0, result.stderr);
+L0041 | });
+L0042 | 
+L0043 | test("invalid calendar dates do not produce misleading follow-up highlights", () => {
+L0044 |   assert.equal(classifyNextActionDate("2026-02-30", "2026-03-01"), "none");
+L0045 | });
+
+========================================================================
+FILE: application-tracker-extension/test/dateValue.test.js
+SHA256: 4bb0be7e59968fb108193a45fe20fcfb407f6f27a80f610d1e450040ea6bdb66
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { parseDateValue, formatDateValue, validateDateValue } from "../src/assistant/dateValue.js";
+L0004 | 
+L0005 | test("dates validate calendar days and preserve month precision", () => {
+L0006 |   for (const value of ["2022-09", "2022/09", "2022年09月"]) assert.deepEqual(parseDateValue(value), { year: 2022, month: 9, day: null });
+L0007 |   assert.equal(formatDateValue("2022-09", "yyyy-MM"), "2022-09");
+L0008 |   assert.equal(formatDateValue("2022-09", "YYYY年MM月"), "2022年09月");
+L0009 |   assert.equal(formatDateValue("2022-09", "YYYY/MM"), "2022/09");
+L0010 |   assert.equal(formatDateValue("2022-09", "YYYY-MM-DD"), "");
+L0011 |   assert.equal(formatDateValue("2022-09", "YYYY-MM-DD", { allowDefaultDay: true }), "2022-09-01");
+L0012 |   for (const invalid of ["2023-02-29", "2024-02-30", "2026-04-31", "2026-13", "2026-00", "2026-09-00", "invalid"]) assert.equal(parseDateValue(invalid), null, invalid);
+L0013 |   assert.equal(formatDateValue("2024-02-29", "DD/MM/YYYY"), "29/02/2024");
+L0014 |   assert.equal(validateDateValue({ dateFormat: "DD/MM/YYYY" }, "29/02/2024"), "");
+L0015 | });
+L0016 | 
+L0017 | test("range validation checks both ends, format and chronological order", () => {
+L0018 |   const field = { dateRange: true, dateFormat: "YYYY-MM" };
+L0019 |   assert.equal(validateDateValue(field, '["2022-09","2023-06"]'), "");
+L0020 |   for (const value of ['["2023-06","2022-09"]', '["2022-09"]', '["2022-09","2023-13"]', '["2022/09","2023/06"]', '2022-09']) assert.ok(validateDateValue(field, value), value);
+L0021 |   assert.ok(validateDateValue({ type: "date" }, "2022-09"));
+L0022 | });
+
+========================================================================
+FILE: application-tracker-extension/test/duplicates.test.js
+SHA256: 6bebf36213d8e4119ac64e2fb0b09f40115e8f4bac6769b4a848e23542c744bb
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { findPotentialDuplicate } from "../src/duplicates.js";
+L0004 | 
+L0005 | test("findPotentialDuplicate detects matching portal link", () => {
+L0006 |   const duplicate = findPotentialDuplicate({
+L0007 |     company: "Other",
+L0008 |     role: "Other",
+L0009 |     portalLink: "https://example.com/job"
+L0010 |   }, [
+L0011 |     {
+L0012 |       id: "1",
+L0013 |       company: "Acme",
+L0014 |       role: "Analyst",
+L0015 |       portalLink: "https://example.com/job"
+L0016 |     }
+L0017 |   ]);
+L0018 | 
+L0019 |   assert.deepEqual(duplicate, {
+L0020 |     reason: "portalLink",
+L0021 |     record: {
+L0022 |       id: "1",
+L0023 |       company: "Acme",
+L0024 |       role: "Analyst",
+L0025 |       portalLink: "https://example.com/job"
+L0026 |     }
+L0027 |   });
+L0028 | });
+L0029 | 
+L0030 | test("findPotentialDuplicate detects matching company and role case-insensitively", () => {
+L0031 |   const duplicate = findPotentialDuplicate({
+L0032 |     company: " acme ",
+L0033 |     role: "analyst",
+L0034 |     portalLink: "https://example.com/new"
+L0035 |   }, [
+L0036 |     {
+L0037 |       id: "1",
+L0038 |       company: "Acme",
+L0039 |       role: "Analyst",
+L0040 |       portalLink: "https://example.com/job"
+L0041 |     }
+L0042 |   ]);
+L0043 | 
+L0044 |   assert.equal(duplicate.reason, "companyRole");
+L0045 |   assert.equal(duplicate.record.id, "1");
+L0046 | });
+L0047 | 
+L0048 | test("findPotentialDuplicate ignores current edited record", () => {
+L0049 |   const duplicate = findPotentialDuplicate({
+L0050 |     id: "1",
+L0051 |     company: "Acme",
+L0052 |     role: "Analyst",
+L0053 |     portalLink: "https://example.com/job"
+L0054 |   }, [
+L0055 |     {
+L0056 |       id: "1",
+L0057 |       company: "Acme",
+L0058 |       role: "Analyst",
+L0059 |       portalLink: "https://example.com/job"
+L0060 |     }
+L0061 |   ]);
+L0062 | 
+L0063 |   assert.equal(duplicate, null);
+L0064 | });
+
+========================================================================
+FILE: application-tracker-extension/test/excel.test.js
+SHA256: 4ef082bf7a57649058fc480d6f65b512071391c29884c079d2e0ab2ce01ef62c
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { createRecord } from "../src/model.js";
+L0004 | import {
+L0005 |   buildPreImportBackupFilename,
+L0006 |   buildWorkbookSheets,
+L0007 |   EXPORT_COLUMNS,
+L0008 |   recordsToDisplayRows,
+L0009 |   recordsToExportRows,
+L0010 |   rowsToImportedRecords,
+L0011 |   workbookToImportedRecords
+L0012 | } from "../src/excel.js";
+L0013 | 
+L0014 | test("recordsToExportRows includes all required export columns", () => {
+L0015 |   const rows = recordsToExportRows([{
+L0016 |     id: "id-1",
+L0017 |     company: "Acme",
+L0018 |     role: "Analyst",
+L0019 |     base: "London",
+L0020 |     portalLink: "https://example.com/job",
+L0021 |     pageTitle: "Analyst - Acme",
+L0022 |     source: "company_portal",
+L0023 |     appliedDate: "2026-06-02",
+L0024 |     status: "applied",
+L0025 |     statusHistory: [{ status: "applied", date: "2026-06-02T10:00:00.000Z" }],
+L0026 |     nextActionDate: "2026-06-05",
+L0027 |     jdText: "JD",
+L0028 |     notes: "Notes",
+L0029 |     createdAt: "2026-06-02T10:00:00.000Z",
+L0030 |     updatedAt: "2026-06-02T10:00:00.000Z"
+L0031 |   }]);
+L0032 | 
+L0033 |   assert.deepEqual(Object.keys(rows[0]), EXPORT_COLUMNS);
+L0034 |   assert.equal(rows[0].statusHistory, "[{\"status\":\"applied\",\"date\":\"2026-06-02T10:00:00.000Z\"}]");
+L0035 | });
+L0036 | 
+L0037 | test("recordsToDisplayRows uses readable Chinese headers and labels", () => {
+L0038 |   const rows = recordsToDisplayRows([{
+L0039 |     id: "id-1",
+L0040 |     company: "Acme",
+L0041 |     role: "Analyst",
+L0042 |     base: "London",
+L0043 |     portalLink: "https://example.com/job",
+L0044 |     pageTitle: "Analyst - Acme",
+L0045 |     source: "company_portal",
+L0046 |     appliedDate: "2026-06-02",
+L0047 |     status: "oa",
+L0048 |     statusHistory: [{ status: "applied", date: "2026-06-02T10:00:00.000Z" }],
+L0049 |     nextActionDate: "2026-06-05",
+L0050 |     jdText: "JD",
+L0051 |     notes: "Notes",
+L0052 |     createdAt: "2026-06-02T10:00:00.000Z",
+L0053 |     updatedAt: "2026-06-02T10:00:00.000Z"
+L0054 |   }]);
+L0055 | 
+L0056 |   assert.deepEqual(Object.keys(rows[0]), [
+L0057 |     "公司",
+L0058 |     "岗位",
+L0059 |     "Base 地",
+L0060 |     "当前进度",
+L0061 |     "投递日期",
+L0062 |     "下次跟进",
+L0063 |     "投递来源",
+L0064 |     "Portal 链接",
+L0065 |     "网页标题",
+L0066 |     "JD 原文或要点",
+L0067 |     "备注",
+L0068 |     "进度时间线",
+L0069 |     "创建时间",
+L0070 |     "更新时间",
+L0071 |     "记录 ID"
+L0072 |   ]);
+L0073 |   assert.equal(rows[0]["当前进度"], "OA / 笔试 / Online Assessment");
+L0074 |   assert.equal(rows[0]["投递来源"], "公司官网 / Portal");
+L0075 | });
+L0076 | 
+L0077 | test("rowsToImportedRecords validates required columns", () => {
+L0078 |   assert.throws(() => rowsToImportedRecords([{ company: "Acme" }]), /Missing required column: id/);
+L0079 | });
+L0080 | 
+L0081 | test("rowsToImportedRecords normalizes exported rows", () => {
+L0082 |   const [record] = rowsToImportedRecords([{
+L0083 |     id: "id-1",
+L0084 |     company: "Acme",
+L0085 |     role: "Analyst",
+L0086 |     base: "London",
+L0087 |     portalLink: "https://example.com/job",
+L0088 |     pageTitle: "Analyst - Acme",
+L0089 |     source: "company_portal",
+L0090 |     appliedDate: "2026-06-02",
+L0091 |     status: "applied",
+L0092 |     statusHistory: "[{\"status\":\"applied\",\"date\":\"2026-06-02T10:00:00.000Z\"}]",
+L0093 |     nextActionDate: "",
+L0094 |     jdText: "",
+L0095 |     notes: "",
+L0096 |     createdAt: "2026-06-02T10:00:00.000Z",
+L0097 |     updatedAt: "2026-06-02T10:00:00.000Z"
+L0098 |   }]);
+L0099 | 
+L0100 |   assert.equal(record.id, "id-1");
+L0101 |   assert.equal(record.statusHistory.length, 1);
+L0102 |   assert.equal(record.source, "company_portal");
+L0103 | });
+L0104 | 
+L0105 | test("buildPreImportBackupFilename creates dated xlsx backup filename", () => {
+L0106 |   assert.equal(
+L0107 |     buildPreImportBackupFilename("2026-06-02"),
+L0108 |     "application-records-backup-before-import-2026-06-02.xlsx"
+L0109 |   );
+L0110 | });
+L0111 | 
+L0112 | test("buildWorkbookSheets places readable sheet before restore data sheet", () => {
+L0113 |   const sheets = buildWorkbookSheets([{
+L0114 |     id: "id-1",
+L0115 |     company: "Acme",
+L0116 |     role: "Analyst",
+L0117 |     base: "London",
+L0118 |     portalLink: "https://example.com/job",
+L0119 |     pageTitle: "Analyst - Acme",
+L0120 |     source: "company_portal",
+L0121 |     appliedDate: "2026-06-02",
+L0122 |     status: "applied",
+L0123 |     statusHistory: [{ status: "applied", date: "2026-06-02T10:00:00.000Z" }],
+L0124 |     nextActionDate: "",
+L0125 |     jdText: "",
+L0126 |     notes: "",
+L0127 |     createdAt: "2026-06-02T10:00:00.000Z",
+L0128 |     updatedAt: "2026-06-02T10:00:00.000Z"
+L0129 |   }]);
+L0130 | 
+L0131 |   assert.equal(sheets[0].name, "投递记录");
+L0132 |   assert.equal(sheets[0].hidden, 0);
+L0133 |   assert.equal(sheets[0].rows[0]["公司"], "Acme");
+L0134 |   assert.equal(sheets[1].name, "_restore_data");
+L0135 |   assert.equal(sheets[1].hidden, 2);
+L0136 |   assert.equal(sheets[1].rows[0].company, "Acme");
+L0137 | });
+L0138 | 
+L0139 | const excelNow = "2026-10-13T08:00:00.000Z";
+L0140 | const excelRecord = (id, now = excelNow) => ({ ...createRecord({ company: `示例公司 ${id}`, role: "分析师", portalLink: "微信内推", source: "referral", appliedDate: "2026-10-13", status: "applied", notes: "原备注" }, now), id });
+L0141 | function importSheets(sheets, now = "2026-10-14T08:00:00.000Z") {
+L0142 |   const workbook = { SheetNames: sheets.map((sheet) => sheet.name), Sheets: Object.fromEntries(sheets.map((sheet) => [sheet.name, sheet.rows])), Workbook: { Sheets: sheets.map((sheet) => ({ Hidden: sheet.hidden })) } };
+L0143 |   return workbookToImportedRecords(workbook, (rows) => rows, now);
+L0144 | }
+L0145 | 
+L0146 | test("visible Excel edits take precedence and stable IDs retain metadata after sorting", () => {
+L0147 |   const first = excelRecord("first"), second = excelRecord("second");
+L0148 |   const sheets = buildWorkbookSheets([first, second]);
+L0149 |   sheets[0].rows.reverse();
+L0150 |   sheets[0].rows[1]["备注"] = "Excel 修改后的备注";
+L0151 |   sheets[0].rows[1]["当前进度"] = "Offer";

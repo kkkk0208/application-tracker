@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { factsFromProfile, preparePlan, acceptAiItems, validateValue, interpretField, scopeFor, eligibleFacts, versionOf, MEMORY_SCOPE_VERSION } from "../src/assistant/planner.js";
-import { buildAiBatches, buildPayload, requestBatch, buildRecognitionPayload, recognitionCandidates, recognizeQuestions } from "../src/assistant/ai.js";
+import { buildAiBatches, buildPayload, requestBatch } from "../src/assistant/ai.js";
 const profile = { fullName: "Example Person", fullNameZh: "示例姓名", email: "test@example.com", masterUniversity: "Example University", masterUniversityZh: "示例大学", bachelorUniversityZh: "本科大学", commonAnswers: { expectedSalary: { zh: "面议" }, visaSponsorship: { zh: "是" }, selfIntroduction: { zh: "这是自我介绍" } }, internships: [{ companyZh: "公司甲", roleZh: "分析实习生" }, { companyZh: "公司乙", roleZh: "研究实习生" }] };
 const field = (label, extra = {}) => ({ fieldId: label, groupId: "group", label, kind: "text", type: "text", supported: true, value: "", options: [], constraints: {}, section: "基本信息", group: "", ...extra });
 const snapshot = (fields) => ({ fields, url: "https://example.com/jobs/one?token=secret", title: "Application" });
@@ -27,6 +27,12 @@ test("explicit degree labels and default single group choose correct education",
   assert.equal(item.answer, "示例大学");
   const [bachelor] = preparePlan(snapshot([field("学校名称", { section: "本科教育" })]), facts);
   assert.equal(bachelor.answer, "本科大学");
+});
+test("clean native degree label pairs master's degree locally in education section", () => {
+  const degreeFacts = factsFromProfile({ masterDegreeZh: "硕士" }, "zh");
+  const [item] = preparePlan(snapshot([field("学历", { section: "教育经历", kind: "select", type: "select-one", options: [{ id: "placeholder", text: "请选择", value: "", disabled: true }, { id: "bachelor", text: "本科", value: "本科", disabled: false }, { id: "master", text: "硕士", value: "硕士", disabled: false }] })]), degreeFacts);
+  assert.equal(item.answer, "硕士"); assert.equal(item.status, "ready");
+  assert.match(item.source, /^个人信息/); assert.equal(item.selected, true);
 });
 test("ambiguous repeated groups do not receive the same degree or internship", () => {
   const fields = [field("学校名称", { groupId: "a" }), field("学校名称", { fieldId: "second", groupId: "b" }), field("职位", { section: "实习经历" })];
@@ -118,12 +124,6 @@ test("AI batching covers more than 120 fields without sending existing answers o
   const text = JSON.stringify(batches);
   assert.ok(!text.includes("token=secret")); assert.ok(!text.includes("test@example.com"));
 });
-test("question recognition sends labels and canonical names but no applicant values", () => {
-  const payload = buildRecognitionPayload("configured-model", [field("请介绍擅长的事情")], facts);
-  const body = JSON.stringify(payload);
-  assert.ok(!body.includes("示例姓名")); assert.ok(!body.includes("test@example.com"));
-  assert.equal(payload.model, "configured-model");
-});
 test("API request uses strict schema, preserves selected model and disables response storage", () => {
   const body = buildPayload("user-configured-model", {});
   assert.equal(body.store, false); assert.equal(body.model, "user-configured-model"); assert.equal(body.text.format.strict, true);
@@ -147,84 +147,13 @@ test("school location, major ranking and degree grade never become selected fact
   assert.equal(buildAiBatches(plan, source, snapshot([]), "zh").length, 0);
 });
 
-test("tentative interpretations need semantic review while exact contact facts remain selected", () => {
-  const plan = preparePlan(snapshot([field("姓名"), field("邮箱"), field("请填写您的学校名称")]), facts);
-  assert.deepEqual(plan.map((p) => p.ruleConfidence), ["high", "high", "low"]);
-  assert.deepEqual(plan.map((p) => p.selected), [true, true, false]);
-  assert.equal(plan[2].intent, "education.master.university");
-  assert.equal(plan[2].answer, "");
-  assert.deepEqual(recognitionCandidates(plan).map((p) => p.fieldId), ["请填写您的学校名称"]);
-});
 
-test("semantic recognition includes options and context without existing answers or profile values", () => {
-  const [item] = preparePlan(snapshot([field("请填写您的学校名称", { help: "请使用官方名称", contextPath: "教育 > 硕士 > 学校", constraints: { required: true }, options: [{ id: "school-a", text: "示例选项", disabled: false }] })]), facts);
-  item.answer = "LOCAL DRAFT VALUE";
-  const payload = buildRecognitionPayload("fixture", [item], facts);
-  const sent = JSON.parse(payload.input[1].content);
-  assert.equal(sent.fields[0].tentativeIntent, "education.master.university");
-  assert.deepEqual(sent.fields[0].options, item.options);
-  assert.equal(sent.fields[0].help, item.help);
-  assert.equal(sent.fields[0].constraints.required, true);
-  assert.equal(sent.fields[0].contextPath, item.contextPath);
-  assert.ok(!payload.input[1].content.includes("LOCAL DRAFT VALUE"));
-  assert.ok(!payload.input[1].content.includes("test@example.com"));
-});
 
-const recognitionSettings = { enabled: true, apiKey: "fixture", model: "fixture" };
-const recognitionResponse = (mappings) => async () => ({ ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify({ mappings }) }) });
 
-test("AI may explicitly clear an uncertain rule, including its previous answer and selection", async () => {
-  const [item] = preparePlan(snapshot([field("请填写您的学校名称")]), facts);
-  Object.assign(item, { answer: "stale guess", selected: true, factIds: ["education.master.university.zh"], source: "旧规则" });
-  const updates = await recognizeQuestions(recognitionSettings, [item], facts, undefined, recognitionResponse([{ fieldId: item.fieldId, entityId: item.entityId, intent: null }]));
-  Object.assign(item, updates[0]);
-  assert.equal(item.intent, "");
-  assert.equal(item.answer, "");
-  assert.equal(item.status, "missing");
-  assert.equal(item.selected, false);
-  assert.deepEqual(item.factIds, []);
-});
 
-test("AI rechecks tentative intent and its subsequent fact answer still needs review", async () => {
-  const [item] = preparePlan(snapshot([field("请填写您的学校名称")]), facts);
-  const updates = await recognizeQuestions(recognitionSettings, [item], facts, undefined, recognitionResponse([{ fieldId: item.fieldId, entityId: item.entityId, intent: "education.master.university" }]));
-  assert.equal(updates.length, 1);
-  Object.assign(item, updates[0]);
-  assert.equal(item.needsSemanticReview, false);
-  const batches = buildAiBatches([item], facts, snapshot([]), "zh");
-  assert.equal(batches.length, 1);
-  const result = acceptAiItems({ items: [{ fieldId: item.fieldId, entityId: item.entityId, kind: "fact", factIds: ["education.master.university.zh"] }] }, [item], facts);
-  assert.equal(result.accepted[0].answer, "示例大学");
-  assert.equal(result.accepted[0].selected, false);
-  assert.equal(result.accepted[0].status, "review");
-});
 
-test("AI cannot restore the known school-location misclassification or change subject", async () => {
-  const [item] = preparePlan(snapshot([field("学校所在地", { section: "教育经历" })]), facts);
-  const bad = { fieldId: item.fieldId, entityId: item.entityId, intent: "education.master.university" };
-  assert.deepEqual(await recognizeQuestions(recognitionSettings, [item], facts, undefined, recognitionResponse([bad])), []);
-  const [family] = preparePlan(snapshot([field("父亲在哪家公司任职")]), facts);
-  const impersonation = { fieldId: family.fieldId, entityId: "experience.internship.0", intent: "experience.internship.0.company" };
-  assert.deepEqual(await recognizeQuestions(recognitionSettings, [family], facts, undefined, recognitionResponse([impersonation])), []);
-});
 
-test("late recognition cannot overwrite a user's edit or a filled field", async () => {
-  for (const change of [{ edited: true, answer: "人工答案" }, { value: "网页答案" }]) {
-    const [item] = preparePlan(snapshot([field("请填写您的学校名称")]), facts);
-    const updates = await recognizeQuestions(recognitionSettings, [item], facts, undefined, async () => {
-      Object.assign(item, change);
-      return { ok: true, json: async () => ({ output_text: JSON.stringify({ mappings: [{ fieldId: item.fieldId, entityId: item.entityId, intent: "education.master.university" }] }) }) };
-    });
-    assert.deepEqual(updates, []);
-  }
-});
 
-test("confirmed question memories are not erased by semantic recognition", () => {
-  const memory = { id: "m1", question: "其他技能", answer: "SQL", confirmed: true, language: "zh", entityId: "self", scope: "global" };
-  const plan = preparePlan(snapshot([field("其他技能")]), facts, [memory]);
-  assert.equal(plan[0].memoryId, "m1");
-  assert.deepEqual(recognitionCandidates(plan), []);
-});
 
 test("confirmed narrative memory is reused without another AI drafting request", () => {
   const source = factsFromProfile({ masterUniversityZh: "示例大学" }, "zh");

@@ -102,6 +102,24 @@ try {
     assert.equal((await action(s, s.fields[0], "是")).status, "failed");
     assert.equal((await action(s, s.fields[0], "不是")).status, "verified");
   });
+  await check("wrapped select labels exclude options and retain nested question and radio text", async () => {
+    const s = await fixture('<section><h2>教育经历</h2><label><span>学</span><strong>历</strong><select id="degree-label"><option value="">请选择</option><optgroup label="学位"><option>本科</option><option>硕士</option></optgroup></select></label></section><fieldset><legend>性别</legend><label><input type="radio" name="g" value="男"><span>男</span></label><label><input type="radio" name="g" value="女"><span>女</span></label></fieldset>');
+    const degree = s.fields.find((field) => field.kind === "select");
+    const gender = s.fields.find((field) => field.kind === "radio");
+    assert.equal(degree.label, "学历"); assert.equal(degree.labelSource, "label");
+    assert.deepEqual(degree.options.map((option) => option.text), ["请选择", "本科", "硕士"]);
+    assert.equal(gender.label, "性别"); assert.deepEqual(gender.options.map((option) => option.text), ["男", "女"]);
+    assert.equal((await action(s, degree, "硕士")).status, "verified");
+    assert.equal(await page.locator("#degree-label").inputValue(), "硕士");
+    assert.equal((await action(s, gender, "女")).status, "verified");
+    assert.equal(await page.locator('[name="g"][value="女"]').isChecked(), true);
+  });
+  await check("container label excludes embedded controls without losing child question text", async () => {
+    const s = await fixture('<div class="ant-form-item"><label class="ant-form-item-label"><span>学校</span><em>名称</em><button type="button">展开</button><span role="listbox" hidden><span role="option">其他学校</span></span></label><input id="school-label"></div>');
+    assert.equal(s.fields.length, 1); assert.equal(s.fields[0].label, "学校名称");
+    assert.equal(s.fields[0].labelSource, "container");
+    assert.ok(s.fields[0].contextEvidence.some((item) => item.source === "label" && item.text === "学校名称"));
+  });
   await check("radio group selects real No option, not unchecked Yes", async () => {
     const s = await fixture('<fieldset><legend>需要签证吗</legend><label><input type="radio" name="visa" value="y">是</label><label><input type="radio" name="visa" value="n">否</label></fieldset>');
     assert.equal(s.fields.length, 1); assert.equal(s.fields[0].label, "需要签证吗");
@@ -143,7 +161,7 @@ try {
     assert.equal((await action(s, s.fields[0], "test@example.com")).status, "verified");
   });
   await check("custom dropdown only selects real options and verifies committed text", async () => {
-    const s = await fixture('<label>学历</label><div class="sd-Select-container" role="combobox" aria-label="学历" aria-controls="menu"><span class="sd-Select-value"></span></div><div id="menu" role="listbox" hidden><div role="option">硕士</div><div role="option">本科</div></div>');
+    const s = await fixture('<label>学历</label><div class="sd-Select-container" role="combobox" aria-label="学历" aria-controls="menu" style="min-height:24px"><span class="sd-Select-value"></span></div><div id="menu" role="listbox" hidden><div role="option">硕士</div><div role="option">本科</div></div>');
     await page.evaluate(() => { const box = document.querySelector('[role="combobox"]'); const menu = document.getElementById("menu"); box.onclick = () => menu.hidden = false; menu.onclick = (e) => { box.firstChild.textContent = e.target.textContent; menu.hidden = true; }; });
     assert.equal((await action(s, s.fields[0], "硕士")).status, "verified");
   });

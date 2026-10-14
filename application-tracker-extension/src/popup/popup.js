@@ -1,7 +1,8 @@
 import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES } from "../constants.js";
 import { buildApplicationInfoGroups } from "../applicationInfo.js";
 import { collectJobSignals } from "../jobInfo/collectSignals.js";
-import { extractJobInfo, sortRecentJobs, sanitizeJobUrl } from "../jobInfo/extractJobInfo.js";
+import { extractJobInfo, sortRecentJobs } from "../jobInfo/extractJobInfo.js";
+import { rememberJob, loadRecentJobs } from "../jobInfo/recentJobs.js";
 import { requestJobInfo } from "../jobInfo/aiJobInfo.js";
 import { findPotentialDuplicate } from "../duplicates.js";
 import { emptyRecordDraft, validateRecordForSave } from "../model.js";
@@ -24,7 +25,6 @@ let targetPageTab = null;
 let draftKey;
 let initialDraft;
 let draftWrite = Promise.resolve();
-const recentJobsKey = "applicationTracker.recentJobs";
 const editedJobFields = new Set();
 let jobInfo = null;
 let initialJobInfo = null;
@@ -53,7 +53,7 @@ async function init() {
       if (signals) {
         jobInfo = extractJobInfo(signals);
         for (const key of ["company", "role", "base"]) draft[key] = jobInfo[key] || "";
-        await rememberJob(jobInfo);
+        await rememberJob(chrome.storage.session, targetPageTab?.url, jobInfo);
       }
     }
   } catch {
@@ -241,23 +241,10 @@ function renderSources() {
   }
 }
 
-async function rememberJob(info) {
-  if (!targetPageTab?.url) return;
-  const trusted = (key) => ["high", "medium"].includes(info.confidence?.[key]) && info[key];
-  if (!trusted("company") && !trusted("role")) return;
-  const url = sanitizeJobUrl(targetPageTab.url);
-  if (!url) return;
-  const stored = (await chrome.storage.session.get(recentJobsKey))[recentJobsKey];
-  const jobs = Array.isArray(stored) ? stored : [];
-  const entry = { company: trusted("company") || "", role: trusted("role") || "", base: trusted("base") || "", url, host: new URL(url).hostname, capturedAt: Date.now(), source: info.source };
-  await chrome.storage.session.set({ [recentJobsKey]: [entry, ...jobs.filter((job) => job.url !== url)].slice(0, 20) });
-}
-
 async function renderRecentJobs() {
   const box = document.querySelector("#recentJobBox");
   const select = document.querySelector("#recentJob");
-  const stored = (await chrome.storage.session.get(recentJobsKey))[recentJobsKey];
-  const jobs = sortRecentJobs(Array.isArray(stored) ? stored : [], signals?.hostname || "").filter((job) => job.role);
+  const jobs = sortRecentJobs(await loadRecentJobs(chrome.storage.session), signals?.hostname || "").filter((job) => job.role);
   box.hidden = !!jobInfo?.role || !jobs.length;
   select.replaceChildren(new Option("请选择最近识别的岗位", ""), ...jobs.map((job, index) => new Option([job.company, job.role, job.base].filter(Boolean).join(" · "), String(index))));
   select.onchange = () => {
@@ -287,7 +274,7 @@ async function fillAiJobInfo() {
       }
     }
     renderSources();
-    await rememberJob(jobInfo);
+    await rememberJob(chrome.storage.session, targetPageTab?.url, jobInfo);
     if (generation === popupGeneration) saveDraft();
   } catch { /* Local extraction and manual entry remain available. */ }
 }

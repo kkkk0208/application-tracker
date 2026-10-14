@@ -1,0 +1,138 @@
+
+========================================================================
+FILE: application-tracker-extension/test/visualCapture.test.js (continued)
+SHA256: 5cedc11a498d74fce6c78182ed2f043911972dbec0f18d188c8dd804c788f277
+L0007 | const snapshot = () => ({ tabId: 12, url: "https://example.com/apply", frames: [{ frameId: 0, documentId: "doc-main", token: "token", scanId: "scan", url: "https://example.com/apply" }], fields: [{ frameId: 0, documentId: "doc-main", localFieldId: "f1", fieldId: "doc-main:f1", supported: true, value: "" }] });
+L0008 | const event = () => { const listeners = new Set(); return { addListener: (fn) => listeners.add(fn), removeListener: (fn) => listeners.delete(fn), emit: (...args) => listeners.forEach((fn) => fn(...args)), count: () => listeners.size }; };
+L0009 | 
+L0010 | async function harness(run) {
+L0011 |   const previous = Object.fromEntries(["chrome", "fetch", "OffscreenCanvas", "createImageBitmap"].map((key) => [key, globalThis[key]]));
+L0012 |   const state = { tab: { id: 12, windowId: 3, url: "https://example.com/apply", active: true }, activeId: 12, token: "token", layout: layout(), captured: 0, canvases: [], actions: [], bitmapClosed: false };
+L0013 |   const activated = event(), updated = event(), focused = event();
+L0014 |   const context = (canvas) => ({
+L0015 |     drawImage(...args) { canvas.calls.push(["draw", ...args.map((value) => typeof value === "object" ? "bitmap" : value)]); },
+L0016 |     fillRect(...args) { canvas.calls.push(["fill", this.fillStyle, ...args]); },
+L0017 |     strokeRect(...args) { canvas.calls.push(["stroke", ...args]); },
+L0018 |     fillText(...args) { canvas.calls.push(["text", ...args]); },
+L0019 |     measureText(text) { return { width: text.length * 7 }; }
+L0020 |   });
+L0021 |   class Canvas {
+L0022 |     constructor(width, height) { this.width = width; this.height = height; this.originalSize = [width, height]; this.calls = []; this.context = context(this); state.canvases.push(this); }
+L0023 |     getContext() { return this.context; }
+L0024 |     async convertToBlob() { return new Blob([JSON.stringify({ redacted: true, width: this.width, height: this.height })], { type: "image/png" }); }
+L0025 |   }
+L0026 |   globalThis.OffscreenCanvas = Canvas;
+L0027 |   globalThis.fetch = async (url) => { assert.equal(url, rawImage); return { blob: async () => new Blob(["private pixels"]) }; };
+L0028 |   globalThis.createImageBitmap = async () => { await state.onDecode?.(); return { width: 2000, height: 1000, close() { state.bitmapClosed = true; } }; };
+L0029 |   globalThis.chrome = {
+L0030 |     tabs: {
+L0031 |       get: async () => ({ ...state.tab }),
+L0032 |       query: async (query) => { assert.deepEqual(query, { active: true, lastFocusedWindow: true }); return [{ ...state.tab, id: state.activeId }]; },
+L0033 |       captureVisibleTab: async (windowId, options) => { assert.equal(windowId, 3); assert.deepEqual(options, { format: "png" }); state.captured++; await state.onCapture?.(); if (state.captureError) throw state.captureError; return rawImage; },
+L0034 |       onActivated: activated, onUpdated: updated
+L0035 |     },
+L0036 |     windows: { onFocusChanged: focused },
+L0037 |     scripting: { executeScript: async ({ target, args }) => {
+L0038 |       assert.deepEqual(target, { tabId: 12, documentIds: ["doc-main"] });
+L0039 |       const request = args[0]; state.actions.push(request.releaseWatch ? "visual-release" : request.action);
+L0040 |       return [{ documentId: "doc-main", result: request.action === "ping" ? { token: state.token, scanId: "scan" } : structuredClone(state.layout) }];
+L0041 |     } },
+L0042 |     storage: new Proxy({}, { get() { throw new Error("Screenshot capture must never access storage"); } })
+L0043 |   };
+L0044 |   try { await run(state, { activated, updated, focused }); }
+L0045 |   finally {
+L0046 |     assert.equal(activated.count(), 0, "activation listener leaked");
+L0047 |     assert.equal(updated.count(), 0, "navigation listener leaked");
+L0048 |     assert.equal(focused.count(), 0, "focus listener leaked");
+L0049 |     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
+L0050 |   }
+L0051 | }
+L0052 | 
+L0053 | test("visual capture masks before resizing, numbers main-frame fields and never stores raw images", async () => harness(async (state) => {
+L0054 |   const input = snapshot();
+L0055 |   input.fields.push({ frameId: 4, documentId: "child", localFieldId: "f2", fieldId: "child:f2", supported: true, value: "" });
+L0056 |   const result = await captureVisualContext(input);
+L0057 |   assert.equal(state.captured, 1);
+L0058 |   assert.deepEqual(result.fields, [{ fieldId: "doc-main:f1", marker: "V1", rect: { x: 40, y: 60, width: 200, height: 30 } }]);
+L0059 |   assert.deepEqual(result.viewport, { width: 1000, height: 500, scrollX: 0, scrollY: 20, scale: 1.6 });
+L0060 |   assert.equal(result.maskedCount, 2);
+L0061 |   assert.notEqual(result.imageUrl, rawImage);
+L0062 |   assert.deepEqual(state.canvases.map((canvas) => canvas.originalSize), [[2000, 1000], [1600, 800]]);
+L0063 |   assert.deepEqual(state.canvases[0].calls[1], ["fill", "#e8ece9", 72, 112, 416, 76]);
+L0064 |   assert.ok(state.canvases[1].calls.some((call) => call[0] === "text" && call[1] === "V1"));
+L0065 |   assert.equal(state.bitmapClosed, true);
+L0066 |   assert.ok(state.canvases.every((canvas) => canvas.width === 1 && canvas.height === 1));
+L0067 |   assert.equal(state.actions.filter((action) => action === "visual-layout").length, 3);
+L0068 |   assert.equal(state.actions.filter((action) => action === "visual-release").length, 1);
+L0069 | }));
+L0070 | 
+L0071 | test("inactive and non-web targets fail before any screenshot", async () => harness(async (state) => {
+L0072 |   state.activeId = 99;
+L0073 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_INACTIVE" });
+L0074 |   await assert.rejects(captureVisualContext({ ...snapshot(), url: "chrome://settings" }), { code: "VISUAL_TARGET" });
+L0075 |   assert.equal(state.captured, 0);
+L0076 | }));
+L0077 | 
+L0078 | test("switching away and back during capture permanently discards that screenshot", async () => harness(async (state, events) => {
+L0079 |   state.onCapture = () => { events.activated.emit({ tabId: 99, windowId: 3 }); events.activated.emit({ tabId: 12, windowId: 3 }); };
+L0080 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
+L0081 |   assert.equal(state.canvases.length, 0);
+L0082 | }));
+L0083 | 
+L0084 | test("navigation events and changed document identity discard captures", async () => harness(async (state, events) => {
+L0085 |   state.onCapture = () => events.updated.emit(12, { status: "loading" });
+L0086 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
+L0087 |   state.onCapture = () => { state.token = "different-document"; };
+L0088 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
+L0089 | }));
+L0090 | 
+L0091 | test("losing browser focus and returning during capture discards the image", async () => harness(async (state, events) => {
+L0092 |   state.onCapture = () => { events.focused.emit(-1); events.focused.emit(3); };
+L0093 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
+L0094 |   assert.equal(state.canvases.length, 0);
+L0095 | }));
+L0096 | 
+L0097 | test("a transient layout mutation remains invalid even after geometry is restored", async () => harness(async (state) => {
+L0098 |   state.onCapture = () => { state.layout.changed = true; };
+L0099 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_LAYOUT_CHANGED" });
+L0100 |   assert.equal(state.canvases.length, 0);
+L0101 |   assert.equal(state.actions.filter((action) => action === "visual-release").length, 1);
+L0102 | }));
+L0103 | 
+L0104 | test("scroll or geometry changes and late rendering changes invalidate the image", async () => harness(async (state) => {
+L0105 |   state.onCapture = () => { state.layout.viewport.scrollY++; };
+L0106 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_LAYOUT_CHANGED" });
+L0107 |   state.onCapture = undefined; state.layout = layout();
+L0108 |   state.onDecode = () => { state.layout.fields[0].rect.x++; };
+L0109 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_LAYOUT_CHANGED" });
+L0110 |   assert.equal(state.bitmapClosed, true);
+L0111 | }));
+L0112 | 
+L0113 | test("cancellation before and during capture returns no image and removes listeners", async () => harness(async (state) => {
+L0114 |   const before = new AbortController(); before.abort();
+L0115 |   await assert.rejects(captureVisualContext(snapshot(), { signal: before.signal }), { code: "VISUAL_CANCELLED" });
+L0116 |   assert.equal(state.captured, 0);
+L0117 |   const during = new AbortController(); state.onCapture = () => during.abort();
+L0118 |   await assert.rejects(captureVisualContext(snapshot(), { signal: during.signal }), { code: "VISUAL_CANCELLED" });
+L0119 |   assert.equal(state.canvases.length, 0);
+L0120 | }));
+L0121 | 
+L0122 | test("missing activeTab permission has an actionable DOM fallback message", async () => harness(async (state) => {
+L0123 |   state.captureError = new Error("Either <all_urls> or activeTab permission is required");
+L0124 |   await assert.rejects(captureVisualContext(snapshot()), (error) => error.code === "VISUAL_PERMISSION" && /重新点击扩展图标/.test(error.message) && /文字识别/.test(error.message));
+L0125 |   assert.equal(state.canvases.length, 0);
+L0126 | }));
+L0127 | 
+L0128 | test("empty candidate sets and pinch-zoom refuse unsafe captures", async () => harness(async (state) => {
+L0129 |   state.layout.fields = [];
+L0130 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_EMPTY" });
+L0131 |   state.layout = layout(); state.layout.viewport.visualScale = 1.5;
+L0132 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_ZOOM" });
+L0133 |   assert.equal(state.captured, 0);
+L0134 | }));
+L0135 | 
+L0136 | test("canvas rendering rejects remote image URLs and mismatched image dimensions", async () => harness(async () => {
+L0137 |   await assert.rejects(renderVisualCapture("https://example.com/private.png", layout(), []), { code: "VISUAL_IMAGE" });
+L0138 |   const wrong = layout(); wrong.viewport.height = 800;
+L0139 |   await assert.rejects(renderVisualCapture(rawImage, wrong, []), { code: "VISUAL_SIZE" });
+L0140 | }));

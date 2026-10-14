@@ -3,6 +3,7 @@ import { STATUSES, STORAGE_KEY } from "../constants.js";
 import { classifyNextActionDate, toDateInputValue } from "../dateUtils.js";
 import { getCompanyInitial, getStatusTone, summarizeRecords } from "../presentation.js";
 import { getRecords, saveExistingRecord } from "../storage.js";
+import { getPortalUrl } from "../model.js";
 
 const boardView = document.querySelector("#boardView");
 const summaryLine = document.querySelector("#summaryLine");
@@ -66,11 +67,12 @@ function renderCard(record) {
   const dueClass = classifyNextActionDate(record.nextActionDate, toDateInputValue());
   const statusTone = getStatusTone(record.status);
   const companyInitial = getCompanyInitial(record.company);
+  const portalUrl = getPortalUrl(record.portalLink);
   return `
     <article class="board-card ${dueClass === "none" ? "" : dueClass}">
       <div class="board-card-title">
         <span class="company-avatar">${escapeHtml(companyInitial)}</span>
-        <a href="${escapeAttribute(record.portalLink)}" target="_blank" rel="noreferrer">${escapeHtml(record.company)}</a>
+        ${portalUrl ? `<a href="${escapeAttribute(portalUrl)}" target="_blank" rel="noreferrer">${escapeHtml(record.company)}</a>` : `<span>${escapeHtml(record.company)}</span>`}
       </div>
       <p class="board-card-role">${escapeHtml(record.role)}</p>
       <div class="board-card-meta">

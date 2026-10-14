@@ -1,18 +1,7 @@
-Application Tracker / BROWSER_TESTS_FIXTURES
-快照日期：2026-10-12（Asia/Shanghai）
-完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
-本附件包含：
-- application-tracker-extension/scripts/browser-tests.mjs
-- application-tracker-extension/scripts/choice-browser-tests.mjs
-- application-tracker-extension/scripts/component-browser-tests.mjs
-- application-tracker-extension/scripts/data-ui-tests.mjs
 
 ========================================================================
 FILE: application-tracker-extension/scripts/browser-tests.mjs
-SHA256: ff22d6a6f34cdfb89384e24ec0d54c6b7e6e53af8685920daaff2453164d454c
-LINES: 286
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: 1c9fefa7c5685ae60bf470f7be0dbd3ca23702bf60cb1b00c56553dc8b316b18
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { readFile, mkdir } from "node:fs/promises";
@@ -117,195 +106,209 @@ L0101 |     const s = await fixture('<label>是否<select><option value="">请�
 L0102 |     assert.equal((await action(s, s.fields[0], "是")).status, "failed");
 L0103 |     assert.equal((await action(s, s.fields[0], "不是")).status, "verified");
 L0104 |   });
-L0105 |   await check("radio group selects real No option, not unchecked Yes", async () => {
-L0106 |     const s = await fixture('<fieldset><legend>需要签证吗</legend><label><input type="radio" name="visa" value="y">是</label><label><input type="radio" name="visa" value="n">否</label></fieldset>');
-L0107 |     assert.equal(s.fields.length, 1); assert.equal(s.fields[0].label, "需要签证吗");
-L0108 |     assert.equal((await action(s, s.fields[0], "否")).status, "verified"); assert.equal(await page.locator('[value="n"]').isChecked(), true);
-L0109 |   });
-L0110 |   await check("checkbox group verifies complete selected set", async () => {
-L0111 |     const s = await fixture('<fieldset><legend>语言能力</legend><label><input type="checkbox" name="language" value="zh">中文</label><label><input type="checkbox" name="language" value="en">English</label></fieldset>');
-L0112 |     assert.equal(s.fields.length, 1); assert.equal((await action(s, s.fields[0], JSON.stringify(["中文", "English"]))).status, "verified");
-L0113 |   });
-L0114 |   await check("password file and consent are unsupported and password is not read", async () => {
-L0115 |     const s = await fixture('<label>密码<input type="password" value="secret"></label><label>简历<input type="file"></label><label><input type="checkbox">同意条款</label>');
-L0116 |     assert.ok(s.fields.every((f) => !f.supported)); assert.ok(!JSON.stringify(s).includes("secret"));
-L0117 |   });
-L0118 |   await check("controlled deferred input reset is not a success", async () => {
-L0119 |     const s = await fixture('<label>姓名<input id="name"></label>');
-L0120 |     await page.locator("#name").evaluate((el) => el.addEventListener("input", () => setTimeout(() => el.value = "", 180)));
-L0121 |     assert.equal((await action(s, s.fields[0], "Example")).status, "failed");
+L0105 |   await check("wrapped select labels exclude options and retain nested question and radio text", async () => {
+L0106 |     const s = await fixture('<section><h2>教育经历</h2><label><span>学</span><strong>历</strong><select id="degree-label"><option value="">请选择</option><optgroup label="学位"><option>本科</option><option>硕士</option></optgroup></select></label></section><fieldset><legend>性别</legend><label><input type="radio" name="g" value="男"><span>男</span></label><label><input type="radio" name="g" value="女"><span>女</span></label></fieldset>');
+L0107 |     const degree = s.fields.find((field) => field.kind === "select");
+L0108 |     const gender = s.fields.find((field) => field.kind === "radio");
+L0109 |     assert.equal(degree.label, "学历"); assert.equal(degree.labelSource, "label");
+L0110 |     assert.deepEqual(degree.options.map((option) => option.text), ["请选择", "本科", "硕士"]);
+L0111 |     assert.equal(gender.label, "性别"); assert.deepEqual(gender.options.map((option) => option.text), ["男", "女"]);
+L0112 |     assert.equal((await action(s, degree, "硕士")).status, "verified");
+L0113 |     assert.equal(await page.locator("#degree-label").inputValue(), "硕士");
+L0114 |     assert.equal((await action(s, gender, "女")).status, "verified");
+L0115 |     assert.equal(await page.locator('[name="g"][value="女"]').isChecked(), true);
+L0116 |   });
+L0117 |   await check("container label excludes embedded controls without losing child question text", async () => {
+L0118 |     const s = await fixture('<div class="ant-form-item"><label class="ant-form-item-label"><span>学校</span><em>名称</em><button type="button">展开</button><span role="listbox" hidden><span role="option">其他学校</span></span></label><input id="school-label"></div>');
+L0119 |     assert.equal(s.fields.length, 1); assert.equal(s.fields[0].label, "学校名称");
+L0120 |     assert.equal(s.fields[0].labelSource, "container");
+L0121 |     assert.ok(s.fields[0].contextEvidence.some((item) => item.source === "label" && item.text === "学校名称"));
 L0122 |   });
-L0123 |   await check("invalid email is not a success", async () => {
-L0124 |     const s = await fixture('<label>邮箱<input type="email"></label>');
-L0125 |     assert.equal((await action(s, s.fields[0], "bad-address")).status, "failed");
-L0126 |   });
-L0127 |   await check("operation ids make retries idempotent", async () => {
-L0128 |     const s = await fixture('<label>姓名<input></label>'); const operationId = crypto.randomUUID();
-L0129 |     const first = await action(s, s.fields[0], "Example", { operationId });
-L0130 |     const second = await action(s, s.fields[0], "Other", { operationId }); assert.deepEqual(second, first);
+L0123 |   await check("radio group selects real No option, not unchecked Yes", async () => {
+L0124 |     const s = await fixture('<fieldset><legend>需要签证吗</legend><label><input type="radio" name="visa" value="y">是</label><label><input type="radio" name="visa" value="n">否</label></fieldset>');
+L0125 |     assert.equal(s.fields.length, 1); assert.equal(s.fields[0].label, "需要签证吗");
+L0126 |     assert.equal((await action(s, s.fields[0], "否")).status, "verified"); assert.equal(await page.locator('[value="n"]').isChecked(), true);
+L0127 |   });
+L0128 |   await check("checkbox group verifies complete selected set", async () => {
+L0129 |     const s = await fixture('<fieldset><legend>语言能力</legend><label><input type="checkbox" name="language" value="zh">中文</label><label><input type="checkbox" name="language" value="en">English</label></fieldset>');
+L0130 |     assert.equal(s.fields.length, 1); assert.equal((await action(s, s.fields[0], JSON.stringify(["中文", "English"]))).status, "verified");
 L0131 |   });
-L0132 |   await check("undo restores required empty baseline and preserves later user edit", async () => {
-L0133 |     const s = await fixture('<label>姓名<input id="name" required></label>');
-L0134 |     await action(s, s.fields[0], "Example");
-L0135 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "verified");
-L0136 |     await page.locator("#name").fill("User edit");
-L0137 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "skipped");
-L0138 |   });
-L0139 |   await check("open shadow root is scanned and filled", async () => {
-L0140 |     await fixture('<div id="host"></div>');
-L0141 |     await page.locator("#host").evaluate((el) => el.attachShadow({ mode: "open" }).innerHTML = '<label>邮箱<input type="email"></label>');
-L0142 |     const s = await page.evaluate(pageBridge, { action: "scan" }); assert.equal(s.fields.length, 1);
-L0143 |     assert.equal((await action(s, s.fields[0], "test@example.com")).status, "verified");
+L0132 |   await check("password file and consent are unsupported and password is not read", async () => {
+L0133 |     const s = await fixture('<label>密码<input type="password" value="secret"></label><label>简历<input type="file"></label><label><input type="checkbox">同意条款</label>');
+L0134 |     assert.ok(s.fields.every((f) => !f.supported)); assert.ok(!JSON.stringify(s).includes("secret"));
+L0135 |   });
+L0136 |   await check("controlled deferred input reset is not a success", async () => {
+L0137 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0138 |     await page.locator("#name").evaluate((el) => el.addEventListener("input", () => setTimeout(() => el.value = "", 180)));
+L0139 |     assert.equal((await action(s, s.fields[0], "Example")).status, "failed");
+L0140 |   });
+L0141 |   await check("invalid email is not a success", async () => {
+L0142 |     const s = await fixture('<label>邮箱<input type="email"></label>');
+L0143 |     assert.equal((await action(s, s.fields[0], "bad-address")).status, "failed");
 L0144 |   });
-L0145 |   await check("custom dropdown only selects real options and verifies committed text", async () => {
-L0146 |     const s = await fixture('<label>学历</label><div class="sd-Select-container" role="combobox" aria-label="学历" aria-controls="menu"><span class="sd-Select-value"></span></div><div id="menu" role="listbox" hidden><div role="option">硕士</div><div role="option">本科</div></div>');
-L0147 |     await page.evaluate(() => { const box = document.querySelector('[role="combobox"]'); const menu = document.getElementById("menu"); box.onclick = () => menu.hidden = false; menu.onclick = (e) => { box.firstChild.textContent = e.target.textContent; menu.hidden = true; }; });
-L0148 |     assert.equal((await action(s, s.fields[0], "硕士")).status, "verified");
+L0145 |   await check("operation ids make retries idempotent", async () => {
+L0146 |     const s = await fixture('<label>姓名<input></label>'); const operationId = crypto.randomUUID();
+L0147 |     const first = await action(s, s.fields[0], "Example", { operationId });
+L0148 |     const second = await action(s, s.fields[0], "Other", { operationId }); assert.deepEqual(second, first);
 L0149 |   });
-L0150 |   await check("frame targets are isolated even when local ids repeat", async () => {
-L0151 |     await fixture('<label>主页面搜索<input></label><iframe srcdoc="<label>学校<input></label>"></iframe>');
-L0152 |     const frame = page.frames()[1]; await frame.waitForSelector("input");
-L0153 |     const main = await page.evaluate(pageBridge, { action: "scan" }); const child = await frame.evaluate(pageBridge, { action: "scan" });
-L0154 |     await assert.rejects(frame.evaluate(pageBridge, { action: "fill", token: main.token, scanId: main.scanId, url: main.url, fieldId: main.fields[0].fieldId, operationId: crypto.randomUUID(), value: "wrong" }));
-L0155 |     assert.equal(await frame.locator("input").inputValue(), ""); assert.notEqual(child.token, main.token);
+L0150 |   await check("undo restores required empty baseline and preserves later user edit", async () => {
+L0151 |     const s = await fixture('<label>姓名<input id="name" required></label>');
+L0152 |     await action(s, s.fields[0], "Example");
+L0153 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "verified");
+L0154 |     await page.locator("#name").fill("User edit");
+L0155 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "skipped");
 L0156 |   });
-L0157 |   await check("inspection exposes stable semantic options and restores closed menu", async () => {
-L0158 |     const s = await dropdown();
-L0159 |     const observed = await inspect(s, s.fields[0]);
-L0160 |     assert.equal(observed.status, "inspected"); assert.equal(observed.restored, true);
-L0161 |     assert.equal(observed.field.options[0].text, "Master’s degree"); assert.equal(observed.options[2].disabled, true);
-L0162 |     assert.equal(await page.locator("#degrees").isVisible(), false);
-L0163 |     assert.equal(await page.locator(".selected-value").textContent(), "");
-L0164 |     const again = await inspect(s, s.fields[0]);
-L0165 |     assert.deepEqual(again.options.map((o) => o.id), observed.options.map((o) => o.id));
-L0166 |     const result = await action(s, s.fields[0], observed.options[0].text, { optionId: observed.options[0].id });
-L0167 |     assert.equal(result.status, "verified");
-L0168 |   });
-L0169 |   await check("late options wait for loading completion before selection", async () => {
-L0170 |     const s = await dropdown({ delay: 1050 });
-L0171 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
-L0172 |     assert.equal((await action(s, s.fields[0], "Master’s degree")).status, "verified");
-L0173 |   });
-L0174 |   await check("inspection preserves a menu that was already open", async () => {
-L0175 |     const s = await dropdown(); await page.locator("#degree").click();
-L0176 |     const result = await inspect(s, s.fields[0]);
-L0177 |     assert.equal(result.status, "inspected"); assert.equal(result.restored, true);
-L0178 |     assert.equal(await page.locator("#degrees").isVisible(), true);
-L0179 |   });
-L0180 |   await check("inspection never invents search text and restores an explicit query", async () => {
-L0181 |     const s = await dropdown({ delay: 550, search: true });
-L0182 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
-L0183 |     assert.equal(await page.locator("#degree input").inputValue(), "");
-L0184 |     const searched = await inspect(s, s.fields[0], { query: "Master" });
-L0185 |     assert.equal(searched.status, "inspected"); assert.equal(searched.options.length, 1);
-L0186 |     assert.equal(await page.locator("#degree input").inputValue(), "");
-L0187 |     assert.equal((await action(s, s.fields[0], "Master’s degree")).status, "verified");
-L0188 |   });
-L0189 |   await check("changed inspected candidates require another review", async () => {
-L0190 |     const s = await dropdown(); await inspect(s, s.fields[0]);
-L0191 |     await page.evaluate(() => {
-L0192 |       const box = document.getElementById("degree"); const menu = document.getElementById("degrees");
-L0193 |       box.onclick = () => { menu.hidden = false; menu.setAttribute("aria-busy", "false"); box.setAttribute("aria-expanded", "true"); menu.innerHTML = '<div role="option">Different degree</div>'; };
-L0194 |     });
-L0195 |     const result = await action(s, s.fields[0], "Master’s degree");
-L0196 |     assert.equal(result.code, "OPTIONS_CHANGED"); assert.equal(result.retryable, false);
-L0197 |     assert.equal(await page.locator(".selected-value").textContent(), "");
-L0198 |   });
-L0199 |   await check("manual typing during dropdown wait stops selection without overwriting", async () => {
-L0200 |     const s = await dropdown({ delay: 900, search: true });
-L0201 |     const pending = action(s, s.fields[0], "Master’s degree");
-L0202 |     await page.locator("#degrees").waitFor({ state: "visible" });
-L0203 |     await page.locator("#degree input").fill("My manual query");
-L0204 |     const result = await pending;
-L0205 |     assert.equal(result.code, "USER_EDITED"); assert.equal(result.status, "skipped");
-L0206 |     assert.equal(await page.locator("#degree input").inputValue(), "My manual query");
-L0207 |     assert.equal(await page.locator(".selected-value").textContent(), "");
-L0208 |   });
-L0209 |   await check("manual typing during verification remains intact", async () => {
-L0210 |     const s = await fixture('<label>姓名<input id="name"></label>');
-L0211 |     const pending = action(s, s.fields[0], "Example");
-L0212 |     await page.waitForFunction(() => document.getElementById("name").value === "Example");
-L0213 |     await page.locator("#name").fill("User correction");
-L0214 |     const result = await pending;
-L0215 |     assert.equal(result.code, "USER_EDITED"); assert.equal(await page.locator("#name").inputValue(), "User correction");
+L0157 |   await check("open shadow root is scanned and filled", async () => {
+L0158 |     await fixture('<div id="host"></div>');
+L0159 |     await page.locator("#host").evaluate((el) => el.attachShadow({ mode: "open" }).innerHTML = '<label>邮箱<input type="email"></label>');
+L0160 |     const s = await page.evaluate(pageBridge, { action: "scan" }); assert.equal(s.fields.length, 1);
+L0161 |     assert.equal((await action(s, s.fields[0], "test@example.com")).status, "verified");
+L0162 |   });
+L0163 |   await check("custom dropdown only selects real options and verifies committed text", async () => {
+L0164 |     const s = await fixture('<label>学历</label><div class="sd-Select-container" role="combobox" aria-label="学历" aria-controls="menu" style="min-height:24px"><span class="sd-Select-value"></span></div><div id="menu" role="listbox" hidden><div role="option">硕士</div><div role="option">本科</div></div>');
+L0165 |     await page.evaluate(() => { const box = document.querySelector('[role="combobox"]'); const menu = document.getElementById("menu"); box.onclick = () => menu.hidden = false; menu.onclick = (e) => { box.firstChild.textContent = e.target.textContent; menu.hidden = true; }; });
+L0166 |     assert.equal((await action(s, s.fields[0], "硕士")).status, "verified");
+L0167 |   });
+L0168 |   await check("frame targets are isolated even when local ids repeat", async () => {
+L0169 |     await fixture('<label>主页面搜索<input></label><iframe srcdoc="<label>学校<input></label>"></iframe>');
+L0170 |     const frame = page.frames()[1]; await frame.waitForSelector("input");
+L0171 |     const main = await page.evaluate(pageBridge, { action: "scan" }); const child = await frame.evaluate(pageBridge, { action: "scan" });
+L0172 |     await assert.rejects(frame.evaluate(pageBridge, { action: "fill", token: main.token, scanId: main.scanId, url: main.url, fieldId: main.fields[0].fieldId, operationId: crypto.randomUUID(), value: "wrong" }));
+L0173 |     assert.equal(await frame.locator("input").inputValue(), ""); assert.notEqual(child.token, main.token);
+L0174 |   });
+L0175 |   await check("inspection exposes stable semantic options and restores closed menu", async () => {
+L0176 |     const s = await dropdown();
+L0177 |     const observed = await inspect(s, s.fields[0]);
+L0178 |     assert.equal(observed.status, "inspected"); assert.equal(observed.restored, true);
+L0179 |     assert.equal(observed.field.options[0].text, "Master’s degree"); assert.equal(observed.options[2].disabled, true);
+L0180 |     assert.equal(await page.locator("#degrees").isVisible(), false);
+L0181 |     assert.equal(await page.locator(".selected-value").textContent(), "");
+L0182 |     const again = await inspect(s, s.fields[0]);
+L0183 |     assert.deepEqual(again.options.map((o) => o.id), observed.options.map((o) => o.id));
+L0184 |     const result = await action(s, s.fields[0], observed.options[0].text, { optionId: observed.options[0].id });
+L0185 |     assert.equal(result.status, "verified");
+L0186 |   });
+L0187 |   await check("late options wait for loading completion before selection", async () => {
+L0188 |     const s = await dropdown({ delay: 1050 });
+L0189 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
+L0190 |     assert.equal((await action(s, s.fields[0], "Master’s degree")).status, "verified");
+L0191 |   });
+L0192 |   await check("inspection preserves a menu that was already open", async () => {
+L0193 |     const s = await dropdown(); await page.locator("#degree").click();
+L0194 |     const result = await inspect(s, s.fields[0]);
+L0195 |     assert.equal(result.status, "inspected"); assert.equal(result.restored, true);
+L0196 |     assert.equal(await page.locator("#degrees").isVisible(), true);
+L0197 |   });
+L0198 |   await check("inspection never invents search text and restores an explicit query", async () => {
+L0199 |     const s = await dropdown({ delay: 550, search: true });
+L0200 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
+L0201 |     assert.equal(await page.locator("#degree input").inputValue(), "");
+L0202 |     const searched = await inspect(s, s.fields[0], { query: "Master" });
+L0203 |     assert.equal(searched.status, "inspected"); assert.equal(searched.options.length, 1);
+L0204 |     assert.equal(await page.locator("#degree input").inputValue(), "");
+L0205 |     assert.equal((await action(s, s.fields[0], "Master’s degree")).status, "verified");
+L0206 |   });
+L0207 |   await check("changed inspected candidates require another review", async () => {
+L0208 |     const s = await dropdown(); await inspect(s, s.fields[0]);
+L0209 |     await page.evaluate(() => {
+L0210 |       const box = document.getElementById("degree"); const menu = document.getElementById("degrees");
+L0211 |       box.onclick = () => { menu.hidden = false; menu.setAttribute("aria-busy", "false"); box.setAttribute("aria-expanded", "true"); menu.innerHTML = '<div role="option">Different degree</div>'; };
+L0212 |     });
+L0213 |     const result = await action(s, s.fields[0], "Master’s degree");
+L0214 |     assert.equal(result.code, "OPTIONS_CHANGED"); assert.equal(result.retryable, false);
+L0215 |     assert.equal(await page.locator(".selected-value").textContent(), "");
 L0216 |   });
-L0217 |   await check("equivalent replacement during verification retains operation and undo", async () => {
-L0218 |     const s = await fixture('<label>姓名<input id="name"></label>');
-L0219 |     await page.locator("#name").evaluate((el) => el.addEventListener("input", () => setTimeout(() => el.replaceWith(el.cloneNode()), 100), { once: true }));
-L0220 |     const result = await action(s, s.fields[0], "Example");
-L0221 |     assert.equal(result.status, "verified"); assert.equal(result.rebound, true);
-L0222 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "verified");
-L0223 |   });
-L0224 |   await check("ambiguous semantic replacements and edited replacements are rejected", async () => {
-L0225 |     let s = await fixture('<div><label>姓名<input></label></div><div><label>姓名<input></label></div>');
-L0226 |     await page.locator("input").first().evaluate((el) => el.replaceWith(el.cloneNode()));
-L0227 |     assert.equal((await action(s, s.fields[0], "Example")).code, "AMBIGUOUS_REPLACEMENT");
-L0228 |     assert.deepEqual(await page.locator("input").evaluateAll((nodes) => nodes.map((el) => el.value)), ["", ""]);
-L0229 |     s = await fixture('<label>姓名<input id="name"></label>');
-L0230 |     await page.locator("input").evaluate((el) => { const clone = el.cloneNode(); clone.value = "User edit"; el.replaceWith(clone); });
-L0231 |     assert.equal((await action(s, s.fields[0], "Example")).code, "USER_EDITED");
-L0232 |     assert.equal(await page.locator("input").inputValue(), "User edit");
-L0233 |   });
-L0234 |   await check("unsafe menu restoration reports an explicit reason without selecting", async () => {
-L0235 |     const s = await dropdown({ closeable: false });
-L0236 |     const result = await inspect(s, s.fields[0]);
-L0237 |     assert.equal(result.code, "MENU_RESTORE_FAILED"); assert.equal(result.restored, false);
-L0238 |     assert.equal(await page.locator(".selected-value").textContent(), "");
-L0239 |   });
-L0240 |   await check("scan records conflicting family context without reading password values", async () => {
-L0241 |     const s = await fixture('<form><h2>工作经历</h2><fieldset><legend>家庭成员</legend><label>父亲职位<input></label><label>密码<input type="password" value="hidden-secret"></label></fieldset></form>');
-L0242 |     assert.equal(s.fields[0].entityHint, "family"); assert.ok(s.fields[0].contextConflicts.length);
-L0243 |     assert.ok(s.fields[0].contextEvidence.some((item) => item.source === "group" && item.text === "家庭成员"));
-L0244 |     assert.equal(JSON.stringify(s).includes("hidden-secret"), false);
-L0245 |   });
-L0246 |   await check("autocomplete input itself exposes options and verifies its committed value", async () => {
-L0247 |     const s = await fixture('<label>学校<input id="school" role="combobox" aria-autocomplete="list" aria-controls="schools" aria-expanded="false"></label><div id="schools" role="listbox" hidden><div role="option">Example University</div></div>');
-L0248 |     await page.evaluate(() => {
-L0249 |       const input = document.getElementById("school"); const menu = document.getElementById("schools");
-L0250 |       input.onclick = () => { menu.hidden = false; input.setAttribute("aria-expanded", "true"); };
-L0251 |       input.onkeydown = (event) => { if (event.key === "Escape") { menu.hidden = true; input.setAttribute("aria-expanded", "false"); } };
-L0252 |       menu.onclick = (event) => { input.value = event.target.textContent; menu.hidden = true; input.setAttribute("aria-expanded", "false"); };
-L0253 |     });
-L0254 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
-L0255 |     assert.equal((await action(s, s.fields[0], "Example University")).status, "verified");
-L0256 |     assert.equal(await page.locator("#school").inputValue(), "Example University");
+L0217 |   await check("manual typing during dropdown wait stops selection without overwriting", async () => {
+L0218 |     const s = await dropdown({ delay: 900, search: true });
+L0219 |     const pending = action(s, s.fields[0], "Master’s degree");
+L0220 |     await page.locator("#degrees").waitFor({ state: "visible" });
+L0221 |     await page.locator("#degree input").fill("My manual query");
+L0222 |     const result = await pending;
+L0223 |     assert.equal(result.code, "USER_EDITED"); assert.equal(result.status, "skipped");
+L0224 |     assert.equal(await page.locator("#degree input").inputValue(), "My manual query");
+L0225 |     assert.equal(await page.locator(".selected-value").textContent(), "");
+L0226 |   });
+L0227 |   await check("manual typing during verification remains intact", async () => {
+L0228 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0229 |     const pending = action(s, s.fields[0], "Example");
+L0230 |     await page.waitForFunction(() => document.getElementById("name").value === "Example");
+L0231 |     await page.locator("#name").fill("User correction");
+L0232 |     const result = await pending;
+L0233 |     assert.equal(result.code, "USER_EDITED"); assert.equal(await page.locator("#name").inputValue(), "User correction");
+L0234 |   });
+L0235 |   await check("equivalent replacement during verification retains operation and undo", async () => {
+L0236 |     const s = await fixture('<label>姓名<input id="name"></label>');
+L0237 |     await page.locator("#name").evaluate((el) => el.addEventListener("input", () => setTimeout(() => el.replaceWith(el.cloneNode()), 100), { once: true }));
+L0238 |     const result = await action(s, s.fields[0], "Example");
+L0239 |     assert.equal(result.status, "verified"); assert.equal(result.rebound, true);
+L0240 |     assert.equal((await action(s, s.fields[0], "", { action: "undo", expected: "Example" })).status, "verified");
+L0241 |   });
+L0242 |   await check("ambiguous semantic replacements and edited replacements are rejected", async () => {
+L0243 |     let s = await fixture('<div><label>姓名<input></label></div><div><label>姓名<input></label></div>');
+L0244 |     await page.locator("input").first().evaluate((el) => el.replaceWith(el.cloneNode()));
+L0245 |     assert.equal((await action(s, s.fields[0], "Example")).code, "AMBIGUOUS_REPLACEMENT");
+L0246 |     assert.deepEqual(await page.locator("input").evaluateAll((nodes) => nodes.map((el) => el.value)), ["", ""]);
+L0247 |     s = await fixture('<label>姓名<input id="name"></label>');
+L0248 |     await page.locator("input").evaluate((el) => { const clone = el.cloneNode(); clone.value = "User edit"; el.replaceWith(clone); });
+L0249 |     assert.equal((await action(s, s.fields[0], "Example")).code, "USER_EDITED");
+L0250 |     assert.equal(await page.locator("input").inputValue(), "User edit");
+L0251 |   });
+L0252 |   await check("unsafe menu restoration reports an explicit reason without selecting", async () => {
+L0253 |     const s = await dropdown({ closeable: false });
+L0254 |     const result = await inspect(s, s.fields[0]);
+L0255 |     assert.equal(result.code, "MENU_RESTORE_FAILED"); assert.equal(result.restored, false);
+L0256 |     assert.equal(await page.locator(".selected-value").textContent(), "");
 L0257 |   });
-L0258 |   await check("search waits for changed results even without a loading marker", async () => {
-L0259 |     const s = await dropdown({ search: true });
-L0260 |     await page.evaluate(() => {
-L0261 |       const input = document.querySelector("#degree input");
-L0262 |       const clone = input.cloneNode(); input.replaceWith(clone);
-L0263 |       clone.addEventListener("input", () => {
-L0264 |         const query = clone.value;
-L0265 |         setTimeout(() => { if (query) document.getElementById("degrees").innerHTML = '<div role="option">Filtered degree</div>'; }, 700);
-L0266 |       });
-L0267 |     });
-L0268 |     await page.locator("#degree").click();
-L0269 |     await page.waitForFunction(() => document.querySelectorAll('#degrees [role="option"]').length === 3);
-L0270 |     const result = await inspect(s, s.fields[0], { query: "Filter" });
-L0271 |     assert.equal(result.status, "inspected"); assert.deepEqual(result.options.map((option) => option.text), ["Filtered degree"]);
-L0272 |     assert.equal(await page.locator("#degree input").inputValue(), "");
-L0273 |   });
-L0274 |   await check("a transient unopened menu gets only one bounded retry", async () => {
-L0275 |     const s = await dropdown();
-L0276 |     await page.evaluate(() => {
-L0277 |       const box = document.getElementById("degree"); const open = box.onclick; let attempts = 0;
-L0278 |       box.onclick = (event) => { box.dataset.attempts = String(++attempts); if (attempts > 1) open(event); };
-L0279 |     });
-L0280 |     const result = await action(s, s.fields[0], "Master’s degree");
-L0281 |     assert.equal(result.status, "verified"); assert.equal(result.retries, 1);
-L0282 |     assert.equal(await page.locator("#degree").getAttribute("data-attempts"), "2");
-L0283 |   });
-L0284 |   console.log(`Browser cases passed: ${passed}`);
-L0285 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
-L0286 | 
+L0258 |   await check("scan records conflicting family context without reading password values", async () => {
+L0259 |     const s = await fixture('<form><h2>工作经历</h2><fieldset><legend>家庭成员</legend><label>父亲职位<input></label><label>密码<input type="password" value="hidden-secret"></label></fieldset></form>');
+L0260 |     assert.equal(s.fields[0].entityHint, "family"); assert.ok(s.fields[0].contextConflicts.length);
+L0261 |     assert.ok(s.fields[0].contextEvidence.some((item) => item.source === "group" && item.text === "家庭成员"));
+L0262 |     assert.equal(JSON.stringify(s).includes("hidden-secret"), false);
+L0263 |   });
+L0264 |   await check("autocomplete input itself exposes options and verifies its committed value", async () => {
+L0265 |     const s = await fixture('<label>学校<input id="school" role="combobox" aria-autocomplete="list" aria-controls="schools" aria-expanded="false"></label><div id="schools" role="listbox" hidden><div role="option">Example University</div></div>');
+L0266 |     await page.evaluate(() => {
+L0267 |       const input = document.getElementById("school"); const menu = document.getElementById("schools");
+L0268 |       input.onclick = () => { menu.hidden = false; input.setAttribute("aria-expanded", "true"); };
+L0269 |       input.onkeydown = (event) => { if (event.key === "Escape") { menu.hidden = true; input.setAttribute("aria-expanded", "false"); } };
+L0270 |       menu.onclick = (event) => { input.value = event.target.textContent; menu.hidden = true; input.setAttribute("aria-expanded", "false"); };
+L0271 |     });
+L0272 |     assert.equal((await inspect(s, s.fields[0])).status, "inspected");
+L0273 |     assert.equal((await action(s, s.fields[0], "Example University")).status, "verified");
+L0274 |     assert.equal(await page.locator("#school").inputValue(), "Example University");
+L0275 |   });
+L0276 |   await check("search waits for changed results even without a loading marker", async () => {
+L0277 |     const s = await dropdown({ search: true });
+L0278 |     await page.evaluate(() => {
+L0279 |       const input = document.querySelector("#degree input");
+L0280 |       const clone = input.cloneNode(); input.replaceWith(clone);
+L0281 |       clone.addEventListener("input", () => {
+L0282 |         const query = clone.value;
+L0283 |         setTimeout(() => { if (query) document.getElementById("degrees").innerHTML = '<div role="option">Filtered degree</div>'; }, 700);
+L0284 |       });
+L0285 |     });
+L0286 |     await page.locator("#degree").click();
+L0287 |     await page.waitForFunction(() => document.querySelectorAll('#degrees [role="option"]').length === 3);
+L0288 |     const result = await inspect(s, s.fields[0], { query: "Filter" });
+L0289 |     assert.equal(result.status, "inspected"); assert.deepEqual(result.options.map((option) => option.text), ["Filtered degree"]);
+L0290 |     assert.equal(await page.locator("#degree input").inputValue(), "");
+L0291 |   });
+L0292 |   await check("a transient unopened menu gets only one bounded retry", async () => {
+L0293 |     const s = await dropdown();
+L0294 |     await page.evaluate(() => {
+L0295 |       const box = document.getElementById("degree"); const open = box.onclick; let attempts = 0;
+L0296 |       box.onclick = (event) => { box.dataset.attempts = String(++attempts); if (attempts > 1) open(event); };
+L0297 |     });
+L0298 |     const result = await action(s, s.fields[0], "Master’s degree");
+L0299 |     assert.equal(result.status, "verified"); assert.equal(result.retries, 1);
+L0300 |     assert.equal(await page.locator("#degree").getAttribute("data-attempts"), "2");
+L0301 |   });
+L0302 |   console.log(`Browser cases passed: ${passed}`);
+L0303 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
 
 ========================================================================
 FILE: application-tracker-extension/scripts/choice-browser-tests.mjs
 SHA256: f7e78c3f18ca79232e25b0da6ddb3a25779cc5c2b7c41df6a91483e307681421
-LINES: 168
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { createRequire } from "node:module";
@@ -473,14 +476,10 @@ L0164 | } finally {
 L0165 |   await browser.close();
 L0166 |   await new Promise((resolve) => server.close(resolve));
 L0167 | }
-L0168 | 
 
 ========================================================================
 FILE: application-tracker-extension/scripts/component-browser-tests.mjs
 SHA256: d35097d89e5c7d3731b771ab014bb9132f39f56b46497b941ab98adc7d8f470f
-LINES: 218
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { readFile } from "node:fs/promises";
@@ -698,14 +697,10 @@ L0214 |   if (browser) await browser.close();
 L0215 |   await new Promise((resolve) => server.close(resolve));
 L0216 | }
 L0217 | if (failures.length) process.exitCode = 1;
-L0218 | 
 
 ========================================================================
 FILE: application-tracker-extension/scripts/data-ui-tests.mjs
-SHA256: d9445b01563b8d55e645647993416a7a548098847a5d4512503b87465c4a3cf4
-LINES: 123
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: 02483d1fd896a7cdc44f578c7366bf42c13626b211e18c60a3f5c013d51e1710
 L0001 | // Synthetic data only, in fresh headless pages. The Chrome API adapter exercises
 L0002 | // the same mutation queue as the extension worker; it is not a user profile.
 L0003 | import assert from "node:assert/strict";
@@ -718,7 +713,7 @@ L0009 | import { createMutationQueue, MUTATION_MESSAGE } from "../src/storageMut
 L0010 | import { createBackup } from "../src/backup.js";
 L0011 | import { createRecord } from "../src/model.js";
 L0012 | import { STORAGE_KEY, PROFILE_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY } from "../src/constants.js";
-L0013 | import { MEMORY_KEY } from "../src/storageKeys.js";
+L0013 | import { MEMORY_KEY, RECOVERY_KEY } from "../src/storageKeys.js";
 L0014 | 
 L0015 | const require = createRequire(import.meta.url);
 L0016 | let playwright;
@@ -821,11 +816,675 @@ L0112 |   await memoryPage.waitForFunction(() => document.getElementById("messag
 L0113 |   assert.equal(await memoryPage.locator("#backupPreview").isVisible(), false);
 L0114 |   assert.equal(data[STORAGE_KEY].length, 1);
 L0115 |   console.log("PASS backup UI rejects invalid files without changing data");
-L0116 |   await memoryPage.setViewportSize({ width: 420, height: 1000 });
-L0117 |   assert.equal(await memoryPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-L0118 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
-L0119 |   await memoryPage.screenshot({ path: path.join(artifacts, "memory-backup-preview.png"), fullPage: true });
-L0120 |   assert.deepEqual(errors, []);
-L0121 |   console.log("Data UI integration cases passed: 8 (Chrome API adapter, synthetic fixtures)");
-L0122 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
-L0123 | 
+L0116 | 
+L0117 |   // Exercise an edited real XLSX through the records page, including the
+L0118 |   // hidden restore sheet. Text-only references must stay non-clickable.
+L0119 |   await table.locator("#cancelEditButton").click();
+L0120 |   await mutate({ operation: "record.patch", id: record.id, changes: { portalLink: "微信内推", source: "referral" } });
+L0121 |   await table.waitForFunction(() => document.querySelectorAll("a.company-link").length === 0);
+L0122 |   await board.waitForFunction(() => document.querySelectorAll(".board-card-title a").length === 0);
+L0123 |   assert.equal(await table.locator("span.company-link").textContent().then((text) => text.includes("示例公司")), true);
+L0124 |   console.log("PASS data UI keeps referral text as plain text instead of a webpage link");
+L0125 | 
+L0126 |   const beforeExcel = structuredClone(data);
+L0127 |   const excelDownload = table.waitForEvent("download");
+L0128 |   await table.locator("#exportButton").click();
+L0129 |   const excelBytes = Array.from(await readFile(await (await excelDownload).path()));
+L0130 |   async function editedWorkbook(appliedDate = "2026-10-13") {
+L0131 |     return table.evaluate(({ bytes, appliedDate }) => {
+L0132 |       const workbook = XLSX.read(new Uint8Array(bytes), { type: "array", cellStyles: true });
+L0133 |       const worksheet = workbook.Sheets["投递记录"];
+L0134 |       const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+L0135 |       if (!worksheet["!cols"]?.[14]?.hidden) throw new Error("Stable record ID column was not hidden on export");
+L0136 |       if (rows[0]["记录 ID"] !== "original-record") throw new Error("Missing exported stable ID");
+L0137 |       rows[0]["公司"] = "Excel 修改后的示例公司";
+L0138 |       rows[0]["备注"] = "可见表修改后的备注";
+L0139 |       rows[0]["当前进度"] = "Offer";
+L0140 |       rows[0]["投递日期"] = appliedDate;
+L0141 |       workbook.Sheets["投递记录"] = XLSX.utils.json_to_sheet(rows);
+L0142 |       return Array.from(new Uint8Array(XLSX.write(workbook, { type: "array", bookType: "xlsx" })));
+L0143 |     }, { bytes: excelBytes, appliedDate });
+L0144 |   }
+L0145 |   table.on("dialog", (dialog) => dialog.accept());
+L0146 |   await table.locator("#importInput").setInputFiles({ name: "edited.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await editedWorkbook()) });
+L0147 |   await table.waitForFunction(() => document.getElementById("message").textContent.includes("完整恢复点已保存"));
+L0148 |   assert.equal(data[STORAGE_KEY][0].company, "Excel 修改后的示例公司");
+L0149 |   assert.equal(data[STORAGE_KEY][0].notes, "可见表修改后的备注");
+L0150 |   assert.equal(data[STORAGE_KEY][0].status, "offer");
+L0151 |   assert.equal(data[STORAGE_KEY][0].id, "original-record");
+L0152 |   assert.equal(data[STORAGE_KEY][0].createdAt, beforeExcel[STORAGE_KEY][0].createdAt);
+L0153 |   assert.equal(data[STORAGE_KEY][0].statusHistory.at(-1).status, "offer");
+L0154 |   assert.deepEqual(data[RECOVERY_KEY].data.records, beforeExcel[STORAGE_KEY]);
+L0155 |   assert.equal(data[RECOVERY_KEY].data.profile.fullNameZh, "示例用户");
+L0156 |   assert.equal(data[RECOVERY_KEY].data.memories.length, 1);
+L0157 |   assert.equal(JSON.stringify(data[RECOVERY_KEY]).includes("TEST_CREDENTIAL_DO_NOT_EXPORT"), false);
+L0158 |   console.log("PASS Excel UI imports visible edits over hidden data and saves a complete recovery point");
+L0159 |   const afterExcel = structuredClone(data);
+L0160 |   await table.locator("#importInput").setInputFiles({ name: "invalid-date.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await editedWorkbook("2026-02-30")) });
+L0161 |   await table.waitForFunction(() => document.getElementById("message").textContent.startsWith("导入失败"));
+L0162 |   assert.deepEqual(data, afterExcel);
+L0163 |   console.log("PASS Excel UI rejects invalid visible data without modifying records or recovery");
+L0164 |   await memoryPage.locator("#restoreRecovery").click();
+L0165 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled);
+L0166 |   await memoryPage.locator("#confirmRestore").click();
+L0167 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden);
+L0168 |   assert.deepEqual(data[STORAGE_KEY], beforeExcel[STORAGE_KEY]);
+L0169 |   assert.equal(data[PROFILE_STORAGE_KEY].fullNameZh, "示例用户");
+L0170 |   assert.equal(data[MEMORY_KEY].length, 1);
+L0171 |   assert.equal(data[AI_SETTINGS_STORAGE_KEY].apiKey, "TEST_CREDENTIAL_DO_NOT_EXPORT");
+L0172 |   console.log("PASS backup UI can fully recover the state before Excel replacement");
+L0173 |   await memoryPage.setViewportSize({ width: 420, height: 1000 });
+L0174 |   assert.equal(await memoryPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0175 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0176 |   await memoryPage.screenshot({ path: path.join(artifacts, "memory-backup-preview.png"), fullPage: true });
+L0177 |   assert.deepEqual(errors, []);
+L0178 |   console.log("Data UI integration cases passed: 12 (Chrome API adapter, synthetic fixtures)");
+L0179 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+
+========================================================================
+FILE: application-tracker-extension/scripts/date-format-browser-tests.mjs
+SHA256: 48a60c01f110e0da242150174bf74d32b580ec7adb605245f715982ac7908aac
+L0001 | // Regression cases for date formats taken from dateFmt, data-date-format or placeholder text.
+L0002 | import assert from "node:assert/strict";
+L0003 | import { createServer } from "node:http";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0008 | 
+L0009 | const require = createRequire(import.meta.url);
+L0010 | let playwright;
+L0011 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0012 | const server = createServer((_req, res) => { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end('<!doctype html><html><head><title>Date format fixture</title></head><body><main id="fixture"></main></body></html>'); });
+L0013 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0014 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0015 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0016 | const page = await browser.newPage();
+L0017 | let passed = 0;
+L0018 | const failures = [];
+L0019 | async function fixture(html) {
+L0020 |   await page.goto(origin);
+L0021 |   await page.locator("#fixture").evaluate((node, source) => { node.innerHTML = source; }, html);
+L0022 |   return page.evaluate(pageBridge, { action: "scan" });
+L0023 | }
+L0024 | const fill = (s, field, value) => page.evaluate(pageBridge, { action: "fill", token: s.token, scanId: s.scanId, url: s.url, fieldId: field.fieldId, operationId: crypto.randomUUID(), value });
+L0025 | async function check(name, fn) {
+L0026 |   try { await fn(); passed++; console.log(`PASS ${name}`); }
+L0027 |   catch (error) { failures.push(name); console.log(`FAIL ${name}: ${error.message}`); }
+L0028 | }
+L0029 | try {
+L0030 |   for (const value of ["2020.09", "2020-09"]) {
+L0031 |     await check(`My97 dateFmt yyyy.MM accepts ${value} and verifies 2020.09`, async () => {
+L0032 |       const s = await fixture(`<label>入学时间<input class="Wdate" onclick="WdatePicker({dateFmt:'yyyy.MM'})"></label>`);
+L0033 |       assert.equal(s.fields[0].dateFormat, "YYYY.MM");
+L0034 |       const result = await fill(s, s.fields[0], value);
+L0035 |       assert.equal(result.status, "verified", JSON.stringify(result));
+L0036 |       assert.equal(await page.locator("input").inputValue(), "2020.09");
+L0037 |     });
+L0038 |   }
+L0039 |   for (const [placeholder, value, expected] of [["入学时间(YYYY-MM)", "2020-09", "2020-09"], ["yyyy-mm-dd", "2020-09-15", "2020-09-15"], ["Start Date (YYYY-MM)", "2020-09", "2020-09"]]) {
+L0040 |     await check(`placeholder ${placeholder} is a format hint, never written into the field`, async () => {
+L0041 |       const s = await fixture(`<div class="el-form-item"><label class="el-form-item__label">入学时间</label><div class="el-date-editor el-input"><input class="el-input__inner" placeholder="${placeholder}"></div></div>`);
+L0042 |       const result = await fill(s, s.fields[0], value);
+L0043 |       assert.equal(result.status, "verified", JSON.stringify(result));
+L0044 |       assert.equal(await page.locator("input").inputValue(), expected);
+L0045 |     });
+L0046 |   }
+L0047 | } finally { await browser.close(); server.close(); }
+L0048 | console.log(`Date format browser cases passed: ${passed}; failed: ${failures.length}`);
+L0049 | if (failures.length) process.exitCode = 1;
+
+========================================================================
+FILE: application-tracker-extension/scripts/extension-tests.mjs
+SHA256: 5a8ef0e1d1ab91e045b6b4bf2e5a0e24c7b2d6a51395a33a2520ecd824d4a269
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { mkdtemp, cp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir, tmpdir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | const require = createRequire(import.meta.url);
+L0008 | let playwright;
+L0009 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0010 | const root = path.resolve(import.meta.dirname, "..");
+L0011 | const fixture = '<!doctype html><html><head><meta charset="utf-8"><title>示例公司 · 分析师申请</title></head><body><form><section><h2>基本信息</h2><label>姓名<input id="name" required></label><label>邮箱<input id="email" type="email"></label></section><section><h2>硕士教育</h2><label>学校名称<input id="school"></label></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label><label>奖惩情况<textarea id="awards"></textarea></label></section></form><iframe src="/child"></iframe></body></html>';
+L0012 | const server = createServer((req, res) => {
+L0013 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0014 |   if (req.url === "/child") return res.end('<label>个人网站<input id="website"></label>');
+L0015 |   if (req.url === "/cross") return res.end(fixture.replace('src="/child"', `src="http://localhost:${server.address().port}/child"`));
+L0016 |   res.end(fixture);
+L0017 | });
+L0018 | let context;
+L0019 | let temporary;
+L0020 | try {
+L0021 |   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+L0022 |   const origin = `http://127.0.0.1:${server.address().port}`;
+L0023 |   temporary = await mkdtemp(path.join(tmpdir(), "application-assistant-test-"));
+L0024 |   const extensionPath = path.join(temporary, "extension");
+L0025 |   await cp(root, extensionPath, { recursive: true, filter: (source) => !["test-artifacts", "node_modules", ".git"].includes(path.basename(source)) });
+L0026 |   const manifest = JSON.parse(await readFile(path.join(extensionPath, "manifest.json"), "utf8"));
+L0027 |   manifest.host_permissions.push("http://127.0.0.1/*");
+L0028 |   await writeFile(path.join(extensionPath, "manifest.json"), JSON.stringify(manifest));
+L0029 |   // Always use a new disposable profile, including when using installed Chrome.
+L0030 |   const browserChoice = process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : { channel: process.platform === "win32" ? "chrome" : "chromium" };
+L0031 |   const bundledArgs = browserChoice.channel === "chromium" ? [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`] : [];
+L0032 |   context = await playwright.chromium.launchPersistentContext(path.join(temporary, "profile"), { ...browserChoice, headless: true, ignoreDefaultArgs: ["--disable-extensions"], args: ["--enable-unsafe-extension-debugging", ...bundledArgs] });
+L0033 |   context.setDefaultTimeout(15000);
+L0034 |   let extensionId = context.serviceWorkers().find((worker) => worker.url().startsWith("chrome-extension://"))?.url().split("/")[2];
+L0035 |   if (!extensionId) {
+L0036 |     // Extensions is a browser-target CDP domain, not a page-target domain.
+L0037 |     // This also supports Chrome versions that removed --load-extension.
+L0038 |     const cdp = await context.browser().newBrowserCDPSession();
+L0039 |     try { extensionId = (await cdp.send("Extensions.loadUnpacked", { path: extensionPath })).id; }
+L0040 |     finally { await cdp.detach(); }
+L0041 |   }
+L0042 |   // Wake MV3 through a real extension message; an idle worker need not start
+L0043 |   // merely because an unpacked extension has been registered.
+L0044 |   const recordsPage = await context.newPage();
+L0045 |   await recordsPage.goto(`chrome-extension://${extensionId}/src/records/records.html`);
+L0046 |   await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).replaceAllRecords([]));
+L0047 |   const worker = context.serviceWorkers().find((item) => item.url().startsWith("chrome-extension://")) || await context.waitForEvent("serviceworker", { predicate: (item) => item.url().startsWith("chrome-extension://"), timeout: 15000 });
+L0048 |   assert.equal(new URL(worker.url()).host, extensionId);
+L0049 |   assert.ok(worker.url().endsWith("/src/assistant/background.js"));
+L0050 |   console.log(`Runtime: Chrome ${context.browser().version()}, real MV3 worker ${extensionId}, disposable profile`);
+L0051 |   const target = await context.newPage(); await target.goto(origin + "/apply");
+L0052 |   const ids = await worker.evaluate(async (url) => { const tabs = await chrome.tabs.query({}); const tab = tabs.find((t) => t.url === url); return { tabId: tab.id, windowId: tab.windowId }; }, origin + "/apply");
+L0053 |   const originalProfile = { fullNameZh: "示例申请人", email: "profile@example.com", masterUniversityZh: "示例大学", website: "https://portfolio.example.com", commonAnswers: { selfIntroduction: { zh: "这是一段待核对的自我介绍。", en: "" } } };
+L0054 |   await worker.evaluate(async ({ ids, profile }) => {
+L0055 |     await chrome.storage.local.set({ "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false }, "applicationTracker.questionMemory": [{ id: "legacy-one", question: "其他技能", answer: "SQL", language: "zh", pageUrl: "https://example.com/apply" }] });
+L0056 |     await chrome.storage.session.set({ [`applicationTracker.assistant.target.${ids.windowId}`]: ids.tabId });
+L0057 |   }, { ids, profile: originalProfile });
+L0058 |   const panel = await context.newPage();
+L0059 |   const errors = []; panel.on("pageerror", (error) => errors.push(error.message));
+L0060 |   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
+L0061 |   const createRecords = (page, prefix) => page.evaluate(async (prefix) => {
+L0062 |     const { saveNewRecord } = await import(chrome.runtime.getURL("src/storage.js"));
+L0063 |     return Promise.all(Array.from({ length: 8 }, (_, index) => saveNewRecord({ company: `${prefix}-${index}`, role: "测试岗位", source: "company_portal", portalLink: "https://example.com/apply", appliedDate: "2026-09-21", status: "applied" })));
+L0064 |   }, prefix);
+L0065 |   const [leftRecords] = await Promise.all([createRecords(panel, "panel"), createRecords(recordsPage, "records")]);
+L0066 |   await Promise.all([
+L0067 |     panel.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { status: "oa" }); }, leftRecords[0].id),
+L0068 |     recordsPage.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { notes: "另一页面的更新" }); }, leftRecords[0].id)
+L0069 |   ]);
+L0070 |   const queuedRecords = await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).getRecords());
+L0071 |   assert.equal(queuedRecords.length, 16);
+L0072 |   assert.equal(new Set(queuedRecords.map((record) => record.id)).size, 16);
+L0073 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).status, "oa");
+L0074 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).notes, "另一页面的更新");
+L0075 |   console.log("PASS real background queue preserves concurrent writes and independent patches across extension pages");
+L0076 |   await panel.locator("#prepare").click();
+L0077 |   await panel.locator("#questions .question").first().waitFor();
+L0078 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0079 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0080 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
+L0081 |   assert.match(await panel.locator("#fill").textContent(), /5/);
+L0082 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0083 |   const introduction = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: "自我介绍的答案", exact: true }) });
+L0084 |   assert.equal(await introduction.locator("[data-answer]").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
+L0085 |   assert.equal(await introduction.locator("[data-selected]").isChecked(), true, "An existing personal narrative belongs in the one-confirmation batch with AI disabled");
+L0086 |   for (const selector of ["#name", "#email", "#school", "#intro", "#awards"]) assert.equal(await target.locator(selector).inputValue(), "", "Preparing the preview must not write to the application form");
+L0087 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0088 |   console.log("PASS real extension previews five local answers including personal narrative across both frames without writing before confirmation");
+L0089 |   await target.locator("#email").fill("user-change@example.com");
+L0090 |   const versionCheck = await panel.evaluate(async (windowId) => {
+L0091 |     const { versionOf } = await import(chrome.runtime.getURL("src/assistant/planner.js"));
+L0092 |     const { getMemories, loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0093 |     return { planned: (await loadSession(windowId)).memoryVersion, stored: versionOf(await getMemories()) };
+L0094 |   }, ids.windowId);
+L0095 |   assert.equal(versionCheck.planned, versionCheck.stored, "Chrome storage round-trip must preserve the memory version after migration");
+L0096 |   await panel.locator("#fill").click();
+L0097 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.querySelectorAll("#resultList .result-row").length === 5);
+L0098 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
+L0099 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
+L0100 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0101 |   assert.equal(await target.locator("#intro").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
+L0102 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
+L0103 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
+L0104 |   console.log("PASS one confirmation writes and verifies all previewed answers while preserving manual webpage edits");
+L0105 |   const profileAfter = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.profile"))["applicationTracker.profile"]);
+L0106 |   assert.deepEqual(profileAfter, originalProfile);
+L0107 |   const memories = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.assistant.memories.v2"))["applicationTracker.assistant.memories.v2"]);
+L0108 |   assert.equal(memories.length, 1); assert.equal(memories[0].confirmed, false);
+L0109 |   console.log("PASS fill never edits profile or automatically promotes learned answers");
+L0110 |   await panel.locator("#undo").click();
+L0111 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && [...document.querySelectorAll("#resultList .result-row p")].filter((node) => node.textContent === "已撤销").length === 4);
+L0112 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
+L0113 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0114 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0115 |   console.log("PASS extension undo restores only assistant-written fields");
+L0116 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0117 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0118 |   await panel.setViewportSize({ width: 420, height: 1000 }); await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
+L0119 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0120 |   await panel.setViewportSize({ width: 320, height: 900 });
+L0121 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0122 |   console.log("PASS side panel layout fits 320px and 420px widths");
+L0123 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor();
+L0124 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0125 |   console.log("PASS extension session restores after closing/reopening its document");
+L0126 |   await target.reload();
+L0127 |   await panel.waitForFunction(() => document.getElementById("fill").disabled);
+L0128 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
+L0129 |   console.log("PASS navigation invalidates the old fill plan");
+L0130 | 
+L0131 |   // An inactive extension tab executes the real popup document while preserving
+L0132 |   // the active application tab, then is destroyed to model popup dismissal.
+L0133 |   const openPopupDocument = async () => {
+L0134 |     await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
+L0135 |     const opened = context.waitForEvent("page");
+L0136 |     await worker.evaluate((url) => chrome.tabs.create({ url, active: false }), `chrome-extension://${extensionId}/src/popup/popup.html`);
+L0137 |     const popup = await opened;
+L0138 |     popup.on("pageerror", (error) => errors.push(error.message));
+L0139 |     await popup.waitForLoadState();
+L0140 |     await popup.waitForFunction(() => !!document.querySelector('[name="portalLink"]').value);
+L0141 |     return popup;
+L0142 |   };
+L0143 |   let popup = await openPopupDocument();
+L0144 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0145 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0146 |   assert.equal(await popup.locator('[data-job-source="company"]').textContent(), "网页标题");
+L0147 |   await popup.locator('[name="company"]').fill("草稿测试公司");
+L0148 |   assert.equal(await popup.locator('[data-job-source="company"]').isVisible(), false);
+L0149 |   await popup.locator('[name="role"]').fill("草稿测试岗位");
+L0150 |   await popup.locator('[name="notes"]').fill("最后一次输入后立即关闭");
+L0151 |   await popup.close();
+L0152 |   popup = await openPopupDocument();
+L0153 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
+L0154 |   assert.equal(await popup.locator('[name="role"]').inputValue(), "草稿测试岗位");
+L0155 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "最后一次输入后立即关闭");
+L0156 |   assert.match(await popup.locator("#saveMessage").textContent(), /恢复/);
+L0157 |   await popup.close();
+L0158 |   await target.goto(origin + "/apply?jobId=another-role");
+L0159 |   popup = await openPopupDocument();
+L0160 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0161 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "");
+L0162 |   await popup.close();
+L0163 |   await target.goto(origin + "/apply");
+L0164 |   popup = await openPopupDocument();
+L0165 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
+L0166 |   await popup.locator("#clearDraft").click();
+L0167 |   await popup.waitForFunction(() => document.getElementById("saveMessage").textContent.includes("已清空草稿"));
+L0168 |   await popup.close();
+L0169 |   popup = await openPopupDocument();
+L0170 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0171 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
+L0172 |   await popup.close();
+L0173 |   console.log("PASS real popup document restores after destruction, isolates job IDs and honors explicit clearing");
+L0174 |   await target.evaluate(() => { document.title = "填写简历"; });
+L0175 |   popup = await openPopupDocument();
+L0176 |   await popup.locator("#recentJobBox").waitFor({ state: "visible" });
+L0177 |   const currentLink = await popup.locator('[name="portalLink"]').inputValue();
+L0178 |   await popup.locator("#recentJob").selectOption("0");
+L0179 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
+L0180 |   assert.equal(await popup.locator('[data-job-source="role"]').textContent(), "最近岗位");
+L0181 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), currentLink);
+L0182 |   const recent = await worker.evaluate(async () => (await chrome.storage.session.get("applicationTracker.recentJobs"))["applicationTracker.recentJobs"]);
+L0183 |   assert.equal(recent.length, 1);
+L0184 |   assert.equal(new URL(recent[0].url).search, "");
+L0185 |   await popup.close();
+L0186 |   await target.reload();
+L0187 |   console.log("PASS real popup offers recent jobs on application pages and preserves the current application link");
+L0188 | 
+L0189 |   // Exercise the native download/file-input and MV3 message/storage path, which
+L0190 |   // the DOM tests' Chrome API adapter cannot verify.
+L0191 |   const memoryPage = await context.newPage();
+L0192 |   memoryPage.on("pageerror", (error) => errors.push(error.message));
+L0193 |   await memoryPage.goto(`chrome-extension://${extensionId}/src/memory/memory.html`);
+L0194 |   await memoryPage.locator(".memory-card").first().waitFor();
+L0195 |   const apiKeyFixture = "fixture-key-must-never-be-exported";
+L0196 |   await memoryPage.evaluate(async (apiKey) => {
+L0197 |     const { saveAiSettings } = await import(chrome.runtime.getURL("src/storage.js"));
+L0198 |     await saveAiSettings({ enabled: false, apiKey, model: "gpt-5-mini" });
+L0199 |   }, apiKeyFixture);
+L0200 |   const downloaded = memoryPage.waitForEvent("download");
+L0201 |   await memoryPage.locator("#exportBackup").click();
+L0202 |   const download = await downloaded;
+L0203 |   const backupPath = path.join(temporary, "downloaded-fixture-backup.json");
+L0204 |   await download.saveAs(backupPath);
+L0205 |   const backupText = await readFile(backupPath, "utf8");
+L0206 |   const downloadedBackup = JSON.parse(backupText);
+L0207 |   assert.match(download.suggestedFilename(), /^application-tracker-backup-\d{4}-\d{2}-\d{2}\.json$/);
+L0208 |   assert.equal(downloadedBackup.schemaVersion, 3);
+L0209 |   assert.equal(downloadedBackup.data.records.length, 16);
+L0210 |   assert.equal(downloadedBackup.data.memories.length, 1);
+L0211 |   assert.equal(downloadedBackup.data.profile.email, originalProfile.email);
+L0212 |   assert.ok(!backupText.includes(apiKeyFixture) && !backupText.includes('"apiKey"'));
+L0213 |   const readBackupState = () => memoryPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storageClient.js"))).requestStorageMutation({ operation: "backup.export" }));
+L0214 |   await memoryPage.evaluate(async () => {
+L0215 |     const { saveNewRecord, saveProfile, getProfile } = await import(chrome.runtime.getURL("src/storage.js"));
+L0216 |     const { getMemories, saveMemory } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0217 |     await saveNewRecord({ company: "导出后新增的公司", role: "恢复测试岗位", source: "company_portal", portalLink: "https://example.com/after-backup", appliedDate: "2026-09-21", status: "applied" });
+L0218 |     await saveProfile({ ...await getProfile(), email: "changed-before-restore@example.com" });
+L0219 |     const memory = (await getMemories())[0];
+L0220 |     await saveMemory({ ...memory, answer: "导入前更新的答案" });
+L0221 |   });
+L0222 |   const beforeImport = await readBackupState();
+L0223 |   assert.equal(beforeImport.data.records.length, 17);
+L0224 |   await memoryPage.locator("#importBackup").setInputFiles(backupPath);
+L0225 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
+L0226 |   await memoryPage.locator("#restoreMode").selectOption("replace");
+L0227 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled && document.getElementById("restoreDescription").textContent.includes("替换全部"));
+L0228 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 16 条投递/);
+L0229 |   assert.deepEqual((await readBackupState()).data, beforeImport.data, "A real backup preview must not write data");
+L0230 |   await memoryPage.locator("#confirmRestore").click();
+L0231 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
+L0232 |   assert.deepEqual((await readBackupState()).data, downloadedBackup.data);
+L0233 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
+L0234 |   await memoryPage.locator("#restoreRecovery").waitFor({ state: "visible" });
+L0235 |   await memoryPage.locator("#restoreRecovery").click();
+L0236 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
+L0237 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 17 条投递/);
+L0238 |   await memoryPage.locator("#confirmRestore").click();
+L0239 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
+L0240 |   assert.deepEqual((await readBackupState()).data, beforeImport.data);
+L0241 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
+L0242 |   console.log("PASS real backup download, file preview, replacement and recovery round-trip preserve data and exclude API credentials");
+L0243 | 
+L0244 |   // A host permission allows DOM inspection, but it does not grant the distinct
+L0245 |   // captureVisibleTab privilege. Programmatic activation and opening the popup
+L0246 |   // document above deliberately do not simulate a user extension-action grant.
+L0247 |   await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
+L0248 |   const deniedCapture = await panel.evaluate(async (tabId) => {
+L0249 |     const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0250 |     const { captureVisualContext } = await import(chrome.runtime.getURL("src/assistant/visualCapture.js"));
+L0251 |     const snapshot = await scanPage(tabId);
+L0252 |     try {
+L0253 |       await captureVisualContext(snapshot);
+L0254 |       return { captured: true };
+L0255 |     } catch (error) {
+L0256 |       return { captured: false, code: error.code, message: error.message };
+L0257 |     }
+L0258 |   }, ids.tabId);
+L0259 |   assert.equal(deniedCapture.captured, false);
+L0260 |   assert.equal(deniedCapture.code, "VISUAL_PERMISSION");
+L0261 |   assert.match(deniedCapture.message, /重新点击扩展图标/);
+L0262 |   assert.match(deniedCapture.message, /继续使用网页文字识别/);
+L0263 |   const savedState = await panel.evaluate(async () => JSON.stringify({ local: await chrome.storage.local.get(null), session: await chrome.storage.session.get(null) }));
+L0264 |   assert.equal(savedState.includes("data:image/"), false, "A denied screenshot must not leave image data in extension storage");
+L0265 |   console.log("PASS real screenshot permission denial explains recovery and preserves the text-recognition fallback without storing images");
+L0266 | 
+L0267 |   const aiPage = await context.newPage();
+L0268 |   aiPage.on("pageerror", (error) => errors.push(error.message));
+L0269 |   const priorAiSettings = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
+L0270 |   await aiPage.goto(`chrome-extension://${extensionId}/src/ai/ai.html`);
+L0271 |   await aiPage.waitForFunction(() => document.querySelector('[name="apiKey"]').value === "fixture-key-must-never-be-exported");
+L0272 |   assert.equal(await aiPage.locator('[name="visionEnabled"]').isChecked(), false);
+L0273 |   await aiPage.locator('[name="visionEnabled"]').check();
+L0274 |   await aiPage.locator('button[type="submit"]').click();
+L0275 |   await aiPage.locator("#message").waitFor({ state: "visible" });
+L0276 |   await aiPage.reload();
+L0277 |   await aiPage.waitForFunction(() => document.querySelector('[name="visionEnabled"]').checked);
+L0278 |   const optedIn = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
+L0279 |   assert.equal(optedIn.visionEnabled, true);
+L0280 |   assert.equal(optedIn.enabled, false, "Screenshot opt-in must not independently enable AI calls");
+L0281 |   assert.equal(optedIn.model, priorAiSettings.model);
+L0282 |   assert.equal(optedIn.apiKey, priorAiSettings.apiKey);
+L0283 |   await aiPage.locator('[name="visionEnabled"]').uncheck();
+L0284 |   await aiPage.locator('button[type="submit"]').click();
+L0285 |   await aiPage.locator("#message").waitFor({ state: "visible" });
+L0286 |   assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]), priorAiSettings);
+L0287 |   await aiPage.close();
+L0288 |   console.log("PASS real AI settings screen persists screenshot opt-in and opt-out without enabling AI or changing the model and key");
+L0289 |   await target.goto(origin + "/cross");
+L0290 |   await target.frameLocator("iframe").locator("#website").waitFor();
+L0291 |   await panel.locator("#prepare").click();
+L0292 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("1/2"));
+L0293 |   const crossOrigin = `http://localhost:${server.address().port}`;
+L0294 |   assert.equal(await panel.getByRole("button", { name: `允许读取内嵌表单（localhost:${server.address().port}）`, exact: true }).count(), 1);
+L0295 |   const crossState = await panel.evaluate(async (windowId) => {
+L0296 |     const { loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
+L0297 |     const saved = await loadSession(windowId);
+L0298 |     return { failedFrames: saved.snapshot.failedFrames, fields: saved.snapshot.fields.length, permissions: await chrome.permissions.getAll() };
+L0299 |   }, ids.windowId);
+L0300 |   assert.equal(crossState.failedFrames.length, 1);
+L0301 |   assert.equal(crossState.failedFrames[0].origin, crossOrigin);
+L0302 |   assert.ok(crossState.failedFrames[0].frameId > 0);
+L0303 |   assert.equal(crossState.fields, 5);
+L0304 |   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
+L0305 |   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
+L0306 |   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
+L0307 |   assert.deepEqual(errors, []);
+L0308 |   console.log("Extension end-to-end cases passed: 14");
+L0309 | } catch (error) {
+L0310 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
+L0311 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
+L0312 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
+L0313 |   }
+L0314 |   throw error;
+L0315 | } finally {
+L0316 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
+L0317 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+L0318 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
+L0319 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
+L0320 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+L0321 |   }
+L0322 | }
+
+========================================================================
+FILE: application-tracker-extension/scripts/job-info-browser-tests.mjs
+SHA256: 847a791d9b1c388cdb5416882e7b43a15b044ce039fb76f63f668f6b197daee8
+L0001 | // Job identification acceptance tests. Every response is a sanitized local
+L0002 | // fixture or fictional HTML; no request reaches a real recruitment website.
+L0003 | import assert from "node:assert/strict";
+L0004 | import { readFile } from "node:fs/promises";
+L0005 | import { createRequire } from "node:module";
+L0006 | import { homedir } from "node:os";
+L0007 | import path from "node:path";
+L0008 | import { collectJobSignals } from "../src/jobInfo/collectSignals.js";
+L0009 | import { extractJobInfo } from "../src/jobInfo/extractJobInfo.js";
+L0010 | 
+L0011 | const require = createRequire(import.meta.url);
+L0012 | let playwright;
+L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0014 | const root = path.resolve(import.meta.dirname, "..");
+L0015 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0016 | let passed = 0;
+L0017 | 
+L0018 | try {
+L0019 |   const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: "block" });
+L0020 |   const responses = new Map();
+L0021 |   await context.route("**/*", (route) => {
+L0022 |     const body = responses.get(route.request().url());
+L0023 |     return body !== undefined
+L0024 |       ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body })
+L0025 |       : route.abort();
+L0026 |   });
+L0027 |   const page = await context.newPage();
+L0028 |   async function fixture(html, url = "https://careers.example.test/job/fixture") {
+L0029 |     const requestUrl = new URL(url);
+L0030 |     requestUrl.hash = "";
+L0031 |     responses.set(requestUrl.href, html);
+L0032 |     await page.goto(url, { waitUntil: "domcontentloaded" });
+L0033 |   }
+L0034 |   // Passing the function itself deliberately exercises Chrome-style function
+L0035 |   // serialization: any references to module-local helpers fail in the page.
+L0036 |   const collect = () => page.evaluate(collectJobSignals);
+L0037 |   async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
+L0038 |   const fields = ({ company, role, base }) => ({ company, role, base });
+L0039 |   const documentHtml = (body, head = "") => `<!doctype html><html><head><meta charset="utf-8"><title>Fixture</title>${head}</head><body>${body}</body></html>`;
+L0040 |   const posting = { "@type": "JobPosting", title: "财务实习生", hiringOrganization: { name: "示例科技有限公司" }, jobLocation: { address: { addressLocality: "深圳" } } };
+L0041 |   const jsonLd = (value) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
+L0042 | 
+L0043 |   for (const { file, url, company } of [
+L0044 |     { file: "huarun-runjob.html", url: "https://runjob.crc.com.cn/application/fixture", company: "华润集团" },
+L0045 |     { file: "chinahr-applyjob.html", url: "https://applyjob.chinahr.com/application/fixture" },
+L0046 |     { file: "wintalent-crc.html", url: "https://crc.wintalent.cn/application/fixture" }
+L0047 |   ]) {
+L0048 |     await check(`job identification on sanitized ${file}`, async () => {
+L0049 |       await fixture(await readFile(path.join(root, "test/fixtures/real-pages", file), "utf8"), url);
+L0050 |       const info = extractJobInfo(await collect());
+L0051 |       if (company) assert.equal(info.company, company);
+L0052 |       assert.equal(info.role, "", "Application form names must never be identified as job roles");
+L0053 |       assert.ok(!["填写简历", "简历填写"].includes(info.company));
+L0054 |     });
+L0055 |   }
+L0056 | 
+L0057 |   for (const [name, data] of [
+L0058 |     ["single object", posting],
+L0059 |     ["top-level array", [{ "@type": "WebSite", name: "Example" }, posting]],
+L0060 |     ["nested @graph", { "@context": "https://schema.org", "@graph": [{ "@type": "Organization" }, { "@graph": [posting] }] }]
+L0061 |   ]) {
+L0062 |     await check(`serialized collector reads JSON-LD ${name}`, async () => {
+L0063 |       await fixture(documentHtml("<h1>页面上的另一个职位</h1>", '<script type="application/ld+json">{invalid</script>' + jsonLd(data)));
+L0064 |       const info = extractJobInfo(await collect());
+L0065 |       assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "深圳" });
+L0066 |       assert.deepEqual(info.source, { company: "结构化数据", role: "结构化数据", base: "结构化数据" });
+L0067 |       assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0068 |     });
+L0069 |   }
+L0070 | 
+L0071 |   await check("JSON-LD handles type and jobLocation arrays", async () => {
+L0072 |     await fixture(documentHtml("", jsonLd({ ...posting, "@type": ["Thing", "JobPosting"], jobLocation: [
+L0073 |       { address: { addressRegion: "广东", addressLocality: "深圳" } },
+L0074 |       { address: { addressRegion: "香港", addressLocality: "香港" } }
+L0075 |     ] })));
+L0076 |     const info = extractJobInfo(await collect());
+L0077 |     assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "广东 深圳 / 香港" });
+L0078 |   });
+L0079 | 
+L0080 |   await check("explicit labels beat meta and nearby text is collected", async () => {
+L0081 |     await fixture(documentHtml('<div>公司名称：星海科技有限公司</div><dl><dt>岗位名称</dt><dd>审计助理</dd></dl><div><span>工作地点</span></div><p>深圳</p>', '<meta property="og:title" content="Graduate Analyst | Other Bank Careers"><meta property="og:site_name" content="Other Bank">'));
+L0082 |     const info = extractJobInfo(await collect());
+L0083 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "审计助理", base: "深圳" });
+L0084 |     assert.deepEqual(info.source, { company: "页面标签", role: "页面标签", base: "页面标签" });
+L0085 |   });
+L0086 | 
+L0087 |   await check("visible headings and metadata identify a generic job page", async () => {
+L0088 |     await fixture(documentHtml('<h1>Graduate Analyst</h1><h2 hidden>PRIVATE_HIDDEN_HEADING</h2><div style="display:none"><h1>PRIVATE_HIDDEN_PARENT</h1></div>', '<meta property="og:site_name" content="Fictional Bank"><meta name="twitter:title" content="Graduate Analyst | Fictional Bank Careers">'));
+L0089 |     const signals = await collect();
+L0090 |     const info = extractJobInfo(signals);
+L0091 |     assert.deepEqual(fields(info), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
+L0092 |     assert.equal(info.confidence.company, "medium");
+L0093 |     assert.equal(info.confidence.role, "medium");
+L0094 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_HIDDEN"), false);
+L0095 |   });
+L0096 | 
+L0097 |   await check("collection never reads input values or includes form and editable answers", async () => {
+L0098 |     await fixture(documentHtml(`
+L0099 |       <h1>Graduate Analyst</h1><div class="company-name">Fictional Bank</div>
+L0100 |       <input id="outside-input" value="PRIVATE_INPUT_VALUE">
+L0101 |       <textarea class="job-title">PRIVATE_TEXTAREA_ANSWER</textarea>
+L0102 |       <div contenteditable="true" class="company-name">PRIVATE_EDITABLE_ANSWER<h2>PRIVATE_EDITABLE_HEADING</h2></div>
+L0103 |       <div role="textbox"><h2>PRIVATE_TEXTBOX_HEADING</h2></div>
+L0104 |       <div class="logo" contenteditable="true"><img alt="PRIVATE_EDITABLE_LOGO" width="100" height="20"></div>
+L0105 |       <form><h2>PRIVATE_FORM_HEADING</h2><div>公司名称：PRIVATE_FORM_COMPANY</div><div class="job-title">PRIVATE_FORM_ROLE</div><p>PRIVATE_SAVED_ANSWER</p><label>姓名<input value="PRIVATE_FORM_INPUT"></label></form>
+L0106 |       <div role="form"><div class="company-name">PRIVATE_ROLE_FORM_COMPANY</div></div>
+L0107 |       <div class="ant-form-item"><div class="company-name">PRIVATE_COMPONENT_COMPANY</div><input></div>
+L0108 |       <div class="job-title">PRIVATE_CONTAINER_TEXT<input value="PRIVATE_CONTAINER_INPUT"></div>
+L0109 |     `), "https://careers.example.test/job/privacy?answer=PRIVATE_QUERY_VALUE#PRIVATE_HASH_VALUE");
+L0110 |     await page.evaluate(() => {
+L0111 |       for (const element of document.querySelectorAll("input,textarea")) {
+L0112 |         Object.defineProperty(element, "value", { get() { throw new Error("Job collection read a private input value"); } });
+L0113 |       }
+L0114 |     });
+L0115 |     const signals = await collect();
+L0116 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_"), false, "Job signals must exclude personal answers and URL query/hash data");
+L0117 |     assert.equal(signals.hostname, "careers.example.test");
+L0118 |     assert.equal(signals.pathname, "/job/privacy");
+L0119 |     assert.deepEqual(fields(extractJobInfo(signals)), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
+L0120 |   });
+L0121 | 
+L0122 |   await check("CTgoodjobs keeps its role, company and location adapter", async () => {
+L0123 |     await fixture(documentHtml('<h1>Finance Intern</h1><div class="company"><a>Fictional Capital Limited</a></div><div class="job-location">Hong Kong</div>'), "https://www.ctgoodjobs.hk/job/fictional-role");
+L0124 |     const info = extractJobInfo(await collect());
+L0125 |     assert.deepEqual(fields(info), { company: "Fictional Capital Limited", role: "Finance Intern", base: "Hong Kong" });
+L0126 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0127 |   });
+L0128 | 
+L0129 |   await check("CTgoodjobs keeps the company next to the job heading fallback", async () => {
+L0130 |     await fixture(documentHtml('<section><h1>Finance Intern</h1><p>Fictional Capital Limited</p></section>'), "https://www.ctgoodjobs.hk/job/fictional-nearby");
+L0131 |     const info = extractJobInfo(await collect());
+L0132 |     assert.equal(info.company, "Fictional Capital Limited");
+L0133 |     assert.equal(info.source.company, "页面标签");
+L0134 |   });
+L0135 | 
+L0136 |   await check("JobsDB keeps data-automation selectors", async () => {
+L0137 |     await fixture(documentHtml('<div data-automation="job-detail-title">Graduate Analyst</div><a data-automation="advertiser-name">Fictional Bank Limited</a><span data-automation="job-detail-location">Hong Kong</span>'), "https://hk.jobsdb.com/job/fictional-role");
+L0138 |     const info = extractJobInfo(await collect());
+L0139 |     assert.deepEqual(fields(info), { company: "Fictional Bank Limited", role: "Graduate Analyst", base: "Hong Kong" });
+L0140 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0141 |   });
+L0142 | 
+L0143 |   await check("Moka keeps explicit job page selectors", async () => {
+L0144 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1 class="jobTitle">财务实习生</h1><span class="workLocation">上海</span>'), "https://app.mokahr.com/campus-recruitment/fictional/job");
+L0145 |     const info = extractJobInfo(await collect());
+L0146 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "财务实习生", base: "上海" });
+L0147 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
+L0148 |   });
+L0149 | 
+L0150 |   await check("Moka application wishes take priority over generic campus headings", async () => {
+L0151 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1>投递记录</h1><div class="jobTitle">校园</div><article><span>第 1 志愿</span><strong>2027届-财务专员（上海）</strong><p>状态：投递成功</p></article>'), "https://app.mokahr.com/candidate/fictional/applications");
+L0152 |     const info = extractJobInfo(await collect());
+L0153 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "2027届-财务专员（上海）", base: "" });
+L0154 |     assert.equal(info.confidence.role, "high");
+L0155 |   });
+L0156 | 
+L0157 |   console.log(`Job information browser cases passed: ${passed}`);
+L0158 | } finally {
+L0159 |   await browser.close();
+L0160 | }
+
+========================================================================
+FILE: application-tracker-extension/scripts/real-page-tests.mjs
+SHA256: c8b2e5f986bc3240d4560c22375c5eaf0dd094dac4849e9dc982769f8393e30f
+L0001 | // Real-page scan acceptance test. Loads sanitized copies of real application forms
+L0002 | // (test/fixtures/real-pages/*.html), runs pageBridge "scan", and scores the result
+L0003 | // against the hand-checked answers in *.expected.json.
+L0004 | //   node scripts/real-page-tests.mjs            -> fails (exit 1) below the thresholds
+L0005 | //   node scripts/real-page-tests.mjs --report   -> prints the report only
+L0006 | import { createServer } from "node:http";
+L0007 | import { readFile, readdir } from "node:fs/promises";
+L0008 | import { createRequire } from "node:module";
+L0009 | import { homedir } from "node:os";
+L0010 | import path from "node:path";
+L0011 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0012 | 
+L0013 | const require = createRequire(import.meta.url);
+L0014 | let playwright;
+L0015 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0016 | 
+L0017 | const root = path.resolve(import.meta.dirname, "..");
+L0018 | const dir = path.join(root, "test/fixtures/real-pages");
+L0019 | const reportOnly = process.argv.includes("--report");
+L0020 | const THRESHOLDS = { questionText: 0.95, section: 0.9, repeats: 1, controls: 0.9 };
+L0021 | 
+L0022 | const server = createServer(async (req, res) => {
+L0023 |   const name = decodeURIComponent(new URL(req.url, "http://localhost").pathname).slice(1);
+L0024 |   if (!/^[\w.-]+\.html$/.test(name)) { res.writeHead(404).end(); return; }
+L0025 |   try { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(await readFile(path.join(dir, name))); } catch { res.writeHead(404).end(); }
+L0026 | });
+L0027 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0028 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0029 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0030 | const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+L0031 | await context.route("**/*", (route) => route.request().url().startsWith(origin) ? route.continue() : route.abort());
+L0032 | const page = await context.newPage();
+L0033 | 
+L0034 | const norm = (v) => String(v ?? "").normalize("NFKC").replace(/[\s*＊:：]/g, "").toLowerCase();
+L0035 | const GENERIC = /^(请输入|请选择|请填写|请选择日期|选择日期|未命名问题|pleaseenter|pleaseselect|select|choose)$/;
+L0036 | const sameSection = (a, b) => { const x = norm(a), y = norm(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
+L0037 | const CONTROL_OK = {
+L0038 |   text: (f) => ["text"].includes(f.kind),
+L0039 |   textarea: (f) => f.kind === "textarea",
+L0040 |   select: (f) => ["select", "custom-select"].includes(f.kind),
+L0041 |   "select-2level": (f) => ["select", "custom-select"].includes(f.kind),
+L0042 |   "select+text": (f) => ["select", "custom-select", "text"].includes(f.kind),
+L0043 |   date: (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
+L0044 |   "date-range": (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
+L0045 |   cascader: (f) => f.kind === "cascader" || /cascader/i.test(f.adapter || ""),
+L0046 |   radio: (f) => f.kind === "radio",
+L0047 |   checkbox: (f) => ["checkboxes", "checkbox"].includes(f.kind),
+L0048 |   "popup-chooser": (f) => !f.supported ? !!f.reason : !!f.adapter
+L0049 | };
+L0050 | let failed = false;
+L0051 | const files = (await readdir(dir)).filter((f) => f.endsWith(".expected.json")).sort();
+L0052 | for (const file of files) {
+L0053 |   const expected = JSON.parse(await readFile(path.join(dir, file), "utf8"));
+L0054 |   await page.goto(`${origin}/${expected.fixture}`);
+L0055 |   const scan = await page.evaluate(pageBridge, { action: "scan" });
+L0056 |   const fields = [...scan.fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+L0057 |   const questions = expected.questions.filter((q) => !["none", "file"].includes(q.control));
+L0058 |   const count = (list, key) => list.reduce((m, x) => m.set(key(x), (m.get(key(x)) || 0) + 1), new Map());
+L0059 |   const expText = count(questions, (q) => norm(q.question));
+L0060 |   const gotText = count(fields, (f) => norm(f.question || f.label));
+L0061 |   let textHit = 0; for (const [k, n] of expText) textHit += Math.min(n, gotText.get(k) || 0);

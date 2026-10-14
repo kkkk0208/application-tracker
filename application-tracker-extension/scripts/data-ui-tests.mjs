@@ -10,7 +10,7 @@ import { createMutationQueue, MUTATION_MESSAGE } from "../src/storageMutations.j
 import { createBackup } from "../src/backup.js";
 import { createRecord } from "../src/model.js";
 import { STORAGE_KEY, PROFILE_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY } from "../src/constants.js";
-import { MEMORY_KEY } from "../src/storageKeys.js";
+import { MEMORY_KEY, RECOVERY_KEY } from "../src/storageKeys.js";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -113,10 +113,67 @@ try {
   assert.equal(await memoryPage.locator("#backupPreview").isVisible(), false);
   assert.equal(data[STORAGE_KEY].length, 1);
   console.log("PASS backup UI rejects invalid files without changing data");
+
+  // Exercise an edited real XLSX through the records page, including the
+  // hidden restore sheet. Text-only references must stay non-clickable.
+  await table.locator("#cancelEditButton").click();
+  await mutate({ operation: "record.patch", id: record.id, changes: { portalLink: "微信内推", source: "referral" } });
+  await table.waitForFunction(() => document.querySelectorAll("a.company-link").length === 0);
+  await board.waitForFunction(() => document.querySelectorAll(".board-card-title a").length === 0);
+  assert.equal(await table.locator("span.company-link").textContent().then((text) => text.includes("示例公司")), true);
+  console.log("PASS data UI keeps referral text as plain text instead of a webpage link");
+
+  const beforeExcel = structuredClone(data);
+  const excelDownload = table.waitForEvent("download");
+  await table.locator("#exportButton").click();
+  const excelBytes = Array.from(await readFile(await (await excelDownload).path()));
+  async function editedWorkbook(appliedDate = "2026-10-13") {
+    return table.evaluate(({ bytes, appliedDate }) => {
+      const workbook = XLSX.read(new Uint8Array(bytes), { type: "array", cellStyles: true });
+      const worksheet = workbook.Sheets["投递记录"];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+      if (!worksheet["!cols"]?.[14]?.hidden) throw new Error("Stable record ID column was not hidden on export");
+      if (rows[0]["记录 ID"] !== "original-record") throw new Error("Missing exported stable ID");
+      rows[0]["公司"] = "Excel 修改后的示例公司";
+      rows[0]["备注"] = "可见表修改后的备注";
+      rows[0]["当前进度"] = "Offer";
+      rows[0]["投递日期"] = appliedDate;
+      workbook.Sheets["投递记录"] = XLSX.utils.json_to_sheet(rows);
+      return Array.from(new Uint8Array(XLSX.write(workbook, { type: "array", bookType: "xlsx" })));
+    }, { bytes: excelBytes, appliedDate });
+  }
+  table.on("dialog", (dialog) => dialog.accept());
+  await table.locator("#importInput").setInputFiles({ name: "edited.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await editedWorkbook()) });
+  await table.waitForFunction(() => document.getElementById("message").textContent.includes("完整恢复点已保存"));
+  assert.equal(data[STORAGE_KEY][0].company, "Excel 修改后的示例公司");
+  assert.equal(data[STORAGE_KEY][0].notes, "可见表修改后的备注");
+  assert.equal(data[STORAGE_KEY][0].status, "offer");
+  assert.equal(data[STORAGE_KEY][0].id, "original-record");
+  assert.equal(data[STORAGE_KEY][0].createdAt, beforeExcel[STORAGE_KEY][0].createdAt);
+  assert.equal(data[STORAGE_KEY][0].statusHistory.at(-1).status, "offer");
+  assert.deepEqual(data[RECOVERY_KEY].data.records, beforeExcel[STORAGE_KEY]);
+  assert.equal(data[RECOVERY_KEY].data.profile.fullNameZh, "示例用户");
+  assert.equal(data[RECOVERY_KEY].data.memories.length, 1);
+  assert.equal(JSON.stringify(data[RECOVERY_KEY]).includes("TEST_CREDENTIAL_DO_NOT_EXPORT"), false);
+  console.log("PASS Excel UI imports visible edits over hidden data and saves a complete recovery point");
+  const afterExcel = structuredClone(data);
+  await table.locator("#importInput").setInputFiles({ name: "invalid-date.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await editedWorkbook("2026-02-30")) });
+  await table.waitForFunction(() => document.getElementById("message").textContent.startsWith("导入失败"));
+  assert.deepEqual(data, afterExcel);
+  console.log("PASS Excel UI rejects invalid visible data without modifying records or recovery");
+  await memoryPage.locator("#restoreRecovery").click();
+  await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled);
+  await memoryPage.locator("#confirmRestore").click();
+  await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden);
+  assert.deepEqual(data[STORAGE_KEY], beforeExcel[STORAGE_KEY]);
+  assert.equal(data[PROFILE_STORAGE_KEY].fullNameZh, "示例用户");
+  assert.equal(data[MEMORY_KEY].length, 1);
+  assert.equal(data[AI_SETTINGS_STORAGE_KEY].apiKey, "TEST_CREDENTIAL_DO_NOT_EXPORT");
+  console.log("PASS backup UI can fully recover the state before Excel replacement");
   await memoryPage.setViewportSize({ width: 420, height: 1000 });
   assert.equal(await memoryPage.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
   await memoryPage.screenshot({ path: path.join(artifacts, "memory-backup-preview.png"), fullPage: true });
   assert.deepEqual(errors, []);
-  console.log("Data UI integration cases passed: 8 (Chrome API adapter, synthetic fixtures)");
+  console.log("Data UI integration cases passed: 12 (Chrome API adapter, synthetic fixtures)");
 } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }

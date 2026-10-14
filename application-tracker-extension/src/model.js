@@ -63,10 +63,28 @@ export function validateRecordForSave(record) {
   if (!record.company?.trim()) errors.company = "请填写公司";
   if (!record.role?.trim()) errors.role = "请填写岗位";
   if (!record.portalLink?.trim()) errors.portalLink = "请填写 candidate portal link";
+  else if (portalReferenceError(record.portalLink)) errors.portalLink = portalReferenceError(record.portalLink);
   if (!record.source?.trim()) errors.source = "请选择投递来源";
   if (!record.appliedDate?.trim()) errors.appliedDate = "请选择投递日期";
   if (!record.status?.trim()) errors.status = "请选择当前进度";
   return errors;
+}
+
+// A reference may be a web URL or plain text such as “微信内推”. Only web URLs
+// are clickable; text references must survive export and recovery unchanged.
+export function getPortalUrl(value) {
+  const text = String(value ?? "").trim();
+  if (!/^https?:\/\//i.test(text)) return "";
+  try {
+    const url = new URL(text);
+    return /^https?:$/.test(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
+
+function portalReferenceError(value) {
+  const text = String(value ?? "").trim();
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(text)) return "";
+  return getPortalUrl(text) ? "" : "投递链接必须是有效的 http 或 https 地址；非链接来源请填写普通文字";
 }
 
 export function normalizeDraft(draft) {
@@ -83,6 +101,9 @@ export function normalizeDraft(draft) {
     jdText: stringValue(draft.jdText),
     notes: stringValue(draft.notes)
   };
+
+  const portalError = portalReferenceError(normalized.portalLink);
+  if (portalError) throw new Error(portalError);
 
   if (normalized.status && !STATUS_KEYS.has(normalized.status)) {
     throw new Error(`Invalid status: ${normalized.status}`);

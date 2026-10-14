@@ -5,7 +5,7 @@ import { normalizeAiSettings } from "./aiSettings.js";
 import { normalizeProfileMemory } from "./aiProfileMemory.js";
 import { buildQuestionMemoryEntry, mergeQuestionMemories } from "./questionMemory.js";
 import { scopeFor, MEMORY_SCOPE_VERSION, versionOf } from "./assistant/planner.js";
-import { createBackup, prepareRestore } from "./backup.js";
+import { createBackup, prepareRestore, validateRecords } from "./backup.js";
 import { MEMORY_KEY, LEGACY_MEMORY_BACKUP_KEY, RECOVERY_KEY } from "./storageKeys.js";
 export { MUTATION_MESSAGE } from "./storageClient.js";
 
@@ -36,7 +36,20 @@ export function createMutationQueue(storage) {
 async function applyMutation(storage, mutation) {
   if (!mutation || typeof mutation.operation !== "string") throw new Error("无效的数据操作");
   const { operation } = mutation;
-  if (operation.startsWith("record.") || operation === "records.replace") {
+  if (operation === "records.replace") {
+    const data = await storage.get(backupKeys);
+    if (Object.hasOwn(mutation, "expectedRecords") && JSON.stringify(list(data[STORAGE_KEY])) !== JSON.stringify(mutation.expectedRecords)) {
+      throw new Error("导入准备后本地记录发生变化，请重新导入并核对");
+    }
+    if (!Array.isArray(mutation.records)) throw new Error("投递记录格式不正确");
+    const records = validateRecords(mutation.records.map((entry) => normalizeImportedRecord(entry)));
+    const recovery = createBackup(backupData(data));
+    // The worker queue snapshots the latest full state and commits it with the
+    // replacement. A quota error leaves records and the old recovery untouched.
+    await storage.set({ [STORAGE_KEY]: records, [RECOVERY_KEY]: recovery });
+    return;
+  }
+  if (operation.startsWith("record.")) {
     const data = await storage.get(STORAGE_KEY);
     let records = list(data[STORAGE_KEY]);
     let result;
@@ -47,7 +60,6 @@ async function applyMutation(storage, mutation) {
       conflict(mutation.expected, records[index]);
       result = updateRecord(records[index], mutation.changes); records[index] = result;
     } else if (operation === "record.delete") records = records.filter((entry) => entry.id !== mutation.id);
-    else if (operation === "records.replace") { if (!Array.isArray(mutation.records)) throw new Error("投递记录格式不正确"); records = mutation.records.map((entry) => normalizeImportedRecord(entry)); }
     else throw new Error("未知的记录操作");
     await storage.set({ [STORAGE_KEY]: records }); return result;
   }

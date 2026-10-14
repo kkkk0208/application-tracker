@@ -4,7 +4,8 @@ import {
   createRecord,
   updateRecord,
   validateRecordForSave,
-  normalizeImportedRecord
+  normalizeImportedRecord,
+  getPortalUrl
 } from "../src/model.js";
 
 test("createRecord fills system fields and initial status history", () => {
@@ -116,4 +117,17 @@ test("createRecord accepts CTgoodjobs source", () => {
   }, "2026-06-03T10:00:00.000Z");
 
   assert.equal(record.source, "ctgoodjobs");
+});
+
+test("portal references retain plain text and reject executable URL protocols", () => {
+  const draft = { company: "示例公司", role: "分析师", portalLink: "微信内推", source: "referral", appliedDate: "2026-10-13", status: "applied" };
+  assert.deepEqual(validateRecordForSave(draft), {});
+  assert.equal(createRecord(draft).portalLink, "微信内推");
+  assert.equal(getPortalUrl("微信内推"), "");
+  assert.equal(getPortalUrl("https://example.com/apply"), "https://example.com/apply");
+  for (const link of ["javascript:alert(1)", "data:text/html,example", "file:///tmp/example", "https://"]) {
+    assert.match(validateRecordForSave({ ...draft, portalLink: link }).portalLink, /http/);
+    assert.throws(() => createRecord({ ...draft, portalLink: link }), /http/);
+    assert.equal(getPortalUrl(link), "");
+  }
 });

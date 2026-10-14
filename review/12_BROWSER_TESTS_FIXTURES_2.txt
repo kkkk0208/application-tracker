@@ -1,577 +1,7 @@
-Application Tracker / BROWSER_TESTS_FIXTURES
-快照日期：2026-10-12（Asia/Shanghai）
-完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
-本附件包含：
-- application-tracker-extension/scripts/extension-tests.mjs
-- application-tracker-extension/scripts/job-info-browser-tests.mjs
-- application-tracker-extension/scripts/real-page-tests.mjs
-- application-tracker-extension/scripts/sanitize-real-page.mjs
 
 ========================================================================
-FILE: application-tracker-extension/scripts/extension-tests.mjs
-SHA256: 5a8ef0e1d1ab91e045b6b4bf2e5a0e24c7b2d6a51395a33a2520ecd824d4a269
-LINES: 323
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | import assert from "node:assert/strict";
-L0002 | import { createServer } from "node:http";
-L0003 | import { mkdtemp, cp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
-L0004 | import { createRequire } from "node:module";
-L0005 | import { homedir, tmpdir } from "node:os";
-L0006 | import path from "node:path";
-L0007 | const require = createRequire(import.meta.url);
-L0008 | let playwright;
-L0009 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
-L0010 | const root = path.resolve(import.meta.dirname, "..");
-L0011 | const fixture = '<!doctype html><html><head><meta charset="utf-8"><title>示例公司 · 分析师申请</title></head><body><form><section><h2>基本信息</h2><label>姓名<input id="name" required></label><label>邮箱<input id="email" type="email"></label></section><section><h2>硕士教育</h2><label>学校名称<input id="school"></label></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label><label>奖惩情况<textarea id="awards"></textarea></label></section></form><iframe src="/child"></iframe></body></html>';
-L0012 | const server = createServer((req, res) => {
-L0013 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
-L0014 |   if (req.url === "/child") return res.end('<label>个人网站<input id="website"></label>');
-L0015 |   if (req.url === "/cross") return res.end(fixture.replace('src="/child"', `src="http://localhost:${server.address().port}/child"`));
-L0016 |   res.end(fixture);
-L0017 | });
-L0018 | let context;
-L0019 | let temporary;
-L0020 | try {
-L0021 |   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
-L0022 |   const origin = `http://127.0.0.1:${server.address().port}`;
-L0023 |   temporary = await mkdtemp(path.join(tmpdir(), "application-assistant-test-"));
-L0024 |   const extensionPath = path.join(temporary, "extension");
-L0025 |   await cp(root, extensionPath, { recursive: true, filter: (source) => !["test-artifacts", "node_modules", ".git"].includes(path.basename(source)) });
-L0026 |   const manifest = JSON.parse(await readFile(path.join(extensionPath, "manifest.json"), "utf8"));
-L0027 |   manifest.host_permissions.push("http://127.0.0.1/*");
-L0028 |   await writeFile(path.join(extensionPath, "manifest.json"), JSON.stringify(manifest));
-L0029 |   // Always use a new disposable profile, including when using installed Chrome.
-L0030 |   const browserChoice = process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : { channel: process.platform === "win32" ? "chrome" : "chromium" };
-L0031 |   const bundledArgs = browserChoice.channel === "chromium" ? [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`] : [];
-L0032 |   context = await playwright.chromium.launchPersistentContext(path.join(temporary, "profile"), { ...browserChoice, headless: true, ignoreDefaultArgs: ["--disable-extensions"], args: ["--enable-unsafe-extension-debugging", ...bundledArgs] });
-L0033 |   context.setDefaultTimeout(15000);
-L0034 |   let extensionId = context.serviceWorkers().find((worker) => worker.url().startsWith("chrome-extension://"))?.url().split("/")[2];
-L0035 |   if (!extensionId) {
-L0036 |     // Extensions is a browser-target CDP domain, not a page-target domain.
-L0037 |     // This also supports Chrome versions that removed --load-extension.
-L0038 |     const cdp = await context.browser().newBrowserCDPSession();
-L0039 |     try { extensionId = (await cdp.send("Extensions.loadUnpacked", { path: extensionPath })).id; }
-L0040 |     finally { await cdp.detach(); }
-L0041 |   }
-L0042 |   // Wake MV3 through a real extension message; an idle worker need not start
-L0043 |   // merely because an unpacked extension has been registered.
-L0044 |   const recordsPage = await context.newPage();
-L0045 |   await recordsPage.goto(`chrome-extension://${extensionId}/src/records/records.html`);
-L0046 |   await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).replaceAllRecords([]));
-L0047 |   const worker = context.serviceWorkers().find((item) => item.url().startsWith("chrome-extension://")) || await context.waitForEvent("serviceworker", { predicate: (item) => item.url().startsWith("chrome-extension://"), timeout: 15000 });
-L0048 |   assert.equal(new URL(worker.url()).host, extensionId);
-L0049 |   assert.ok(worker.url().endsWith("/src/assistant/background.js"));
-L0050 |   console.log(`Runtime: Chrome ${context.browser().version()}, real MV3 worker ${extensionId}, disposable profile`);
-L0051 |   const target = await context.newPage(); await target.goto(origin + "/apply");
-L0052 |   const ids = await worker.evaluate(async (url) => { const tabs = await chrome.tabs.query({}); const tab = tabs.find((t) => t.url === url); return { tabId: tab.id, windowId: tab.windowId }; }, origin + "/apply");
-L0053 |   const originalProfile = { fullNameZh: "示例申请人", email: "profile@example.com", masterUniversityZh: "示例大学", website: "https://portfolio.example.com", commonAnswers: { selfIntroduction: { zh: "这是一段待核对的自我介绍。", en: "" } } };
-L0054 |   await worker.evaluate(async ({ ids, profile }) => {
-L0055 |     await chrome.storage.local.set({ "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false }, "applicationTracker.questionMemory": [{ id: "legacy-one", question: "其他技能", answer: "SQL", language: "zh", pageUrl: "https://example.com/apply" }] });
-L0056 |     await chrome.storage.session.set({ [`applicationTracker.assistant.target.${ids.windowId}`]: ids.tabId });
-L0057 |   }, { ids, profile: originalProfile });
-L0058 |   const panel = await context.newPage();
-L0059 |   const errors = []; panel.on("pageerror", (error) => errors.push(error.message));
-L0060 |   await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
-L0061 |   const createRecords = (page, prefix) => page.evaluate(async (prefix) => {
-L0062 |     const { saveNewRecord } = await import(chrome.runtime.getURL("src/storage.js"));
-L0063 |     return Promise.all(Array.from({ length: 8 }, (_, index) => saveNewRecord({ company: `${prefix}-${index}`, role: "测试岗位", source: "company_portal", portalLink: "https://example.com/apply", appliedDate: "2026-09-21", status: "applied" })));
-L0064 |   }, prefix);
-L0065 |   const [leftRecords] = await Promise.all([createRecords(panel, "panel"), createRecords(recordsPage, "records")]);
-L0066 |   await Promise.all([
-L0067 |     panel.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { status: "oa" }); }, leftRecords[0].id),
-L0068 |     recordsPage.evaluate(async (id) => { const { saveExistingRecord } = await import(chrome.runtime.getURL("src/storage.js")); await saveExistingRecord(id, { notes: "另一页面的更新" }); }, leftRecords[0].id)
-L0069 |   ]);
-L0070 |   const queuedRecords = await recordsPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).getRecords());
-L0071 |   assert.equal(queuedRecords.length, 16);
-L0072 |   assert.equal(new Set(queuedRecords.map((record) => record.id)).size, 16);
-L0073 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).status, "oa");
-L0074 |   assert.equal(queuedRecords.find((record) => record.id === leftRecords[0].id).notes, "另一页面的更新");
-L0075 |   console.log("PASS real background queue preserves concurrent writes and independent patches across extension pages");
-L0076 |   await panel.locator("#prepare").click();
-L0077 |   await panel.locator("#questions .question").first().waitFor();
-L0078 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
-L0079 |   assert.equal(await panel.locator("#questions .question").count(), 6);
-L0080 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
-L0081 |   assert.match(await panel.locator("#fill").textContent(), /5/);
-L0082 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
-L0083 |   const introduction = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: "自我介绍的答案", exact: true }) });
-L0084 |   assert.equal(await introduction.locator("[data-answer]").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
-L0085 |   assert.equal(await introduction.locator("[data-selected]").isChecked(), true, "An existing personal narrative belongs in the one-confirmation batch with AI disabled");
-L0086 |   for (const selector of ["#name", "#email", "#school", "#intro", "#awards"]) assert.equal(await target.locator(selector).inputValue(), "", "Preparing the preview must not write to the application form");
-L0087 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
-L0088 |   console.log("PASS real extension previews five local answers including personal narrative across both frames without writing before confirmation");
-L0089 |   await target.locator("#email").fill("user-change@example.com");
-L0090 |   const versionCheck = await panel.evaluate(async (windowId) => {
-L0091 |     const { versionOf } = await import(chrome.runtime.getURL("src/assistant/planner.js"));
-L0092 |     const { getMemories, loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
-L0093 |     return { planned: (await loadSession(windowId)).memoryVersion, stored: versionOf(await getMemories()) };
-L0094 |   }, ids.windowId);
-L0095 |   assert.equal(versionCheck.planned, versionCheck.stored, "Chrome storage round-trip must preserve the memory version after migration");
-L0096 |   await panel.locator("#fill").click();
-L0097 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.querySelectorAll("#resultList .result-row").length === 5);
-L0098 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
-L0099 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
-L0100 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
-L0101 |   assert.equal(await target.locator("#intro").inputValue(), originalProfile.commonAnswers.selfIntroduction.zh);
-L0102 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
-L0103 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
-L0104 |   console.log("PASS one confirmation writes and verifies all previewed answers while preserving manual webpage edits");
-L0105 |   const profileAfter = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.profile"))["applicationTracker.profile"]);
-L0106 |   assert.deepEqual(profileAfter, originalProfile);
-L0107 |   const memories = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.assistant.memories.v2"))["applicationTracker.assistant.memories.v2"]);
-L0108 |   assert.equal(memories.length, 1); assert.equal(memories[0].confirmed, false);
-L0109 |   console.log("PASS fill never edits profile or automatically promotes learned answers");
-L0110 |   await panel.locator("#undo").click();
-L0111 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && [...document.querySelectorAll("#resultList .result-row p")].filter((node) => node.textContent === "已撤销").length === 4);
-L0112 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
-L0113 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
-L0114 |   assert.equal(await target.locator("#intro").inputValue(), "");
-L0115 |   console.log("PASS extension undo restores only assistant-written fields");
-L0116 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
-L0117 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
-L0118 |   await panel.setViewportSize({ width: 420, height: 1000 }); await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
-L0119 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-L0120 |   await panel.setViewportSize({ width: 320, height: 900 });
-L0121 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-L0122 |   console.log("PASS side panel layout fits 320px and 420px widths");
-L0123 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor();
-L0124 |   assert.equal(await panel.locator("#questions .question").count(), 6);
-L0125 |   console.log("PASS extension session restores after closing/reopening its document");
-L0126 |   await target.reload();
-L0127 |   await panel.waitForFunction(() => document.getElementById("fill").disabled);
-L0128 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
-L0129 |   console.log("PASS navigation invalidates the old fill plan");
-L0130 | 
-L0131 |   // An inactive extension tab executes the real popup document while preserving
-L0132 |   // the active application tab, then is destroyed to model popup dismissal.
-L0133 |   const openPopupDocument = async () => {
-L0134 |     await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
-L0135 |     const opened = context.waitForEvent("page");
-L0136 |     await worker.evaluate((url) => chrome.tabs.create({ url, active: false }), `chrome-extension://${extensionId}/src/popup/popup.html`);
-L0137 |     const popup = await opened;
-L0138 |     popup.on("pageerror", (error) => errors.push(error.message));
-L0139 |     await popup.waitForLoadState();
-L0140 |     await popup.waitForFunction(() => !!document.querySelector('[name="portalLink"]').value);
-L0141 |     return popup;
-L0142 |   };
-L0143 |   let popup = await openPopupDocument();
-L0144 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
-L0145 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0146 |   assert.equal(await popup.locator('[data-job-source="company"]').textContent(), "网页标题");
-L0147 |   await popup.locator('[name="company"]').fill("草稿测试公司");
-L0148 |   assert.equal(await popup.locator('[data-job-source="company"]').isVisible(), false);
-L0149 |   await popup.locator('[name="role"]').fill("草稿测试岗位");
-L0150 |   await popup.locator('[name="notes"]').fill("最后一次输入后立即关闭");
-L0151 |   await popup.close();
-L0152 |   popup = await openPopupDocument();
-L0153 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
-L0154 |   assert.equal(await popup.locator('[name="role"]').inputValue(), "草稿测试岗位");
-L0155 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "最后一次输入后立即关闭");
-L0156 |   assert.match(await popup.locator("#saveMessage").textContent(), /恢复/);
-L0157 |   await popup.close();
-L0158 |   await target.goto(origin + "/apply?jobId=another-role");
-L0159 |   popup = await openPopupDocument();
-L0160 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0161 |   assert.equal(await popup.locator('[name="notes"]').inputValue(), "");
-L0162 |   await popup.close();
-L0163 |   await target.goto(origin + "/apply");
-L0164 |   popup = await openPopupDocument();
-L0165 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "草稿测试公司");
-L0166 |   await popup.locator("#clearDraft").click();
-L0167 |   await popup.waitForFunction(() => document.getElementById("saveMessage").textContent.includes("已清空草稿"));
-L0168 |   await popup.close();
-L0169 |   popup = await openPopupDocument();
-L0170 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0171 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), origin + "/apply");
-L0172 |   await popup.close();
-L0173 |   console.log("PASS real popup document restores after destruction, isolates job IDs and honors explicit clearing");
-L0174 |   await target.evaluate(() => { document.title = "填写简历"; });
-L0175 |   popup = await openPopupDocument();
-L0176 |   await popup.locator("#recentJobBox").waitFor({ state: "visible" });
-L0177 |   const currentLink = await popup.locator('[name="portalLink"]').inputValue();
-L0178 |   await popup.locator("#recentJob").selectOption("0");
-L0179 |   assert.equal(await popup.locator('[name="company"]').inputValue(), "示例公司");
-L0180 |   assert.equal(await popup.locator('[data-job-source="role"]').textContent(), "最近岗位");
-L0181 |   assert.equal(await popup.locator('[name="portalLink"]').inputValue(), currentLink);
-L0182 |   const recent = await worker.evaluate(async () => (await chrome.storage.session.get("applicationTracker.recentJobs"))["applicationTracker.recentJobs"]);
-L0183 |   assert.equal(recent.length, 1);
-L0184 |   assert.equal(new URL(recent[0].url).search, "");
-L0185 |   await popup.close();
-L0186 |   await target.reload();
-L0187 |   console.log("PASS real popup offers recent jobs on application pages and preserves the current application link");
-L0188 | 
-L0189 |   // Exercise the native download/file-input and MV3 message/storage path, which
-L0190 |   // the DOM tests' Chrome API adapter cannot verify.
-L0191 |   const memoryPage = await context.newPage();
-L0192 |   memoryPage.on("pageerror", (error) => errors.push(error.message));
-L0193 |   await memoryPage.goto(`chrome-extension://${extensionId}/src/memory/memory.html`);
-L0194 |   await memoryPage.locator(".memory-card").first().waitFor();
-L0195 |   const apiKeyFixture = "fixture-key-must-never-be-exported";
-L0196 |   await memoryPage.evaluate(async (apiKey) => {
-L0197 |     const { saveAiSettings } = await import(chrome.runtime.getURL("src/storage.js"));
-L0198 |     await saveAiSettings({ enabled: false, apiKey, model: "gpt-5-mini" });
-L0199 |   }, apiKeyFixture);
-L0200 |   const downloaded = memoryPage.waitForEvent("download");
-L0201 |   await memoryPage.locator("#exportBackup").click();
-L0202 |   const download = await downloaded;
-L0203 |   const backupPath = path.join(temporary, "downloaded-fixture-backup.json");
-L0204 |   await download.saveAs(backupPath);
-L0205 |   const backupText = await readFile(backupPath, "utf8");
-L0206 |   const downloadedBackup = JSON.parse(backupText);
-L0207 |   assert.match(download.suggestedFilename(), /^application-tracker-backup-\d{4}-\d{2}-\d{2}\.json$/);
-L0208 |   assert.equal(downloadedBackup.schemaVersion, 3);
-L0209 |   assert.equal(downloadedBackup.data.records.length, 16);
-L0210 |   assert.equal(downloadedBackup.data.memories.length, 1);
-L0211 |   assert.equal(downloadedBackup.data.profile.email, originalProfile.email);
-L0212 |   assert.ok(!backupText.includes(apiKeyFixture) && !backupText.includes('"apiKey"'));
-L0213 |   const readBackupState = () => memoryPage.evaluate(async () => (await import(chrome.runtime.getURL("src/storageClient.js"))).requestStorageMutation({ operation: "backup.export" }));
-L0214 |   await memoryPage.evaluate(async () => {
-L0215 |     const { saveNewRecord, saveProfile, getProfile } = await import(chrome.runtime.getURL("src/storage.js"));
-L0216 |     const { getMemories, saveMemory } = await import(chrome.runtime.getURL("src/assistant/store.js"));
-L0217 |     await saveNewRecord({ company: "导出后新增的公司", role: "恢复测试岗位", source: "company_portal", portalLink: "https://example.com/after-backup", appliedDate: "2026-09-21", status: "applied" });
-L0218 |     await saveProfile({ ...await getProfile(), email: "changed-before-restore@example.com" });
-L0219 |     const memory = (await getMemories())[0];
-L0220 |     await saveMemory({ ...memory, answer: "导入前更新的答案" });
-L0221 |   });
-L0222 |   const beforeImport = await readBackupState();
-L0223 |   assert.equal(beforeImport.data.records.length, 17);
-L0224 |   await memoryPage.locator("#importBackup").setInputFiles(backupPath);
-L0225 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
-L0226 |   await memoryPage.locator("#restoreMode").selectOption("replace");
-L0227 |   await memoryPage.waitForFunction(() => !document.getElementById("confirmRestore").disabled && document.getElementById("restoreDescription").textContent.includes("替换全部"));
-L0228 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 16 条投递/);
-L0229 |   assert.deepEqual((await readBackupState()).data, beforeImport.data, "A real backup preview must not write data");
-L0230 |   await memoryPage.locator("#confirmRestore").click();
-L0231 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
-L0232 |   assert.deepEqual((await readBackupState()).data, downloadedBackup.data);
-L0233 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
-L0234 |   await memoryPage.locator("#restoreRecovery").waitFor({ state: "visible" });
-L0235 |   await memoryPage.locator("#restoreRecovery").click();
-L0236 |   await memoryPage.waitForFunction(() => !document.getElementById("backupPreview").hidden && !document.getElementById("confirmRestore").disabled);
-L0237 |   assert.match(await memoryPage.locator("#backupSummary").textContent(), /备份包含 17 条投递/);
-L0238 |   await memoryPage.locator("#confirmRestore").click();
-L0239 |   await memoryPage.waitForFunction(() => document.getElementById("backupPreview").hidden && document.getElementById("message").textContent.includes("恢复完成"));
-L0240 |   assert.deepEqual((await readBackupState()).data, beforeImport.data);
-L0241 |   assert.equal(await memoryPage.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"].apiKey), apiKeyFixture);
-L0242 |   console.log("PASS real backup download, file preview, replacement and recovery round-trip preserve data and exclude API credentials");
-L0243 | 
-L0244 |   // A host permission allows DOM inspection, but it does not grant the distinct
-L0245 |   // captureVisibleTab privilege. Programmatic activation and opening the popup
-L0246 |   // document above deliberately do not simulate a user extension-action grant.
-L0247 |   await worker.evaluate((tabId) => chrome.tabs.update(tabId, { active: true }), ids.tabId);
-L0248 |   const deniedCapture = await panel.evaluate(async (tabId) => {
-L0249 |     const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
-L0250 |     const { captureVisualContext } = await import(chrome.runtime.getURL("src/assistant/visualCapture.js"));
-L0251 |     const snapshot = await scanPage(tabId);
-L0252 |     try {
-L0253 |       await captureVisualContext(snapshot);
-L0254 |       return { captured: true };
-L0255 |     } catch (error) {
-L0256 |       return { captured: false, code: error.code, message: error.message };
-L0257 |     }
-L0258 |   }, ids.tabId);
-L0259 |   assert.equal(deniedCapture.captured, false);
-L0260 |   assert.equal(deniedCapture.code, "VISUAL_PERMISSION");
-L0261 |   assert.match(deniedCapture.message, /重新点击扩展图标/);
-L0262 |   assert.match(deniedCapture.message, /继续使用网页文字识别/);
-L0263 |   const savedState = await panel.evaluate(async () => JSON.stringify({ local: await chrome.storage.local.get(null), session: await chrome.storage.session.get(null) }));
-L0264 |   assert.equal(savedState.includes("data:image/"), false, "A denied screenshot must not leave image data in extension storage");
-L0265 |   console.log("PASS real screenshot permission denial explains recovery and preserves the text-recognition fallback without storing images");
-L0266 | 
-L0267 |   const aiPage = await context.newPage();
-L0268 |   aiPage.on("pageerror", (error) => errors.push(error.message));
-L0269 |   const priorAiSettings = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
-L0270 |   await aiPage.goto(`chrome-extension://${extensionId}/src/ai/ai.html`);
-L0271 |   await aiPage.waitForFunction(() => document.querySelector('[name="apiKey"]').value === "fixture-key-must-never-be-exported");
-L0272 |   assert.equal(await aiPage.locator('[name="visionEnabled"]').isChecked(), false);
-L0273 |   await aiPage.locator('[name="visionEnabled"]').check();
-L0274 |   await aiPage.locator('button[type="submit"]').click();
-L0275 |   await aiPage.locator("#message").waitFor({ state: "visible" });
-L0276 |   await aiPage.reload();
-L0277 |   await aiPage.waitForFunction(() => document.querySelector('[name="visionEnabled"]').checked);
-L0278 |   const optedIn = await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]);
-L0279 |   assert.equal(optedIn.visionEnabled, true);
-L0280 |   assert.equal(optedIn.enabled, false, "Screenshot opt-in must not independently enable AI calls");
-L0281 |   assert.equal(optedIn.model, priorAiSettings.model);
-L0282 |   assert.equal(optedIn.apiKey, priorAiSettings.apiKey);
-L0283 |   await aiPage.locator('[name="visionEnabled"]').uncheck();
-L0284 |   await aiPage.locator('button[type="submit"]').click();
-L0285 |   await aiPage.locator("#message").waitFor({ state: "visible" });
-L0286 |   assert.deepEqual(await worker.evaluate(async () => (await chrome.storage.local.get("applicationTracker.aiSettings"))["applicationTracker.aiSettings"]), priorAiSettings);
-L0287 |   await aiPage.close();
-L0288 |   console.log("PASS real AI settings screen persists screenshot opt-in and opt-out without enabling AI or changing the model and key");
-L0289 |   await target.goto(origin + "/cross");
-L0290 |   await target.frameLocator("iframe").locator("#website").waitFor();
-L0291 |   await panel.locator("#prepare").click();
-L0292 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("1/2"));
-L0293 |   const crossOrigin = `http://localhost:${server.address().port}`;
-L0294 |   assert.equal(await panel.getByRole("button", { name: `允许读取内嵌表单（localhost:${server.address().port}）`, exact: true }).count(), 1);
-L0295 |   const crossState = await panel.evaluate(async (windowId) => {
-L0296 |     const { loadSession } = await import(chrome.runtime.getURL("src/assistant/store.js"));
-L0297 |     const saved = await loadSession(windowId);
-L0298 |     return { failedFrames: saved.snapshot.failedFrames, fields: saved.snapshot.fields.length, permissions: await chrome.permissions.getAll() };
-L0299 |   }, ids.windowId);
-L0300 |   assert.equal(crossState.failedFrames.length, 1);
-L0301 |   assert.equal(crossState.failedFrames[0].origin, crossOrigin);
-L0302 |   assert.ok(crossState.failedFrames[0].frameId > 0);
-L0303 |   assert.equal(crossState.fields, 5);
-L0304 |   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
-L0305 |   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
-L0306 |   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
-L0307 |   assert.deepEqual(errors, []);
-L0308 |   console.log("Extension end-to-end cases passed: 14");
-L0309 | } catch (error) {
-L0310 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
-L0311 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
-L0312 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
-L0313 |   }
-L0314 |   throw error;
-L0315 | } finally {
-L0316 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
-L0317 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
-L0318 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
-L0319 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
-L0320 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-L0321 |   }
-L0322 | }
-L0323 | 
-
-========================================================================
-FILE: application-tracker-extension/scripts/job-info-browser-tests.mjs
-SHA256: 847a791d9b1c388cdb5416882e7b43a15b044ce039fb76f63f668f6b197daee8
-LINES: 161
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | // Job identification acceptance tests. Every response is a sanitized local
-L0002 | // fixture or fictional HTML; no request reaches a real recruitment website.
-L0003 | import assert from "node:assert/strict";
-L0004 | import { readFile } from "node:fs/promises";
-L0005 | import { createRequire } from "node:module";
-L0006 | import { homedir } from "node:os";
-L0007 | import path from "node:path";
-L0008 | import { collectJobSignals } from "../src/jobInfo/collectSignals.js";
-L0009 | import { extractJobInfo } from "../src/jobInfo/extractJobInfo.js";
-L0010 | 
-L0011 | const require = createRequire(import.meta.url);
-L0012 | let playwright;
-L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
-L0014 | const root = path.resolve(import.meta.dirname, "..");
-L0015 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
-L0016 | let passed = 0;
-L0017 | 
-L0018 | try {
-L0019 |   const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: "block" });
-L0020 |   const responses = new Map();
-L0021 |   await context.route("**/*", (route) => {
-L0022 |     const body = responses.get(route.request().url());
-L0023 |     return body !== undefined
-L0024 |       ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body })
-L0025 |       : route.abort();
-L0026 |   });
-L0027 |   const page = await context.newPage();
-L0028 |   async function fixture(html, url = "https://careers.example.test/job/fixture") {
-L0029 |     const requestUrl = new URL(url);
-L0030 |     requestUrl.hash = "";
-L0031 |     responses.set(requestUrl.href, html);
-L0032 |     await page.goto(url, { waitUntil: "domcontentloaded" });
-L0033 |   }
-L0034 |   // Passing the function itself deliberately exercises Chrome-style function
-L0035 |   // serialization: any references to module-local helpers fail in the page.
-L0036 |   const collect = () => page.evaluate(collectJobSignals);
-L0037 |   async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
-L0038 |   const fields = ({ company, role, base }) => ({ company, role, base });
-L0039 |   const documentHtml = (body, head = "") => `<!doctype html><html><head><meta charset="utf-8"><title>Fixture</title>${head}</head><body>${body}</body></html>`;
-L0040 |   const posting = { "@type": "JobPosting", title: "财务实习生", hiringOrganization: { name: "示例科技有限公司" }, jobLocation: { address: { addressLocality: "深圳" } } };
-L0041 |   const jsonLd = (value) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
-L0042 | 
-L0043 |   for (const { file, url, company } of [
-L0044 |     { file: "huarun-runjob.html", url: "https://runjob.crc.com.cn/application/fixture", company: "华润集团" },
-L0045 |     { file: "chinahr-applyjob.html", url: "https://applyjob.chinahr.com/application/fixture" },
-L0046 |     { file: "wintalent-crc.html", url: "https://crc.wintalent.cn/application/fixture" }
-L0047 |   ]) {
-L0048 |     await check(`job identification on sanitized ${file}`, async () => {
-L0049 |       await fixture(await readFile(path.join(root, "test/fixtures/real-pages", file), "utf8"), url);
-L0050 |       const info = extractJobInfo(await collect());
-L0051 |       if (company) assert.equal(info.company, company);
-L0052 |       assert.equal(info.role, "", "Application form names must never be identified as job roles");
-L0053 |       assert.ok(!["填写简历", "简历填写"].includes(info.company));
-L0054 |     });
-L0055 |   }
-L0056 | 
-L0057 |   for (const [name, data] of [
-L0058 |     ["single object", posting],
-L0059 |     ["top-level array", [{ "@type": "WebSite", name: "Example" }, posting]],
-L0060 |     ["nested @graph", { "@context": "https://schema.org", "@graph": [{ "@type": "Organization" }, { "@graph": [posting] }] }]
-L0061 |   ]) {
-L0062 |     await check(`serialized collector reads JSON-LD ${name}`, async () => {
-L0063 |       await fixture(documentHtml("<h1>页面上的另一个职位</h1>", '<script type="application/ld+json">{invalid</script>' + jsonLd(data)));
-L0064 |       const info = extractJobInfo(await collect());
-L0065 |       assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "深圳" });
-L0066 |       assert.deepEqual(info.source, { company: "结构化数据", role: "结构化数据", base: "结构化数据" });
-L0067 |       assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0068 |     });
-L0069 |   }
-L0070 | 
-L0071 |   await check("JSON-LD handles type and jobLocation arrays", async () => {
-L0072 |     await fixture(documentHtml("", jsonLd({ ...posting, "@type": ["Thing", "JobPosting"], jobLocation: [
-L0073 |       { address: { addressRegion: "广东", addressLocality: "深圳" } },
-L0074 |       { address: { addressRegion: "香港", addressLocality: "香港" } }
-L0075 |     ] })));
-L0076 |     const info = extractJobInfo(await collect());
-L0077 |     assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "广东 深圳 / 香港" });
-L0078 |   });
-L0079 | 
-L0080 |   await check("explicit labels beat meta and nearby text is collected", async () => {
-L0081 |     await fixture(documentHtml('<div>公司名称：星海科技有限公司</div><dl><dt>岗位名称</dt><dd>审计助理</dd></dl><div><span>工作地点</span></div><p>深圳</p>', '<meta property="og:title" content="Graduate Analyst | Other Bank Careers"><meta property="og:site_name" content="Other Bank">'));
-L0082 |     const info = extractJobInfo(await collect());
-L0083 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "审计助理", base: "深圳" });
-L0084 |     assert.deepEqual(info.source, { company: "页面标签", role: "页面标签", base: "页面标签" });
-L0085 |   });
-L0086 | 
-L0087 |   await check("visible headings and metadata identify a generic job page", async () => {
-L0088 |     await fixture(documentHtml('<h1>Graduate Analyst</h1><h2 hidden>PRIVATE_HIDDEN_HEADING</h2><div style="display:none"><h1>PRIVATE_HIDDEN_PARENT</h1></div>', '<meta property="og:site_name" content="Fictional Bank"><meta name="twitter:title" content="Graduate Analyst | Fictional Bank Careers">'));
-L0089 |     const signals = await collect();
-L0090 |     const info = extractJobInfo(signals);
-L0091 |     assert.deepEqual(fields(info), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
-L0092 |     assert.equal(info.confidence.company, "medium");
-L0093 |     assert.equal(info.confidence.role, "medium");
-L0094 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_HIDDEN"), false);
-L0095 |   });
-L0096 | 
-L0097 |   await check("collection never reads input values or includes form and editable answers", async () => {
-L0098 |     await fixture(documentHtml(`
-L0099 |       <h1>Graduate Analyst</h1><div class="company-name">Fictional Bank</div>
-L0100 |       <input id="outside-input" value="PRIVATE_INPUT_VALUE">
-L0101 |       <textarea class="job-title">PRIVATE_TEXTAREA_ANSWER</textarea>
-L0102 |       <div contenteditable="true" class="company-name">PRIVATE_EDITABLE_ANSWER<h2>PRIVATE_EDITABLE_HEADING</h2></div>
-L0103 |       <div role="textbox"><h2>PRIVATE_TEXTBOX_HEADING</h2></div>
-L0104 |       <div class="logo" contenteditable="true"><img alt="PRIVATE_EDITABLE_LOGO" width="100" height="20"></div>
-L0105 |       <form><h2>PRIVATE_FORM_HEADING</h2><div>公司名称：PRIVATE_FORM_COMPANY</div><div class="job-title">PRIVATE_FORM_ROLE</div><p>PRIVATE_SAVED_ANSWER</p><label>姓名<input value="PRIVATE_FORM_INPUT"></label></form>
-L0106 |       <div role="form"><div class="company-name">PRIVATE_ROLE_FORM_COMPANY</div></div>
-L0107 |       <div class="ant-form-item"><div class="company-name">PRIVATE_COMPONENT_COMPANY</div><input></div>
-L0108 |       <div class="job-title">PRIVATE_CONTAINER_TEXT<input value="PRIVATE_CONTAINER_INPUT"></div>
-L0109 |     `), "https://careers.example.test/job/privacy?answer=PRIVATE_QUERY_VALUE#PRIVATE_HASH_VALUE");
-L0110 |     await page.evaluate(() => {
-L0111 |       for (const element of document.querySelectorAll("input,textarea")) {
-L0112 |         Object.defineProperty(element, "value", { get() { throw new Error("Job collection read a private input value"); } });
-L0113 |       }
-L0114 |     });
-L0115 |     const signals = await collect();
-L0116 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_"), false, "Job signals must exclude personal answers and URL query/hash data");
-L0117 |     assert.equal(signals.hostname, "careers.example.test");
-L0118 |     assert.equal(signals.pathname, "/job/privacy");
-L0119 |     assert.deepEqual(fields(extractJobInfo(signals)), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
-L0120 |   });
-L0121 | 
-L0122 |   await check("CTgoodjobs keeps its role, company and location adapter", async () => {
-L0123 |     await fixture(documentHtml('<h1>Finance Intern</h1><div class="company"><a>Fictional Capital Limited</a></div><div class="job-location">Hong Kong</div>'), "https://www.ctgoodjobs.hk/job/fictional-role");
-L0124 |     const info = extractJobInfo(await collect());
-L0125 |     assert.deepEqual(fields(info), { company: "Fictional Capital Limited", role: "Finance Intern", base: "Hong Kong" });
-L0126 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0127 |   });
-L0128 | 
-L0129 |   await check("CTgoodjobs keeps the company next to the job heading fallback", async () => {
-L0130 |     await fixture(documentHtml('<section><h1>Finance Intern</h1><p>Fictional Capital Limited</p></section>'), "https://www.ctgoodjobs.hk/job/fictional-nearby");
-L0131 |     const info = extractJobInfo(await collect());
-L0132 |     assert.equal(info.company, "Fictional Capital Limited");
-L0133 |     assert.equal(info.source.company, "页面标签");
-L0134 |   });
-L0135 | 
-L0136 |   await check("JobsDB keeps data-automation selectors", async () => {
-L0137 |     await fixture(documentHtml('<div data-automation="job-detail-title">Graduate Analyst</div><a data-automation="advertiser-name">Fictional Bank Limited</a><span data-automation="job-detail-location">Hong Kong</span>'), "https://hk.jobsdb.com/job/fictional-role");
-L0138 |     const info = extractJobInfo(await collect());
-L0139 |     assert.deepEqual(fields(info), { company: "Fictional Bank Limited", role: "Graduate Analyst", base: "Hong Kong" });
-L0140 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0141 |   });
-L0142 | 
-L0143 |   await check("Moka keeps explicit job page selectors", async () => {
-L0144 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1 class="jobTitle">财务实习生</h1><span class="workLocation">上海</span>'), "https://app.mokahr.com/campus-recruitment/fictional/job");
-L0145 |     const info = extractJobInfo(await collect());
-L0146 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "财务实习生", base: "上海" });
-L0147 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0148 |   });
-L0149 | 
-L0150 |   await check("Moka application wishes take priority over generic campus headings", async () => {
-L0151 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1>投递记录</h1><div class="jobTitle">校园</div><article><span>第 1 志愿</span><strong>2027届-财务专员（上海）</strong><p>状态：投递成功</p></article>'), "https://app.mokahr.com/candidate/fictional/applications");
-L0152 |     const info = extractJobInfo(await collect());
-L0153 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "2027届-财务专员（上海）", base: "" });
-L0154 |     assert.equal(info.confidence.role, "high");
-L0155 |   });
-L0156 | 
-L0157 |   console.log(`Job information browser cases passed: ${passed}`);
-L0158 | } finally {
-L0159 |   await browser.close();
-L0160 | }
-L0161 | 
-
-========================================================================
-FILE: application-tracker-extension/scripts/real-page-tests.mjs
+FILE: application-tracker-extension/scripts/real-page-tests.mjs (continued)
 SHA256: c8b2e5f986bc3240d4560c22375c5eaf0dd094dac4849e9dc982769f8393e30f
-LINES: 106
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | // Real-page scan acceptance test. Loads sanitized copies of real application forms
-L0002 | // (test/fixtures/real-pages/*.html), runs pageBridge "scan", and scores the result
-L0003 | // against the hand-checked answers in *.expected.json.
-L0004 | //   node scripts/real-page-tests.mjs            -> fails (exit 1) below the thresholds
-L0005 | //   node scripts/real-page-tests.mjs --report   -> prints the report only
-L0006 | import { createServer } from "node:http";
-L0007 | import { readFile, readdir } from "node:fs/promises";
-L0008 | import { createRequire } from "node:module";
-L0009 | import { homedir } from "node:os";
-L0010 | import path from "node:path";
-L0011 | import { pageBridge } from "../src/assistant/pageBridge.js";
-L0012 | 
-L0013 | const require = createRequire(import.meta.url);
-L0014 | let playwright;
-L0015 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
-L0016 | 
-L0017 | const root = path.resolve(import.meta.dirname, "..");
-L0018 | const dir = path.join(root, "test/fixtures/real-pages");
-L0019 | const reportOnly = process.argv.includes("--report");
-L0020 | const THRESHOLDS = { questionText: 0.95, section: 0.9, repeats: 1, controls: 0.9 };
-L0021 | 
-L0022 | const server = createServer(async (req, res) => {
-L0023 |   const name = decodeURIComponent(new URL(req.url, "http://localhost").pathname).slice(1);
-L0024 |   if (!/^[\w.-]+\.html$/.test(name)) { res.writeHead(404).end(); return; }
-L0025 |   try { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(await readFile(path.join(dir, name))); } catch { res.writeHead(404).end(); }
-L0026 | });
-L0027 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-L0028 | const origin = `http://127.0.0.1:${server.address().port}`;
-L0029 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
-L0030 | const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
-L0031 | await context.route("**/*", (route) => route.request().url().startsWith(origin) ? route.continue() : route.abort());
-L0032 | const page = await context.newPage();
-L0033 | 
-L0034 | const norm = (v) => String(v ?? "").normalize("NFKC").replace(/[\s*＊:：]/g, "").toLowerCase();
-L0035 | const GENERIC = /^(请输入|请选择|请填写|请选择日期|选择日期|未命名问题|pleaseenter|pleaseselect|select|choose)$/;
-L0036 | const sameSection = (a, b) => { const x = norm(a), y = norm(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
-L0037 | const CONTROL_OK = {
-L0038 |   text: (f) => ["text"].includes(f.kind),
-L0039 |   textarea: (f) => f.kind === "textarea",
-L0040 |   select: (f) => ["select", "custom-select"].includes(f.kind),
-L0041 |   "select-2level": (f) => ["select", "custom-select"].includes(f.kind),
-L0042 |   "select+text": (f) => ["select", "custom-select", "text"].includes(f.kind),
-L0043 |   date: (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
-L0044 |   "date-range": (f) => f.kind === "date" || /date|picker|my97/i.test(f.adapter || ""),
-L0045 |   cascader: (f) => f.kind === "cascader" || /cascader/i.test(f.adapter || ""),
-L0046 |   radio: (f) => f.kind === "radio",
-L0047 |   checkbox: (f) => ["checkboxes", "checkbox"].includes(f.kind),
-L0048 |   "popup-chooser": (f) => !f.supported ? !!f.reason : !!f.adapter
-L0049 | };
-L0050 | let failed = false;
-L0051 | const files = (await readdir(dir)).filter((f) => f.endsWith(".expected.json")).sort();
-L0052 | for (const file of files) {
-L0053 |   const expected = JSON.parse(await readFile(path.join(dir, file), "utf8"));
-L0054 |   await page.goto(`${origin}/${expected.fixture}`);
-L0055 |   const scan = await page.evaluate(pageBridge, { action: "scan" });
-L0056 |   const fields = [...scan.fields].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-L0057 |   const questions = expected.questions.filter((q) => !["none", "file"].includes(q.control));
-L0058 |   const count = (list, key) => list.reduce((m, x) => m.set(key(x), (m.get(key(x)) || 0) + 1), new Map());
-L0059 |   const expText = count(questions, (q) => norm(q.question));
-L0060 |   const gotText = count(fields, (f) => norm(f.question || f.label));
-L0061 |   let textHit = 0; for (const [k, n] of expText) textHit += Math.min(n, gotText.get(k) || 0);
 L0062 |   let sectionHit = 0; const missed = [];
 L0063 |   const expSection = count(questions, (q) => `${q.section}\u0000${norm(q.question)}`);
 L0064 |   for (const [key, n] of expSection) {
@@ -616,14 +46,10 @@ L0102 | }
 L0103 | await browser.close();
 L0104 | server.close();
 L0105 | if (failed && !reportOnly) { console.error("\n真实页面扫描未达标"); process.exit(1); }
-L0106 | 
 
 ========================================================================
 FILE: application-tracker-extension/scripts/sanitize-real-page.mjs
 SHA256: 0180363effb947192564fd7c3d5c284bea88db6aac81b5715f20fa0a91268cef
-LINES: 72
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | // Make a test copy of a saved application page with personal data removed.
 L0002 | // Usage: node scripts/sanitize-real-page.mjs <saved-page.html> <slug> [--scrub "词1,词2"]
 L0003 | // Output: test/fixtures/real-pages/<slug>.html   (scripts, links, values, photos and tokens removed)
@@ -695,4 +121,1335 @@ L0068 | console.log(`已写入 ${path.relative(root, out)}，清除填写值 ${r
 L0069 | const leftovers = Object.entries(result.left).filter(([, n]) => n > 0);
 L0070 | if (leftovers.length) { console.error("仍有疑似个人信息，请人工检查：", Object.fromEntries(leftovers)); process.exit(1); }
 L0071 | console.log("检查通过：没有发现手机号、邮箱、证件号或已填写的值。下一步请为它手写 <slug>.expected.json");
-L0072 | 
+
+========================================================================
+FILE: application-tracker-extension/scripts/scan-context-browser-tests.mjs
+SHA256: e47d8bd611f4cba84afc95caef8a1226f5141bd1f74a523dce167d3c9e21f972
+L0001 | // Isolated synthetic regressions for question boundaries, context and consent.
+L0002 | // BRIDGE_SOURCE can point to an older snapshot to reproduce the pre-fix behavior.
+L0003 | import assert from "node:assert/strict";
+L0004 | import { createServer } from "node:http";
+L0005 | import { createRequire } from "node:module";
+L0006 | import { homedir } from "node:os";
+L0007 | import path from "node:path";
+L0008 | import { pathToFileURL } from "node:url";
+L0009 | 
+L0010 | const source = process.env.BRIDGE_SOURCE || path.resolve(import.meta.dirname, "../src/assistant/pageBridge.js");
+L0011 | const { pageBridge } = await import(pathToFileURL(path.resolve(source)).href);
+L0012 | const require = createRequire(import.meta.url);
+L0013 | let playwright;
+L0014 | try { playwright = require("playwright"); }
+L0015 | catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0016 | const server = createServer((_req, res) => {
+L0017 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0018 |   res.end('<!doctype html><html><head><title>Scan context fixture</title><style>[data-option]{display:inline-block;margin:8px;padding:8px;cursor:pointer}.form-row{display:flex;gap:16px}[role="combobox"]{min-height:28px;min-width:180px} [role="option"]{padding:6px}</style></head><body><main id="fixture"></main></body></html>');
+L0019 | });
+L0020 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0021 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0022 | const page = await browser.newPage();
+L0023 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0024 | const failures = [];
+L0025 | let passed = 0;
+L0026 | const only = process.env.SCAN_CASES?.split(",");
+L0027 | async function check(code, name, fn) {
+L0028 |   if (only && !only.includes(code)) return;
+L0029 |   try { await fn(); passed++; console.log(`PASS ${code}: ${name}`); }
+L0030 |   catch (error) { failures.push(`${code}: ${name}`); console.log(`FAIL ${code}: ${name}: ${error.message}`); }
+L0031 | }
+L0032 | async function fixture(html) {
+L0033 |   await page.goto(origin);
+L0034 |   await page.locator("#fixture").evaluate((node, html) => { node.innerHTML = html; }, html);
+L0035 |   return page.evaluate(pageBridge, { action: "scan" });
+L0036 | }
+L0037 | const group = (question, options = ["男", "女"], attr = "") => `<fieldset ${attr}><legend>${question}</legend><div role="radiogroup">${options.map((label) => `<div data-option role="radio" aria-checked="false"><span>${label}</span></div>`).join("")}</div></fieldset>`;
+L0038 | const nativeGroup = (question, options = ["男", "女"]) => `<fieldset><legend>${question}</legend><div role="radiogroup">${options.map((label, index) => `<label><input type="radio" name="native-fixture" value="${index}">${label}</label>`).join("")}</div></fieldset>`;
+L0039 | const inspect = (snapshot, field) => page.evaluate(pageBridge, { action: "inspect-options", token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url, fieldId: field.fieldId });
+L0040 | try {
+L0041 |   await check("A", "fieldset legend names a role choice nested in a group", async () => {
+L0042 |     const snapshot = await fixture(group("性别"));
+L0043 |     assert.equal(snapshot.fields.length, 1);
+L0044 |     assert.equal(snapshot.fields[0].label, "性别");
+L0045 |     assert.equal(snapshot.fields[0].supported, true);
+L0046 |   });
+L0047 |   await check("A", "native radios use the outer legend rather than an option label", async () => {
+L0048 |     const snapshot = await fixture(nativeGroup("性别"));
+L0049 |     assert.equal(snapshot.fields.length, 1);
+L0050 |     assert.equal(snapshot.fields[0].label, "性别");
+L0051 |     assert.equal(snapshot.fields[0].supported, true);
+L0052 |   });
+L0053 |   await check("A", "submit buttons before a privacy group cannot disguise consent", async () => {
+L0054 |     const snapshot = await fixture('<form><div><button>提交</button><button>继续</button></div>' + group("同意隐私条款", ["同意", "不同意"]) + '</form>');
+L0055 |     assert.equal(snapshot.fields.length, 1);
+L0056 |     assert.equal(snapshot.fields[0].label, "同意隐私条款");
+L0057 |     assert.equal(snapshot.fields[0].supported, false);
+L0058 |   });
+L0059 |   await check("A", "explicit generic ARIA question cannot hide agreement options", async () => {
+L0060 |     const snapshot = await fixture('<div role="radiogroup" aria-label="条款选择"><div data-option role="radio" aria-checked="false">I agree</div><div data-option role="radio" aria-checked="false">I disagree</div></div>');
+L0061 |     assert.equal(snapshot.fields.length, 1);
+L0062 |     assert.equal(snapshot.fields[0].supported, false, JSON.stringify(snapshot.fields[0]));
+L0063 |   });
+L0064 |   await check("A", "acceptance of terms is manual for a single native checkbox", async () => {
+L0065 |     const snapshot = await fixture('<label><input type="checkbox">我已阅读并接受使用条款</label>');
+L0066 |     assert.equal(snapshot.fields.length, 1);
+L0067 |     assert.equal(snapshot.fields[0].supported, false, JSON.stringify(snapshot.fields[0]));
+L0068 |   });
+L0069 |   await check("A", "an education fieldset with several questions lends no question legend", async () => {
+L0070 |     const snapshot = await fixture('<fieldset><legend>教育经历</legend><label>学校名称<input id="school"></label><div role="radiogroup"><div data-option role="radio" aria-checked="false">本科</div><div data-option role="radio" aria-checked="false">硕士</div></div></fieldset>');
+L0071 |     const choice = snapshot.fields.find((field) => field.kind === "choice");
+L0072 |     assert.ok(choice);
+L0073 |     assert.notEqual(choice.label, "教育经历");
+L0074 |   });
+L0075 |   await check("A", "a broad ARIA education fieldset is not the question of a nested choice", async () => {
+L0076 |     const snapshot = await fixture('<fieldset aria-label="教育经历"><legend>教育经历</legend><label>学校名称<input id="school"></label><div role="radiogroup"><div data-option role="radio" aria-checked="false">本科</div><div data-option role="radio" aria-checked="false">硕士</div></div></fieldset>');
+L0077 |     const choice = snapshot.fields.find((field) => field.kind === "choice");
+L0078 |     assert.ok(choice);
+L0079 |     assert.notEqual(choice.label, "教育经历");
+L0080 |   });
+L0081 |   await check("I", "one form can contain several independently named sections", async () => {
+L0082 |     const snapshot = await fixture('<form><h2>基本信息</h2><label>姓名<input id="name"></label><h2>教育经历</h2><label>学校名称<input id="school"></label></form>');
+L0083 |     assert.deepEqual(snapshot.fields.map((field) => field.section), ["基本信息", "教育经历"]);
+L0084 |     assert.equal(snapshot.fields[0].entityHint, "self");
+L0085 |     assert.equal(snapshot.fields[1].entityHint, "education");
+L0086 |   });
+L0087 |   await check("J", "two different rows inside one education block stay in one group", async () => {
+L0088 |     const snapshot = await fixture('<fieldset><legend>教育经历</legend><div class="form-row"><label>学校名称<input></label><label>专业<input></label></div><div class="form-row"><label>学历<input></label><label>毕业时间<input></label></div></fieldset>');
+L0089 |     assert.equal(snapshot.fields.length, 4);
+L0090 |     assert.equal(new Set(snapshot.fields.map((field) => field.groupId)).size, 1, JSON.stringify(snapshot.fields.map(({ label, groupId, groupIndex }) => ({ label, groupId, groupIndex }))));
+L0091 |     assert.deepEqual(snapshot.fields.map((field) => field.groupIndex), [1, 1, 1, 1]);
+L0092 |   });
+L0093 |   await check("J", "two repeated education blocks retain distinct instance indices", async () => {
+L0094 |     const item = '<div class="education-item"><label>学校名称<input></label><label>专业<input></label><label>学历<input></label></div>';
+L0095 |     const snapshot = await fixture(`<section><h2>教育经历</h2>${item}${item}</section>`);
+L0096 |     assert.equal(snapshot.fields.length, 6);
+L0097 |     assert.deepEqual(snapshot.fields.map((field) => field.groupIndex), [1, 1, 1, 2, 2, 2]);
+L0098 |     assert.equal(new Set(snapshot.fields.map((field) => field.groupId)).size, 2);
+L0099 |   });
+L0100 |   await check("P", "a clearly named adjustment preference is a business question", async () => {
+L0101 |     const snapshot = await fixture(group("是否同意调剂", ["是", "否"]).replace('role="radiogroup"', 'role="radiogroup" aria-label="是否同意调剂"'));
+L0102 |     assert.equal(snapshot.fields[0].supported, true, JSON.stringify(snapshot.fields[0]));
+L0103 |   });
+L0104 |   await check("P", "privacy or authorization stays manual even when adjustment is mentioned", async () => {
+L0105 |     for (const title of ["是否同意调剂并授权使用个人信息", "是否同意出差并确认隐私条款", "本人承诺以上信息真实"]) {
+L0106 |       const snapshot = await fixture(group(title, ["是", "否"]));
+L0107 |       assert.equal(snapshot.fields[0].supported, false, title);
+L0108 |     }
+L0109 |   });
+L0110 |   await check("K", "unadapted readonly dropdown tells the user to choose manually", async () => {
+L0111 |     const snapshot = await fixture('<div class="layui-form-item"><label class="layui-form-label">学历</label><select hidden><option>本科</option></select><div class="layui-form-select"><input readonly placeholder="请选择"></div></div>');
+L0112 |     assert.equal(snapshot.fields.length, 1);
+L0113 |     assert.equal(snapshot.fields[0].supported, false);
+L0114 |     assert.match(snapshot.fields[0].reason, /下拉.*(?:不支持|手动)/);
+L0115 |   });
+L0116 |   await check("M", "a permanent unrelated listbox cannot be the dropdown menu", async () => {
+L0117 |     const snapshot = await fixture('<ul role="listbox" id="permanent"><li role="option">常驻项目</li></ul><div role="combobox" aria-label="学历" aria-expanded="false" id="degree"><span class="selected-value"></span></div><ul role="listbox" id="degrees" hidden><li role="option">本科</li><li role="option">硕士</li></ul>');
+L0118 |     await page.evaluate(() => {
+L0119 |       const control = document.querySelector("#degree");
+L0120 |       const menu = document.querySelector("#degrees");
+L0121 |       control.onclick = () => { menu.hidden = !menu.hidden; control.setAttribute("aria-expanded", String(!menu.hidden)); };
+L0122 |       document.addEventListener("keydown", (event) => { if (event.key === "Escape") { menu.hidden = true; control.setAttribute("aria-expanded", "false"); } });
+L0123 |     });
+L0124 |     const result = await inspect(snapshot, snapshot.fields[0]);
+L0125 |     assert.equal(result.status, "inspected", JSON.stringify(result));
+L0126 |     assert.deepEqual(result.field.options.map((option) => option.text), ["本科", "硕士"]);
+L0127 |     assert.equal(await page.locator("#permanent").isVisible(), true);
+L0128 |     assert.equal(await page.locator("#degrees").isVisible(), false);
+L0129 |   });
+L0130 | } finally {
+L0131 |   await browser.close();
+L0132 |   await new Promise((resolve) => server.close(resolve));
+L0133 | }
+L0134 | console.log(`Scan context cases passed: ${passed}; failed: ${failures.length}`);
+L0135 | if (failures.length) process.exitCode = 1;
+
+========================================================================
+FILE: application-tracker-extension/scripts/scan-performance-check.mjs
+SHA256: d465cfd70ce505fa51c3700afb075d2032436abbfdde2ac9595d9b334599be63
+L0001 | // Optional local diagnostic, deliberately not a timing pass/fail gate.
+L0002 | import { createServer } from "node:http";
+L0003 | import { createRequire } from "node:module";
+L0004 | import { homedir } from "node:os";
+L0005 | import path from "node:path";
+L0006 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0007 | const require = createRequire(import.meta.url);
+L0008 | let playwright;
+L0009 | try { playwright = require("playwright"); }
+L0010 | catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0011 | const server = createServer((_req, res) => {
+L0012 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0013 |   res.end('<!doctype html><html><head><title>Scan performance fixture</title><style>.form-group{padding:2px}input{width:200px}</style></head><body><main id="fixture"></main></body></html>');
+L0014 | });
+L0015 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0016 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0017 | const page = await browser.newPage();
+L0018 | const bridgeSource = pageBridge.toString();
+L0019 | const time = (action, request = {}) => page.evaluate(async ({ bridgeSource, action, request }) => {
+L0020 |   const bridge = Function(`return (${bridgeSource})`)();
+L0021 |   const started = performance.now();
+L0022 |   const result = await bridge({ action, ...request });
+L0023 |   return { ms: performance.now() - started, result };
+L0024 | }, { bridgeSource, action, request });
+L0025 | const summary = (samples) => {
+L0026 |   const sorted = [...samples].sort((a, b) => a - b);
+L0027 |   return { samples: samples.map((value) => Math.round(value * 10) / 10), median: Math.round(sorted[Math.floor(sorted.length / 2)] * 10) / 10, max: Math.round(sorted.at(-1) * 10) / 10 };
+L0028 | };
+L0029 | try {
+L0030 |   for (const count of [30, 300]) {
+L0031 |     await page.goto(`http://127.0.0.1:${server.address().port}`);
+L0032 |     await page.locator("#fixture").evaluate((node, count) => {
+L0033 |       node.innerHTML = '<h2>虚构测试资料</h2>' + Array.from({ length: count }, (_unused, index) => `<div class="form-group"><label for="f-${index}">测试字段${index}</label><input id="f-${index}"></div>`).join("");
+L0034 |     }, count);
+L0035 |     const scans = [], polls = [];
+L0036 |     let snapshot;
+L0037 |     for (let iteration = 0; iteration < 7; iteration++) {
+L0038 |       const scan = await time("scan");
+L0039 |       snapshot = scan.result;
+L0040 |       const poll = await time("changes", { token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url });
+L0041 |       if (iteration) { scans.push(scan.ms); polls.push(poll.ms); }
+L0042 |     }
+L0043 |     console.log(JSON.stringify({ fields: count, scan: summary(scans), changes: summary(polls) }));
+L0044 |     if (count === 300) {
+L0045 |       // CSSOM mutation changes visibility without a DOM MutationObserver record.
+L0046 |       await page.evaluate(() => {
+L0047 |         window.observed = 0;
+L0048 |         window.testObserver = new MutationObserver((records) => { window.observed += records.length; });
+L0049 |         window.testObserver.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+L0050 |         document.styleSheets[0].insertRule("#f-0 {display:none}", 0);
+L0051 |       });
+L0052 |       const poll = await time("changes", { token: snapshot.token, scanId: snapshot.scanId, url: snapshot.url });
+L0053 |       console.log(JSON.stringify({ diagnostic: "cssom-visibility", mutationRecords: await page.evaluate(() => window.observed), changed: poll.result.changed }));
+L0054 |       await page.evaluate(() => window.testObserver.disconnect());
+L0055 |     }
+L0056 |   }
+L0057 | } finally {
+L0058 |   await browser.close();
+L0059 |   await new Promise((resolve) => server.close(resolve));
+L0060 | }
+
+========================================================================
+FILE: application-tracker-extension/scripts/ui-tests.mjs
+SHA256: b18ffd761158bd62cfa0ce9481be66bf3dec2a6de99fb629571583e6e33d5625
+L0001 | // UI integration uses real Chrome DOMs and an explicit Chrome API test adapter.
+L0002 | // This does not substitute for loading the unpacked extension in a real side panel.
+L0003 | import assert from "node:assert/strict";
+L0004 | import { createServer } from "node:http";
+L0005 | import { readFile, mkdir } from "node:fs/promises";
+L0006 | import { createRequire } from "node:module";
+L0007 | import { homedir } from "node:os";
+L0008 | import path from "node:path";
+L0009 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0010 | import { collectJobSignals } from "../src/jobInfo/collectSignals.js";
+L0011 | import { createMutationQueue, MUTATION_MESSAGE } from "../src/storageMutations.js";
+L0012 | import { toDateInputValue } from "../src/dateUtils.js";
+L0013 | const require = createRequire(import.meta.url);
+L0014 | let playwright;
+L0015 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0016 | const root = path.resolve(import.meta.dirname, "..");
+L0017 | const fixture = '<!doctype html><html><head><meta charset="utf-8"><title>示例公司 · 分析师申请</title></head><body><form><section><h2>基本信息</h2><label>姓名<input id="name" required></label><label>邮箱<input id="email" type="email"></label></section><section><h2>硕士教育</h2><label>学校名称<input id="school"></label></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label><label>奖惩情况<textarea id="awards"></textarea></label></section></form><iframe src="/child"></iframe></body></html>';
+L0018 | const server = createServer(async (req, res) => {
+L0019 |   res.setHeader("Content-Type", "text/html; charset=utf-8");
+L0020 |   if (req.url === "/apply") return res.end(fixture);
+L0021 |   if (req.url === "/child") return res.end('<label>个人网站<input id="website"></label>');
+L0022 |   const file = path.resolve(root, "." + new URL(req.url, "http://localhost").pathname);
+L0023 |   if (!file.startsWith(root + path.sep)) return res.writeHead(403).end();
+L0024 |   try { if (file.endsWith(".js")) res.setHeader("Content-Type", "text/javascript"); if (file.endsWith(".css")) res.setHeader("Content-Type", "text/css"); res.end(await readFile(file)); } catch { res.writeHead(404).end(); }
+L0025 | });
+L0026 | await new Promise((r) => server.listen(0, "127.0.0.1", r));
+L0027 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0028 | const browser = await playwright.chromium.launch({ executablePath: process.env.BROWSER_EXECUTABLE || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
+L0029 | try {
+L0030 |   const target = await browser.newPage(); await target.goto(origin + "/apply");
+L0031 |   const captureClient = await target.context().newCDPSession(target);
+L0032 |   const panel = await browser.newPage({ viewport: { width: 420, height: 1000 } });
+L0033 |   const profile = { fullNameZh: "示例申请人", email: "profile@example.com", masterUniversityZh: "示例大学", website: "https://portfolio.example.com", commonAnswers: { selfIntroduction: { zh: "这是一段待核对的自我介绍。", en: "" } } };
+L0034 |   const originalProfile = structuredClone(profile);
+L0035 |   const storage = { local: { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false }, "applicationTracker.questionMemory": [{ id: "legacy-one", question: "其他技能", answer: "SQL", language: "zh", pageUrl: "https://example.com/apply" }] }, session: { "applicationTracker.assistant.target.1": 1 } };
+L0036 |   const readStorage = (name, keys) => structuredClone(Object.fromEntries((keys == null ? Object.keys(storage[name]) : Array.isArray(keys) ? keys : [keys]).filter((key) => key in storage[name]).map((key) => [key, storage[name][key]])));
+L0037 |   const writeStorage = async (name, data) => {
+L0038 |     const changes = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, { oldValue: storage[name][key], newValue: value }]));
+L0039 |     Object.assign(storage[name], structuredClone(data));
+L0040 |     await panel.evaluate(({ changes, area }) => window.__storageEvent?.emit(changes, area), { changes, area: name });
+L0041 |   };
+L0042 |   const mutate = createMutationQueue({ get: async (keys) => readStorage("local", keys), set: (data) => writeStorage("local", data) });
+L0043 |   let lockGate;
+L0044 |   let memoryGate;
+L0045 |   let recordGate;
+L0046 |   let activeTabId = 1;
+L0047 |   let captureCalls = 0;
+L0048 |   let childPermissionDenied = false;
+L0049 |   let allowChildPermission = false;
+L0050 |   const permissionRequests = [];
+L0051 |   const documentIds = new Map();
+L0052 |   await panel.exposeBinding("testApi", async (source, method, args) => {
+L0053 |     if (method === "tabs.get") return { id: 1, windowId: 1, active: activeTabId === 1, url: target.url(), title: await target.title() };
+L0054 |     if (method === "tabs.query") return [{ id: activeTabId, windowId: 1, active: true, url: activeTabId === 1 ? target.url() : "https://unrelated.example", title: activeTabId === 1 ? await target.title() : "Other tab" }];
+L0055 |     // Native captureVisibleTab does not inject screenshot styles into the page.
+L0056 |     if (method === "tabs.capture") { captureCalls++; return `data:image/png;base64,${(await captureClient.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true })).data}`; }
+L0057 |     if (method === "tabs.update") return {};
+L0058 |     if (method === "frames") return target.frames().map((frame, index) => ({ frameId: index, url: childPermissionDenied && index === 1 ? "https://embedded.example/form?private=token" : frame.url() }));
+L0059 |     if (method === "permissions.request") {
+L0060 |       permissionRequests.push(args);
+L0061 |       if (allowChildPermission) childPermissionDenied = false;
+L0062 |       return allowChildPermission;
+L0063 |     }
+L0064 |     if (method === "script") {
+L0065 |       const { target: route, request, functionName } = args;
+L0066 |       const index = route.frameIds?.[0] ?? [...documentIds.entries()].find(([, id]) => id === route.documentIds?.[0])?.[0];
+L0067 |       if (index === undefined) throw new Error("Original document missing");
+L0068 |       if (index === 1 && childPermissionDenied) throw new Error("Cannot access this frame without host permission");
+L0069 |       const frame = target.frames()[index];
+L0070 |       if (!frame) throw new Error("Original frame missing");
+L0071 |       const ping = await frame.evaluate(pageBridge, { action: "ping" });
+L0072 |       const documentId = `doc${index}:${ping.token}`;
+L0073 |       documentIds.set(index, documentId);
+L0074 |       if (route.documentIds && !route.documentIds.includes(documentId)) throw new Error("Original document missing");
+L0075 |       return [{ frameId: index, documentId, result: functionName === "collectJobSignals" ? await frame.evaluate(collectJobSignals) : await frame.evaluate(pageBridge, request) }];
+L0076 |     }
+L0077 |     if (method === "get") return readStorage(args.area, args.keys);
+L0078 |     if (method === "set") return writeStorage(args.area, args.data);
+L0079 |     if (method === "remove") { delete storage[args.area][args.key]; return; }
+L0080 |     if (method === "message") {
+L0081 |       if (args.type === "assistant-lock" && lockGate) {
+L0082 |         const gate = lockGate; lockGate = null; gate.entered(); await gate.wait;
+L0083 |       }
+L0084 |       if (args.type === MUTATION_MESSAGE && args.mutation.operation === "memory.save" && memoryGate) {
+L0085 |         const gate = memoryGate; memoryGate = null; gate.entered(); await gate.wait;
+L0086 |       }
+L0087 |       if (args.type === MUTATION_MESSAGE && args.mutation.operation === "record.create" && recordGate) {
+L0088 |         const gate = recordGate; recordGate = null; gate.entered(); await gate.wait;
+L0089 |       }
+L0090 |       if (args.type !== MUTATION_MESSAGE) return { ok: true };
+L0091 |       try { return { ok: true, value: await mutate(args.mutation) }; } catch (error) { return { ok: false, error: error.message }; }
+L0092 |     }
+L0093 |     throw new Error(`Unexpected test API ${method}`);
+L0094 |   });
+L0095 |   await panel.addInitScript(() => {
+L0096 |     const event = () => { const listeners = new Set(); return { addListener: (listener) => listeners.add(listener), removeListener: (listener) => listeners.delete(listener), emit: (...args) => listeners.forEach((listener) => listener(...args)) }; };
+L0097 |     window.__storageEvent = event();
+L0098 |     const area = (name) => ({ get: (keys) => testApi("get", { area: name, keys }), set: (data) => testApi("set", { area: name, data }), remove: (key) => testApi("remove", { area: name, key }) });
+L0099 |     window.chrome = { permissions: { request: (request) => testApi("permissions.request", { request, userGesture: navigator.userActivation.isActive }) }, storage: { local: area("local"), session: area("session"), onChanged: window.__storageEvent }, windows: { getCurrent: async () => ({ id: 1 }), get: async () => ({ id: 1, focused: true }), onFocusChanged: event() }, tabs: { get: (id) => testApi("tabs.get", id), query: (query) => testApi("tabs.query", query), captureVisibleTab: (id, options) => testApi("tabs.capture", { id, options }), update: (id, props) => testApi("tabs.update", { id, props }), onActivated: event(), onUpdated: event(), onRemoved: event() }, webNavigation: { getAllFrames: () => testApi("frames") }, scripting: { executeScript: (args) => testApi("script", { target: args.target, functionName: args.func.name, request: args.args?.[0] }) }, runtime: { sendMessage: (message) => testApi("message", message) } };
+L0100 |   });
+L0101 |   const errors = []; panel.on("pageerror", (e) => errors.push(e.message));
+L0102 |   const expandQuestions = async () => {
+L0103 |     const button = panel.locator("#showAll");
+L0104 |     if (await button.isVisible() && (await button.textContent()).trim() === "展开全部题目") await button.click();
+L0105 |   };
+L0106 |   const refreshPreview = async () => {
+L0107 |     await panel.locator(await panel.locator("#refresh").isVisible() ? "#refresh" : "#prepare").click();
+L0108 |   };
+L0109 |   await panel.goto(origin + "/src/sidepanel/assistant.html");
+L0110 |   await panel.locator("#prepare").click();
+L0111 |   await panel.locator("#questions .question").first().waitFor();
+L0112 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0113 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0114 |   assert.match(await panel.locator("#coverage").textContent(), /2\/2/);
+L0115 |   assert.match(await panel.locator("#fill").textContent(), /填写\s*5\s*项/);
+L0116 |   console.log("PASS UI merges main and child frame questions through the API adapter");
+L0117 |   assert.equal(await panel.locator("#filter").count(), 0);
+L0118 |   assert.equal(await panel.locator("#results").isVisible(), false);
+L0119 |   await panel.setViewportSize({ width: 400, height: 900 });
+L0120 |   assert.equal(await panel.locator('.question').evaluateAll((nodes) => nodes.some((node) => {
+L0121 |     const rect = node.getBoundingClientRect();
+L0122 |     return rect.width > 0 && rect.height > 0 && rect.top >= 0 && rect.top < innerHeight;
+L0123 |   })), true);
+L0124 |   console.log("PASS UI shows a question in the first 400x900 preview screen and keeps results hidden before filling");
+L0125 |   await panel.setViewportSize({ width: 420, height: 1000 });
+L0126 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0127 |   for (const id of ["name", "email", "school", "intro", "awards"]) assert.equal(await target.locator(`#${id}`).inputValue(), "");
+L0128 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0129 |   await expandQuestions();
+L0130 |   await panel.locator("#clearSelection").click();
+L0131 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 0);
+L0132 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0133 |   await panel.locator("#selectAll").click();
+L0134 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 5);
+L0135 |   assert.equal(await panel.locator('[data-group="attention"] .question').count(), 1);
+L0136 |   assert.equal(await panel.locator('[data-group="attention"] .question').filter({ has: panel.locator("label", { hasText: /^自我介绍/ }) }).count(), 1);
+L0137 |   const optionalAwards = panel.locator('[data-group="optional"] .question').filter({ has: panel.locator("label", { hasText: /^奖惩情况/ }) });
+L0138 |   assert.equal(await optionalAwards.count(), 1);
+L0139 |   assert.equal(await optionalAwards.locator("[data-selected]").isChecked(), false);
+L0140 |   assert.equal(await panel.locator(".question").count(), 6);
+L0141 |   assert.match(await panel.locator("#fill").textContent(), /填写\s*5\s*项/);
+L0142 |   for (const id of ["name", "email", "school", "intro", "awards"]) assert.equal(await target.locator(`#${id}`).inputValue(), "");
+L0143 |   console.log("PASS UI previews all valid answers without writing the target and groups attention separately from other optional questions");
+L0144 |   let releaseLock;
+L0145 |   const lockEntered = new Promise((resolve) => { lockGate = { entered: resolve, wait: new Promise((release) => { releaseLock = release; }) }; });
+L0146 |   await panel.locator("#fill").click();
+L0147 |   await lockEntered;
+L0148 |   await panel.locator("#cancel").click();
+L0149 |   releaseLock();
+L0150 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0151 |   assert.equal(await target.locator("#name").inputValue(), "");
+L0152 |   assert.equal(await target.locator("#school").inputValue(), "");
+L0153 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0154 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0155 |   assert.equal(await panel.locator("#resultList .result-row").count(), 0);
+L0156 |   console.log("PASS UI cancel while acquiring a delayed lock prevents all subsequent writes");
+L0157 |   await target.locator("#email").fill("user-change@example.com");
+L0158 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0159 |   assert.equal(await target.locator("#name").inputValue(), "示例申请人");
+L0160 |   assert.equal(await target.locator("#school").inputValue(), "示例大学");
+L0161 |   assert.equal(await target.locator("#intro").inputValue(), profile.commonAnswers.selfIntroduction.zh);
+L0162 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0163 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "https://portfolio.example.com");
+L0164 |   assert.match(await panel.locator("#resultSummary").textContent(), /4\/5/);
+L0165 |   assert.equal(await panel.locator("#results").isVisible(), true);
+L0166 |   assert.equal(await panel.evaluate(() => !!(document.getElementById("results").compareDocumentPosition(document.getElementById("questions")) & Node.DOCUMENT_POSITION_FOLLOWING)), true);
+L0167 |   assert.equal(await panel.locator("#resultDone").evaluate((details) => details.open), false);
+L0168 |   assert.equal(await panel.locator('#resultList > .result-row').count(), 1);
+L0169 |   console.log("PASS UI puts fill results above the questions with unsuccessful rows visible and successful rows collapsed");
+L0170 |   assert.deepEqual(storage.local["applicationTracker.profile"], originalProfile);
+L0171 |   assert.equal(storage.local["applicationTracker.assistant.memories.v2"].length, 1);
+L0172 |   assert.equal(storage.local["applicationTracker.assistant.memories.v2"][0].confirmed, false);
+L0173 |   console.log("PASS UI fill preserves manual edits, profile bytes and unconfirmed memories");
+L0174 |   await panel.locator("#undo").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0175 |   assert.equal(await target.locator("#name").inputValue(), ""); assert.equal(await target.locator("#school").inputValue(), "");
+L0176 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0177 |   assert.equal(await target.locator("#email").inputValue(), "user-change@example.com");
+L0178 |   console.log("PASS UI undo restores only assistant-written fields");
+L0179 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0180 |   const artifacts = path.join(root, "test-artifacts"); await mkdir(artifacts, { recursive: true });
+L0181 |   await panel.screenshot({ path: path.join(artifacts, "assistant-preview.png"), fullPage: true });
+L0182 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0183 |   await panel.setViewportSize({ width: 320, height: 900 }); assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+L0184 |   console.log("PASS UI fits 320px and 420px widths without horizontal overflow");
+L0185 |   await panel.reload(); await panel.locator("#questions .question").first().waitFor(); assert.equal(await panel.locator("#questions .question").count(), 6);
+L0186 |   console.log("PASS UI session restores on reload");
+L0187 |   await target.reload(); await panel.waitForFunction(() => document.getElementById("fill").disabled);
+L0188 |   assert.match(await panel.locator("#message").textContent(), /变化|重新识别/);
+L0189 |   console.log("PASS UI detects navigation and disables stale plans");
+L0190 | 
+L0191 |   // Drive the full preparation pipeline with a delayed custom control and a local AI stub.
+L0192 |   // No external API request or real personal data is used.
+L0193 |   await target.goto(origin + "/apply");
+L0194 |   await target.evaluate(() => {
+L0195 |     document.body.innerHTML = `<form><section><h2>硕士教育</h2><label>学校所在地<input id="school-location"></label><div role="combobox" aria-label="学位" aria-controls="degree-menu" aria-expanded="false" tabindex="0" style="padding:16px"><span class="selected-value"></span></div><ul role="listbox" id="degree-menu" hidden></ul></section><section><h2>申请问题</h2><label>自我介绍<textarea id="intro"></textarea></label></section></form>`;
+L0196 |     const control = document.querySelector('[role="combobox"]');
+L0197 |     const menu = document.getElementById("degree-menu");
+L0198 |     const close = () => { menu.hidden = true; control.setAttribute("aria-expanded", "false"); };
+L0199 |     control.addEventListener("click", () => {
+L0200 |       if (control.getAttribute("aria-expanded") === "true") return close();
+L0201 |       menu.hidden = false; menu.innerHTML = ""; control.setAttribute("aria-expanded", "true");
+L0202 |       setTimeout(() => { menu.innerHTML = `<li role="option">Bachelor's degree</li><li role="option">Master's degree</li>`; }, 500);
+L0203 |     });
+L0204 |     control.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
+L0205 |     menu.addEventListener("click", (event) => {
+L0206 |       if (!event.target.matches('[role="option"]')) return;
+L0207 |       control.querySelector(".selected-value").textContent = event.target.textContent; close();
+L0208 |     });
+L0209 |   });
+L0210 |   const privacyMemory = { id: "privacy-confirmed", question: "特殊确认题", answer: "SENTINEL_MEMORY_ANSWER_7731", language: "zh", entityId: "self", scope: "global", confirmed: true, updatedAt: "2026-10-13T00:00:00Z" };
+L0211 |   await writeStorage("local", { "applicationTracker.profile": { ...profile, masterDegreeZh: "硕士" }, "applicationTracker.aiSettings": { enabled: true, apiKey: "fixture-key", model: "fixture-model" }, "applicationTracker.assistant.memories.v2": [...storage.local["applicationTracker.assistant.memories.v2"], privacyMemory] });
+L0212 |   const sentBatches = [];
+L0213 |   const sentRequests = [];
+L0214 |   let rejectDraft = false;
+L0215 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0216 |     const payload = route.request().postDataJSON();
+L0217 |     const batch = JSON.parse(payload.input[1].content);
+L0218 |     const format = payload.text.format.name;
+L0219 |     sentRequests.push({ payload, batch, format });
+L0220 |     if (format === "job_page_information") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify({ company: null, role: null, base: null, confidence: "low" }) }) });
+L0221 |     sentBatches.push(batch);
+L0222 |     if (format === "application_suggestions" && rejectDraft) return route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ error: { message: "Fixture rate limit" } }) });
+L0223 |     const output = format === "application_field_pairing"
+L0224 |       ? { pairs: batch.fields.map((field) => {
+L0225 |         const factId = field.label === "学位" ? "education.master.degree.zh" : field.label === "自我介绍" ? "common_answer.selfIntroduction.zh" : null;
+L0226 |         return { fieldId: field.fieldId, source: factId ? "fact" : "none", factId, memoryId: null, transform: "none" };
+L0227 |       }) }
+L0228 |       : { items: batch.fields.flatMap((field) => {
+L0229 |         if (field.label === "自我介绍") return [{ fieldId: field.fieldId, entityId: field.entityId, kind: "draft", factIds: [batch.facts.find((fact) => fact.id.includes("selfIntroduction") || fact.id.startsWith("education.")).id], optionId: null, text: "根据已确认资料准备的 AI 自我介绍草稿。" }];
+L0230 |         return [];
+L0231 |       }) };
+L0232 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0233 |   });
+L0234 |   await panel.locator("#prepare").click();
+L0235 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0236 |   const degree = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^学位/ }) });
+L0237 |   const location = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^学校所在地/ }) });
+L0238 |   const intro = panel.locator(".question").filter({ has: panel.locator('label', { hasText: /^自我介绍/ }) });
+L0239 |   assert.equal(await location.locator("[data-answer]").inputValue(), "");
+L0240 |   assert.equal(await location.locator("[data-selected]").isChecked(), false);
+L0241 |   assert.equal(await degree.locator("[data-answer]").inputValue(), "Master's degree");
+L0242 |   assert.equal(await degree.locator("[data-selected]").isChecked(), true);
+L0243 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0244 |   assert.equal(await intro.locator("[data-answer]").inputValue(), profile.commonAnswers.selfIntroduction.zh);
+L0245 |   assert.equal(sentRequests.filter((request) => request.format === "application_suggestions").length, 0);
+L0246 |   const pairings = sentRequests.filter((request) => request.format === "application_field_pairing");
+L0247 |   assert.ok(pairings.length > 0);
+L0248 |   for (const request of pairings) {
+L0249 |     const sent = JSON.stringify(request.payload);
+L0250 |     for (const privateValue of [profile.fullNameZh, profile.email, profile.masterUniversityZh, profile.website, profile.commonAnswers.selfIntroduction.zh, privacyMemory.answer, target.url()]) assert.equal(sent.includes(privateValue), false, privateValue);
+L0251 |     assert.equal(request.payload.store, false);
+L0252 |     assert.equal(request.payload.text.format.strict, true);
+L0253 |     assert.equal(request.payload.model, "fixture-model");
+L0254 |     assert.equal(Object.hasOwn(request.batch, "jobText"), false);
+L0255 |     assert.equal(Object.hasOwn(request.batch, "url"), false);
+L0256 |     assert.ok(request.batch.catalog.memories.some((memory) => memory.id === privacyMemory.id));
+L0257 |     assert.ok(request.batch.catalog.facts.every((fact) => !Object.hasOwn(fact, "value")));
+L0258 |   }
+L0259 |   assert.match(await panel.locator("#aiNote").textContent(), /不收资料内容|不接收资料内容/);
+L0260 |   console.log("PASS UI pairs questions from catalog names without sending profile values, memory answers, the page URL or job text");
+L0261 |   await intro.locator("[data-draft]").click();
+L0262 |   await intro.locator("[data-draft-confirmation]").waitFor();
+L0263 |   assert.match(await intro.textContent(), /将发送.*这道题.*岗位描述/);
+L0264 |   await intro.locator("[data-draft-cancel]").click();
+L0265 |   assert.equal(sentRequests.filter((request) => request.format === "application_suggestions").length, 0);
+L0266 |   assert.equal(await intro.locator("[data-answer]").inputValue(), profile.commonAnswers.selfIntroduction.zh);
+L0267 |   rejectDraft = true;
+L0268 |   await intro.locator("[data-draft]").click();
+L0269 |   await intro.locator("[data-draft-send]").click();
+L0270 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0271 |   assert.equal(await intro.locator("[data-answer]").inputValue(), profile.commonAnswers.selfIntroduction.zh);
+L0272 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0273 |   rejectDraft = false;
+L0274 |   await intro.locator("[data-draft]").click();
+L0275 |   await intro.locator("[data-draft-send]").click();
+L0276 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0277 |   assert.equal(await intro.locator("[data-answer]").inputValue(), "根据已确认资料准备的 AI 自我介绍草稿。");
+L0278 |   const drafts = sentRequests.filter((request) => request.format === "application_suggestions");
+L0279 |   assert.equal(drafts.length, 2);
+L0280 |   for (const { batch } of drafts) {
+L0281 |     assert.equal(batch.fields.length, 1);
+L0282 |     assert.equal(batch.fields[0].label, "自我介绍");
+L0283 |     assert.equal(Object.hasOwn(batch.fields[0], "answer"), false);
+L0284 |     assert.equal(Object.hasOwn(batch.fields[0], "value"), false);
+L0285 |     assert.equal(Object.hasOwn(batch, "url"), false);
+L0286 |     assert.ok(batch.facts.length > 0);
+L0287 |     assert.ok(batch.facts.every((fact) => /^common_answer\.selfIntroduction\.|^education\.|^experience\./.test(fact.id)));
+L0288 |     assert.equal(JSON.stringify(batch).includes(privacyMemory.answer), false);
+L0289 |     assert.equal(JSON.stringify(batch).includes(profile.email), false);
+L0290 |     assert.equal(JSON.stringify(batch).includes(profile.website), false);
+L0291 |   }
+L0292 |   console.log("PASS UI sends only one explicitly confirmed draft question, cancellation sends nothing and API errors preserve the original preview answer");
+L0293 |   assert.match(await intro.locator(".source").first().textContent(), /AI 草稿/);
+L0294 |   assert.equal(await target.locator('[role="combobox"] .selected-value').textContent(), "");
+L0295 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0296 |   assert.equal(await target.locator("#school-location").inputValue(), "");
+L0297 |   assert.equal(await target.locator("#degree-menu").isVisible(), false);
+L0298 |   assert.deepEqual((await degree.locator('[data-answer] option').allTextContents()).filter(Boolean).slice(-2), ["Bachelor's degree", "Master's degree"]);
+L0299 |   assert.ok(pairings.every(({ batch }) => !batch.fields.some((field) => field.label === "学位")), "Exact local degree matching should not send another AI request");
+L0300 |   assert.match(await panel.locator("#fill").textContent(), /填写\s*2\s*项/);
+L0301 |   // No per-question checking: the only write action is this explicit batch confirmation.
+L0302 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0303 |   assert.equal(await target.locator('[role="combobox"] .selected-value').textContent(), "Master's degree");
+L0304 |   assert.equal(await target.locator("#intro").inputValue(), "根据已确认资料准备的 AI 自我介绍草稿。");
+L0305 |   assert.equal(await target.locator("#school-location").inputValue(), "");
+L0306 |   await panel.locator("#saveResults").click();
+L0307 |   assert.equal(await panel.locator("[data-learn]").count(), 2);
+L0308 |   assert.equal(await panel.locator("[data-learn-check]:checked").count(), 2);
+L0309 |   assert.equal(storage.local["applicationTracker.assistant.memories.v2"].length, 2);
+L0310 |   console.log("PASS UI previews delayed real options and validated AI prose, then fills both with one confirmation and previews all result memories");
+L0311 | 
+L0312 |   await panel.locator("#undo").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0313 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0314 |   // This custom control has no clear option; reset the synthetic fixture as a
+L0315 |   // user's manual clear before testing a fresh preview, not as an undo guarantee.
+L0316 |   await target.locator('[role="combobox"] .selected-value').evaluate((node) => { node.textContent = ""; });
+L0317 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0318 |   await panel.locator("#clearSelection").click();
+L0319 |   await intro.locator("[data-answer]").fill("人工核对的草稿");
+L0320 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0321 |   await target.locator("form").evaluate((form) => form.insertAdjacentHTML("beforeend", '<section><h2>基本信息</h2><label>邮箱<input type="email" required></label></section>'));
+L0322 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0323 |   assert.equal(await intro.locator("[data-answer]").inputValue(), "人工核对的草稿");
+L0324 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0325 |   assert.equal(await degree.locator("[data-selected]").isChecked(), false);
+L0326 |   const email = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^邮箱/ }) });
+L0327 |   assert.equal(await email.locator("[data-selected]").isChecked(), true);
+L0328 |   assert.equal(await panel.locator('[data-selected]:checked').count(), 2);
+L0329 |   assert.equal(await panel.locator(".question").count(), 4);
+L0330 |   assert.equal(await target.locator('input[type="email"]').inputValue(), "");
+L0331 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0332 |   console.log("PASS UI refresh preserves edited drafts and manual exclusions while new valid answers stay in preview until confirmation");
+L0333 | 
+L0334 |   await panel.locator("#language").selectOption("en");
+L0335 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0336 |   assert.notEqual(await intro.locator("[data-answer]").inputValue(), "人工核对的草稿");
+L0337 |   assert.equal(await intro.locator("[data-selected]").isChecked(), false);
+L0338 |   assert.equal(await email.locator("[data-selected]").isChecked(), true);
+L0339 |   assert.equal(await panel.locator('[data-selected]:checked').count(), 1);
+L0340 |   assert.equal(await target.locator('input[type="email"]').inputValue(), "");
+L0341 |   console.log("PASS UI changing language discards old-language drafts while selecting valid new-language answers for preview");
+L0342 | 
+L0343 |   await panel.locator("#language").selectOption("zh");
+L0344 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0345 |   await intro.locator("[data-answer]").fill("第一版回答");
+L0346 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0347 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0348 |   assert.equal(await target.locator("#intro").inputValue(), "第一版回答");
+L0349 |   await target.locator("#intro").fill("");
+L0350 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0351 |   await intro.locator("[data-answer]").fill("第二版回答");
+L0352 |   assert.equal(await intro.locator("[data-selected]").isChecked(), true);
+L0353 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0354 |   assert.equal(await target.locator("#intro").inputValue(), "第二版回答");
+L0355 |   const introResults = panel.locator(".result-row").filter({ has: panel.locator('strong', { hasText: /^自我介绍$/ }) });
+L0356 |   assert.equal(await introResults.count(), 2);
+L0357 |   assert.equal(await panel.locator("[data-save-answer]").count(), 0);
+L0358 |   await panel.locator("#saveResults").click();
+L0359 |   const introLearning = panel.locator("[data-learn]").filter({ has: panel.locator('label', { hasText: /自我介绍/ }) });
+L0360 |   assert.equal(await introLearning.count(), 1);
+L0361 |   for (const checkbox of await panel.locator("[data-learn-check]").all()) await checkbox.uncheck();
+L0362 |   await introLearning.locator("[data-learn-check]").check();
+L0363 |   assert.equal(await introLearning.locator("[data-learn-answer]").inputValue(), "第二版回答");
+L0364 |   // A subsequent language change must not relabel a previously opened answer preview.
+L0365 |   await panel.locator("#language").selectOption("en");
+L0366 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0367 |   assert.equal(await introLearning.locator("[data-learn-check]").isChecked(), true);
+L0368 |   await panel.locator("#saveLearned").click();
+L0369 |   await panel.waitForFunction(() => document.getElementById("learnPreview").hidden);
+L0370 |   const learned = storage.local["applicationTracker.assistant.memories.v2"].find((item) => item.answer === "第二版回答");
+L0371 |   assert.ok(learned); assert.equal(learned.language, "zh");
+L0372 |   assert.equal(learned.question, "自我介绍");
+L0373 |   console.log("PASS UI saves the chosen fill operation and preserves its original language across refreshes");
+L0374 | 
+L0375 |   await panel.locator("#menuButton").click();
+L0376 |   await panel.locator("#learn").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0377 |   assert.equal(await panel.locator("[data-learn]").count(), 3);
+L0378 |   const expectedMemories = await panel.locator("[data-learn]").evaluateAll((nodes) => nodes.map((node) => ({ question: node.querySelector("label").textContent.trim(), answer: node.querySelector("[data-learn-answer]").value })));
+L0379 |   assert.equal(await panel.locator("[data-learn-check]:checked").count(), 3);
+L0380 |   let releaseMemory;
+L0381 |   const memoryEntered = new Promise((resolve) => { memoryGate = { entered: resolve, wait: new Promise((release) => { releaseMemory = release; }) }; });
+L0382 |   await panel.locator("#saveLearned").click();
+L0383 |   await memoryEntered;
+L0384 |   assert.equal(await panel.locator("#saveLearned").isDisabled(), true);
+L0385 |   assert.equal(await panel.locator("#learn").isDisabled(), true);
+L0386 |   assert.equal(await panel.locator("#language").isDisabled(), true);
+L0387 |   assert.equal(await panel.locator("[data-learn-answer]:disabled").count(), 3);
+L0388 |   // Even a queued duplicate click cannot start a second mutable batch.
+L0389 |   await panel.locator("#saveLearned").dispatchEvent("click");
+L0390 |   releaseMemory();
+L0391 |   await panel.waitForFunction(() => document.getElementById("learnPreview").hidden && !document.getElementById("prepare").disabled);
+L0392 |   for (const expected of expectedMemories) {
+L0393 |     assert.ok(storage.local["applicationTracker.assistant.memories.v2"].some((item) => expected.question.endsWith(item.question) && item.answer === expected.answer && item.language === "en"));
+L0394 |   }
+L0395 |   console.log("PASS UI freezes multi-answer memory saves and locks the preview until the batch completes");
+L0396 | 
+L0397 |   await writeStorage("local", { "applicationTracker.assistant.memories.v2": [] });
+L0398 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0399 |   assert.match(await panel.locator("#message").textContent(), /问答记忆已更新/);
+L0400 |   console.log("PASS UI memory changes invalidate prepared answers");
+L0401 |   // Render labels only into pixels, so the DOM cannot supply their meaning.
+L0402 |   const visionFixture = async () => {
+L0403 |     await target.goto(origin + "/apply");
+L0404 |     await target.evaluate(() => {
+L0405 |       document.body.innerHTML = '<form><section><h2>申请信息</h2><canvas id="visual-label" width="420" height="90"></canvas><div><input id="image-field"></div></section><section><h2>联系信息</h2><label>邮箱<input id="email" type="email"></label><label>密码<input id="password" type="password" value="synthetic-password-secret"></label></section></form>';
+L0406 |       const canvas = document.getElementById("visual-label");
+L0407 |       const ctx = canvas.getContext("2d"); ctx.font = "22px sans-serif";
+L0408 |       ctx.fillText("本科教育", 10, 30); ctx.fillText("学校名称", 10, 75);
+L0409 |     });
+L0410 |   };
+L0411 |   const visualSettings = { enabled: true, visionEnabled: true, apiKey: "fixture-key", model: "fixture-model" };
+L0412 |   const visualProfile = { ...profile, bachelorUniversityZh: "截图测试本科大学", masterUniversityZh: "另一所硕士大学" };
+L0413 |   await panel.unroute("https://api.openai.com/v1/responses");
+L0414 |   const visualRequests = [];
+L0415 |   const visualTextRequests = [];
+L0416 |   let rejectVisual = false;
+L0417 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0418 |     const payload = route.request().postDataJSON();
+L0419 |     const isVisual = payload.text.format.name === "application_visual_observations";
+L0420 |     if (!isVisual) visualTextRequests.push(payload);
+L0421 |     const batch = JSON.parse(isVisual ? payload.input[1].content[0].text : payload.input[1].content);
+L0422 |     if (isVisual) {
+L0423 |       visualRequests.push(payload);
+L0424 |       if (rejectVisual) return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: { message: "Image input unsupported by fixture model" } }) });
+L0425 |     }
+L0426 |     const output = isVisual
+L0427 |       ? { observations: batch.fields.filter((field) => field.label === "未命名问题").map((field) => ({ fieldId: field.fieldId, marker: field.marker, label: "学校名称", section: "本科教育", confidence: 0.98 })) }
+L0428 |       : payload.text.format.name === "job_page_information"
+L0429 |         ? { company: null, role: null, base: null, confidence: "low" }
+L0430 |       : payload.text.format.name === "application_field_pairing"
+L0431 |         ? { pairs: batch.fields.map((field) => ({ fieldId: field.fieldId, source: "none", factId: null, memoryId: null, transform: "none" })) }
+L0432 |         : { items: [] };
+L0433 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0434 |   });
+L0435 |   await visionFixture();
+L0436 |   await writeStorage("local", { "applicationTracker.profile": visualProfile, "applicationTracker.aiSettings": visualSettings });
+L0437 |   await panel.locator("#language").selectOption("zh");
+L0438 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0439 |   assert.equal(captureCalls, 1);
+L0440 |   assert.equal(visualRequests.length, 1, await panel.locator("#visionStatus").textContent());
+L0441 |   const imagePayload = visualRequests[0];
+L0442 |   assert.equal(imagePayload.store, false);
+L0443 |   assert.equal(imagePayload.model, "fixture-model");
+L0444 |   assert.equal(imagePayload.input[1].content[1].type, "input_image");
+L0445 |   assert.match(imagePayload.input[1].content[1].image_url, /^data:image\/png;base64,/);
+L0446 |   assert.equal(imagePayload.input[1].content[1].detail, "high");
+L0447 |   assert.ok(!/synthetic-password-secret|截图测试本科大学|profile@example.com/.test(imagePayload.input[1].content[0].text));
+L0448 |   const imageSchool = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^学校名称$/ }) });
+L0449 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
+L0450 |   assert.equal(await imageSchool.locator("[data-selected]").isChecked(), true);
+L0451 |   assert.match(await imageSchool.locator(".status").textContent(), /请核对/);
+L0452 |   assert.match(await panel.locator("#visionStatus").textContent(), /辅助识别 1 项/);
+L0453 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0454 |   assert.equal(await target.locator("#email").inputValue(), "");
+L0455 |   assert.ok(!JSON.stringify(storage).includes("data:image/"));
+L0456 |   await panel.screenshot({ path: path.join(artifacts, "assistant-visual-preview.png"), fullPage: true });
+L0457 |   await imageSchool.locator("[data-answer]").fill("人工核对的本科院校");
+L0458 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0459 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "人工核对的本科院校");
+L0460 |   assert.equal(await imageSchool.locator("[data-selected]").isChecked(), true);
+L0461 |   assert.match(await imageSchool.textContent(), /截图辅助/);
+L0462 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0463 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0464 |   console.log("PASS UI refreshing a visually identified question preserves its manual draft without asking vision to rewrite it");
+L0465 | 
+L0466 |   await expandQuestions();
+L0467 |   if (!await panel.locator("[data-binding]").isVisible()) await panel.locator(".binding > summary").click();
+L0468 |   await panel.locator("[data-binding]").selectOption("education.bachelor");
+L0469 |   await panel.waitForFunction(() => document.querySelector('[aria-label="学校名称的答案"]').value === "截图测试本科大学");
+L0470 |   await refreshPreview(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0471 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
+L0472 |   assert.equal(await panel.locator("[data-binding]").inputValue(), "education.bachelor");
+L0473 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0474 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0475 |   console.log("PASS UI a manual education binding survives a fresh DOM scan of a visually labelled field");
+L0476 |   await panel.locator("#fill").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0477 |   assert.equal(await target.locator("#image-field").inputValue(), "截图测试本科大学");
+L0478 |   assert.equal(await target.locator("#email").inputValue(), profile.email);
+L0479 |   assert.equal(await target.locator("#password").inputValue(), "synthetic-password-secret");
+L0480 |   assert.ok(!JSON.stringify(storage).includes("data:image/"));
+L0481 |   console.log("PASS UI screenshot observations resolve a canvas-only label to bachelor facts, preview first and fill once without persisting images");
+L0482 | 
+L0483 |   await visionFixture();
+L0484 |   await writeStorage("local", { "applicationTracker.aiSettings": { ...visualSettings, visionEnabled: false } });
+L0485 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0486 |   await expandQuestions();
+L0487 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0488 |   assert.equal(await panel.locator("#visionStatus").isVisible(), false);
+L0489 |   assert.equal(await panel.getByRole("textbox", { name: "未命名问题的答案", exact: true }).inputValue(), "");
+L0490 |   assert.equal(await panel.getByRole("textbox", { name: "邮箱的答案", exact: true }).inputValue(), profile.email);
+L0491 |   console.log("PASS UI vision opt-out sends no screenshot and preserves ordinary text preparation");
+L0492 | 
+L0493 |   // Start with a fresh, unresolved visual field; the prior manual education
+L0494 |   // binding is intentionally preserved by a refresh and must not mask this case.
+L0495 |   await visionFixture();
+L0496 |   await writeStorage("local", { "applicationTracker.aiSettings": visualSettings });
+L0497 |   activeTabId = 2;
+L0498 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0499 |   await expandQuestions();
+L0500 |   assert.equal(captureCalls, 1); assert.equal(visualRequests.length, 1);
+L0501 |   assert.match(await panel.locator("#visionStatus").textContent(), /继续使用文字识别/);
+L0502 |   assert.equal(await panel.getByRole("textbox", { name: "邮箱的答案", exact: true }).inputValue(), profile.email);
+L0503 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0504 |   activeTabId = 1;
+L0505 |   console.log("PASS UI an unrelated active tab prevents capture and falls back to the bound form's text preview");
+L0506 | 
+L0507 |   rejectVisual = true;
+L0508 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0509 |   await expandQuestions();
+L0510 |   assert.equal(captureCalls, 2); assert.equal(visualRequests.length, 2);
+L0511 |   assert.match(await panel.locator("#visionStatus").textContent(), /继续使用文字识别.*400/);
+L0512 |   assert.equal(await panel.getByRole("textbox", { name: "邮箱的答案", exact: true }).inputValue(), profile.email);
+L0513 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0514 |   assert.ok(!JSON.stringify(storage).includes("data:image/"));
+L0515 |   console.log("PASS UI an image API failure preserves the ordinary preview without writing or persisting a screenshot");
+L0516 | 
+L0517 |   rejectVisual = false;
+L0518 |   await visionFixture();
+L0519 |   await target.locator("section").first().evaluate((section) => section.insertAdjacentHTML("beforeend", '<label>专业<input id="major"></label>'));
+L0520 |   await writeStorage("local", { "applicationTracker.profile": { ...visualProfile, bachelorMajorZh: "本科专业", masterMajorZh: "硕士专业" } });
+L0521 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0522 |   assert.equal(await imageSchool.locator("[data-answer]").inputValue(), "截图测试本科大学");
+L0523 |   const unresolvedMajor = panel.locator(".question").filter({ has: panel.locator("label", { hasText: /^专业$/ }) });
+L0524 |   assert.equal(await unresolvedMajor.locator("[data-answer]").inputValue(), "");
+L0525 |   assert.equal(await unresolvedMajor.locator("[data-selected]").isChecked(), false);
+L0526 |   assert.match(await unresolvedMajor.textContent(), /截图仅确认/);
+L0527 |   assert.equal(await target.locator("#image-field").inputValue(), "");
+L0528 |   assert.equal(await target.locator("#major").inputValue(), "");
+L0529 |   console.log("PASS UI a partial visual response cannot silently pair bachelor school with a master's major");
+L0530 |   await writeStorage("local", { "applicationTracker.aiSettings": { enabled: false } });
+L0531 |   await target.goto(origin + "/apply");
+L0532 |   childPermissionDenied = true;
+L0533 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0534 |   assert.match(await panel.locator("#coverage").textContent(), /1\/2/);
+L0535 |   assert.equal(permissionRequests.length, 0, "Scanning must not request permissions automatically");
+L0536 |   const permissionButton = panel.getByRole("button", { name: "允许读取内嵌表单（embedded.example）", exact: true });
+L0537 |   await permissionButton.click();
+L0538 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("尚未允许"));
+L0539 |   assert.deepEqual(permissionRequests[0], { request: { origins: ["https://embedded.example/*"] }, userGesture: true });
+L0540 |   assert.equal(await panel.locator("#questions .question").count(), 5);
+L0541 |   allowChildPermission = true;
+L0542 |   await permissionButton.click();
+L0543 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && document.getElementById("coverage").textContent.includes("2/2"));
+L0544 |   assert.equal(await panel.locator("#framePermissions").isVisible(), false);
+L0545 |   assert.equal(await panel.locator("#questions .question").count(), 6);
+L0546 |   assert.equal(await target.frames()[1].locator("#website").inputValue(), "");
+L0547 |   console.log("PASS UI requests only the failed iframe origin during a user click, preserves denied preview and rescans after grant");
+L0548 | 
+L0549 |   await target.setContent('<!doctype html><title>其他页面</title><label>邮箱<input id="uncertain-email"></label>');
+L0550 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0551 |   assert.match(await panel.locator("#pageTypeNotice").textContent(), /尚未确定页面类型/);
+L0552 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 1);
+L0553 |   assert.equal(await target.locator("#uncertain-email").inputValue(), "");
+L0554 |   await target.setContent('<!doctype html><title>岗位详情</title><div class="job-description">工作职责：负责日常财务分析和报表编制。</div><label>邮箱<input id="job-email"></label>');
+L0555 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0556 |   assert.equal(await panel.locator("[data-selected]:checked").count(), 1);
+L0557 |   assert.equal(await target.locator("#job-email").inputValue(), "");
+L0558 |   console.log("PASS UI keeps detected controls available on unknown or job-like pages and writes nothing before confirmation");
+L0559 | 
+L0560 |   await target.setContent('<!doctype html><title>信息表</title><input id="placeholder-question" placeholder="您的补充说明"><input id="unknown-question">');
+L0561 |   await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0562 |   assert.equal(await panel.locator("[data-label-warning]").count(), 2);
+L0563 |   assert.ok((await panel.locator("[data-label-warning]").allTextContents()).every((text) => text === "题目未识别"));
+L0564 |   console.log("PASS UI marks placeholder-only and unlabeled questions for review");
+L0565 | 
+L0566 |   const failedWriteFixture = async ({ reject = true, clear = false } = {}) => {
+L0567 |     await target.setContent('<!doctype html><title>申请信息</title><form><section><h2>基本信息</h2><label>姓名<input id="failed-name"></label><label>邮箱<input id="failed-email" type="email"></label></section></form>');
+L0568 |     await target.locator("#failed-name").evaluate((input, { reject, clear }) => {
+L0569 |       input.addEventListener("input", () => {
+L0570 |         if (clear) input.value = "";
+L0571 |         input.setCustomValidity(reject && input.value ? "Synthetic validation rejection" : "");
+L0572 |       });
+L0573 |     }, { reject, clear });
+L0574 |     await panel.locator("#prepare").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0575 |     await expandQuestions();
+L0576 |     await panel.locator("#clearSelection").click();
+L0577 |     await panel.getByRole("checkbox", { name: "选中姓名", exact: true }).check();
+L0578 |   };
+L0579 |   const completePanelAction = async (id) => {
+L0580 |     await panel.locator(id).click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0581 |   };
+L0582 |   const sessionKey = "applicationTracker.assistant.session.1";
+L0583 |   await failedWriteFixture();
+L0584 |   await completePanelAction("#fill");
+L0585 |   assert.equal(await target.locator("#failed-name").inputValue(), profile.fullNameZh);
+L0586 |   const failedChange = storage.session[sessionKey].results[0];
+L0587 |   assert.equal(failedChange.status, "failed"); assert.equal(failedChange.code, "VALIDATION_FAILED");
+L0588 |   assert.equal(failedChange.undoable, true); assert.equal(failedChange.before, ""); assert.equal(failedChange.after, profile.fullNameZh);
+L0589 |   assert.equal(await panel.locator("#undo").isDisabled(), false);
+L0590 |   assert.equal(await panel.locator("[data-save-answer]").count(), 0);
+L0591 |   assert.match(await panel.locator("#resultSummary").textContent(), /写入失败但可撤销 1 项/);
+L0592 |   await expandQuestions();
+L0593 |   await panel.getByRole("checkbox", { name: "选中邮箱", exact: true }).check();
+L0594 |   await completePanelAction("#fill");
+L0595 |   assert.equal(storage.session[sessionKey].results.length, 2);
+L0596 |   assert.equal(storage.session[sessionKey].results[0].operationId, failedChange.operationId);
+L0597 |   await completePanelAction("#undo");
+L0598 |   assert.equal(await target.locator("#failed-name").inputValue(), "");
+L0599 |   assert.equal(await target.locator("#failed-email").inputValue(), "");
+L0600 |   assert.ok(storage.session[sessionKey].results.every((result) => result.undone));
+L0601 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0602 |   console.log("PASS UI preserves failed assistant changes across later fills and undoes them without offering them as verified memories");
+L0603 | 
+L0604 |   await failedWriteFixture({ clear: true });
+L0605 |   await completePanelAction("#fill");
+L0606 |   const unchangedFailure = storage.session[sessionKey].results[0];
+L0607 |   assert.equal(unchangedFailure.status, "failed"); assert.equal(unchangedFailure.before, unchangedFailure.after);
+L0608 |   assert.equal(await target.locator("#failed-name").inputValue(), "");
+L0609 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0610 |   console.log("PASS UI leaves undo disabled when a failed write did not change the field");
+L0611 | 
+L0612 |   await failedWriteFixture({ reject: false });
+L0613 |   await panel.locator("#fill").click();
+L0614 |   await target.waitForFunction((expected) => document.getElementById("failed-name").value === expected, profile.fullNameZh);
+L0615 |   await target.locator("#failed-name").fill("人工修改的姓名");
+L0616 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0617 |   const userChange = storage.session[sessionKey].results[0];
+L0618 |   assert.equal(userChange.status, "skipped"); assert.equal(userChange.code, "USER_EDITED");
+L0619 |   assert.notEqual(userChange.before, userChange.after);
+L0620 |   assert.equal(await target.locator("#failed-name").inputValue(), "人工修改的姓名");
+L0621 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0622 |   console.log("PASS UI never treats a user's trusted edit during a failed operation as an assistant change");
+L0623 | 
+L0624 |   await failedWriteFixture();
+L0625 |   await completePanelAction("#fill");
+L0626 |   const completedFailure = storage.session[sessionKey].results[0];
+L0627 |   // Recreate the persisted state at an interrupted response boundary. The real
+L0628 |   // page bridge still owns the completed operation and supplies its cached result.
+L0629 |   storage.session[sessionKey].pending = Object.fromEntries(["operationId", "fieldId", "answer", "undo", "label", "contextPath", "entityId", "language", "pageUrl"].map((key) => [key, completedFailure[key]]));
+L0630 |   storage.session[sessionKey].results = [];
+L0631 |   const interruptedItem = storage.session[sessionKey].plan.find((item) => item.fieldId === completedFailure.fieldId);
+L0632 |   Object.assign(interruptedItem, { value: "", status: "ready", selected: true });
+L0633 |   await panel.reload();
+L0634 |   await panel.waitForFunction(() => document.getElementById("resultSummary").textContent.includes("写入失败但可撤销 1 项"));
+L0635 |   assert.equal(await panel.locator("#undo").isDisabled(), false);
+L0636 |   assert.equal(storage.session[sessionKey].results.length, 1);
+L0637 |   await target.locator("#failed-name").fill("失败后的人工修正");
+L0638 |   await completePanelAction("#undo");
+L0639 |   assert.equal(await target.locator("#failed-name").inputValue(), "失败后的人工修正");
+L0640 |   assert.equal(storage.session[sessionKey].results[0].undone, undefined);
+L0641 |   assert.equal(storage.session[sessionKey].results[0].undoBlocked, true);
+L0642 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0643 |   assert.match(await panel.locator("#resultList").textContent(), /撤销未完成/);
+L0644 |   console.log("PASS UI recovers failed changes after interruption and refuses undo after a later manual correction");
+L0645 | 
+L0646 |   const cleanupFixture = async (mode) => {
+L0647 |     await target.setContent('<!doctype html><title>申请信息</title><form><section><h2>硕士教育</h2><div id="cleanup-select" role="combobox" aria-label="学位" aria-controls="cleanup-menu" aria-expanded="false" tabindex="0" style="padding:16px"><span class="selected-value"></span></div><ul id="cleanup-menu" role="listbox" hidden><li role="option">Bachelor\'s degree</li><li role="option">Master\'s degree</li></ul><p id="cleanup-error" data-error hidden>Synthetic validation rejection</p></section></form>');
+L0648 |     await target.evaluate((mode) => {
+L0649 |       const control = document.getElementById("cleanup-select");
+L0650 |       const selected = control.querySelector(".selected-value");
+L0651 |       const menu = document.getElementById("cleanup-menu");
+L0652 |       const close = () => { menu.hidden = true; control.setAttribute("aria-expanded", "false"); };
+L0653 |       let hasSelection = false;
+L0654 |       control.addEventListener("click", () => {
+L0655 |         if (control.getAttribute("aria-expanded") === "true") return close();
+L0656 |         menu.hidden = false; control.setAttribute("aria-expanded", "true");
+L0657 |       });
+L0658 |       menu.addEventListener("click", (event) => {
+L0659 |         if (!event.target.matches('[role="option"]')) return;
+L0660 |         selected.textContent = event.target.textContent;
+L0661 |         hasSelection = true;
+L0662 |         if (mode === "validation-overwrite") document.getElementById("cleanup-error").hidden = false;
+L0663 |         // Keep the popup open after selection, so dismissal occurs only after
+L0664 |         // verification. This exposes the real bridge's cleanup window.
+L0665 |       });
+L0666 |       control.addEventListener("keydown", (event) => {
+L0667 |         if (event.key !== "Escape") return;
+L0668 |         if (!hasSelection) return close(); // Option inspection must stay ordinary.
+L0669 |         control.dataset.cleanupStarted = "true";
+L0670 |         control.dataset.valueBeforeCleanup = selected.textContent;
+L0671 |         if (mode !== "trusted-edit") setTimeout(() => { selected.textContent = "Bachelor's degree"; }, 120);
+L0672 |         setTimeout(close, 450);
+L0673 |       });
+L0674 |     }, mode);
+L0675 |     await completePanelAction("#prepare");
+L0676 |     await expandQuestions();
+L0677 |     await panel.getByRole("combobox", { name: "学位的答案", exact: true }).selectOption("Master's degree");
+L0678 |     assert.equal(await panel.getByRole("checkbox", { name: "选中学位", exact: true }).isChecked(), true);
+L0679 |   };
+L0680 | 
+L0681 |   await cleanupFixture("trusted-edit");
+L0682 |   await panel.locator("#fill").click();
+L0683 |   await target.waitForFunction(() => document.getElementById("cleanup-select").dataset.cleanupStarted === "true");
+L0684 |   assert.equal(await target.locator("#cleanup-select").getAttribute("data-value-before-cleanup"), "Master's degree");
+L0685 |   await target.getByRole("option", { name: "Bachelor's degree", exact: true }).click();
+L0686 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0687 |   const cleanupUserEdit = storage.session[sessionKey].results[0];
+L0688 |   assert.equal(cleanupUserEdit.status, "skipped"); assert.equal(cleanupUserEdit.code, "USER_EDITED");
+L0689 |   assert.equal(await target.locator("#cleanup-select .selected-value").textContent(), "Bachelor's degree");
+L0690 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0691 |   assert.equal(await panel.locator("[data-save-answer]").count(), 0);
+L0692 |   console.log("PASS UI rejects a trusted edit during popup dismissal after verification instead of reporting a successful fill");
+L0693 | 
+L0694 |   await cleanupFixture("validation-overwrite");
+L0695 |   await completePanelAction("#fill");
+L0696 |   const cleanupValidation = storage.session[sessionKey].results[0];
+L0697 |   assert.equal(cleanupValidation.status, "failed"); assert.equal(cleanupValidation.code, "VALIDATION_FAILED");
+L0698 |   assert.equal(await target.locator("#cleanup-select").getAttribute("data-value-before-cleanup"), "Master's degree");
+L0699 |   assert.equal(await target.locator("#cleanup-select .selected-value").textContent(), "Bachelor's degree");
+L0700 |   assert.equal(cleanupValidation.undoable, false);
+L0701 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0702 |   assert.equal(await panel.locator("[data-save-answer]").count(), 0);
+L0703 |   console.log("PASS UI does not claim a site's different value written during cleanup after validation failed");
+L0704 | 
+L0705 |   await cleanupFixture("verified-overwrite");
+L0706 |   await completePanelAction("#fill");
+L0707 |   const cleanupOverwrite = storage.session[sessionKey].results[0];
+L0708 |   assert.equal(cleanupOverwrite.status, "failed"); assert.equal(cleanupOverwrite.code, "VALUE_NOT_RETAINED");
+L0709 |   assert.equal(await target.locator("#cleanup-select").getAttribute("data-value-before-cleanup"), "Master's degree");
+L0710 |   assert.equal(await target.locator("#cleanup-select .selected-value").textContent(), "Bachelor's degree");
+L0711 |   assert.equal(cleanupOverwrite.undoable, false);
+L0712 |   assert.equal(await panel.locator("#undo").isDisabled(), true);
+L0713 |   assert.equal(await panel.locator("[data-save-answer]").count(), 0);
+L0714 |   console.log("PASS UI checks the final value after popup dismissal and rejects a previously verified value that the site replaced");
+L0715 | 
+L0716 |   await target.goto(origin + "/apply");
+L0717 |   await writeStorage("local", { "applicationTracker.aiSettings": { ...visualSettings, visionEnabled: false } });
+L0718 |   await completePanelAction("#prepare");
+L0719 |   const staleIntro = panel.locator('.question').filter({ has: panel.locator('label', { hasText: /^自我介绍/ }) });
+L0720 |   await staleIntro.locator("[data-draft]").click();
+L0721 |   await staleIntro.locator("[data-draft-confirmation]").waitFor();
+L0722 |   const draftCountBeforeStale = visualTextRequests.filter((request) => request.text.format.name === "application_suggestions").length;
+L0723 |   await target.reload();
+L0724 |   await panel.waitForFunction(() => document.getElementById("fill").disabled && document.getElementById("message").textContent.includes("变化"));
+L0725 |   const sendAfterStale = staleIntro.locator("[data-draft-send]");
+L0726 |   assert.ok(await sendAfterStale.count() === 0 || await sendAfterStale.isDisabled());
+L0727 |   if (await sendAfterStale.count()) await sendAfterStale.dispatchEvent("click");
+L0728 |   assert.equal(visualTextRequests.filter((request) => request.text.format.name === "application_suggestions").length, draftCountBeforeStale);
+L0729 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0730 |   console.log("PASS UI revokes a draft confirmation after page changes and a queued send cannot issue an AI request");
+L0731 |   await writeStorage("local", { "applicationTracker.aiSettings": { enabled: false } });
+L0732 | 
+L0733 |   await target.goto(origin + "/apply");
+L0734 |   await target.evaluate(() => {
+L0735 |     document.body.innerHTML = `<form><section><h2>申请问题</h2>${Array.from({ length: 25 }, (_, index) => `<label>补充说明 ${index + 1}<textarea required></textarea></label>`).join("")}</section></form>`;
+L0736 |   });
+L0737 |   await completePanelAction("#prepare");
+L0738 |   const visibleQuestionCount = () => panel.locator(".question").evaluateAll((nodes) => nodes.filter((node) => node.getBoundingClientRect().height > 0).length);
+L0739 |   assert.equal(await panel.locator('.question').count(), 25);
+L0740 |   assert.equal(await visibleQuestionCount(), 15);
+L0741 |   await panel.locator("#showAll").click();
+L0742 |   assert.equal(await panel.locator('.question').count(), 25);
+L0743 |   assert.equal(await visibleQuestionCount(), 25);
+L0744 |   await panel.locator("#showAll").click();
+L0745 |   assert.equal(await visibleQuestionCount(), 15);
+L0746 |   await panel.locator("[data-more-toggle]").click();
+L0747 |   assert.equal(await panel.locator('.question').count(), 25);
+L0748 |   assert.equal(await visibleQuestionCount(), 25);
+L0749 |   console.log("PASS UI renders all 25 attention questions while hiding overflow, and normal expand controls reveal them without deleting rows");
+L0750 | 
+L0751 |   const recordCount = () => (storage.local["applicationTracker.records"] || []).length;
+L0752 |   const recordBaseline = recordCount();
+L0753 |   const recordFixture = async (structured = true) => {
+L0754 |     await target.goto(origin + "/apply");
+L0755 |     await target.evaluate((structured) => {
+L0756 |       document.title = "填写简历";
+L0757 |       document.body.innerHTML = '<form><section><h2>基本信息</h2><label>姓名<input id="record-name"></label><label>邮箱<input id="record-email" type="email"></label></section></form>';
+L0758 |       if (structured) {
+L0759 |         const node = document.createElement("script"); node.type = "application/ld+json";
+L0760 |         node.textContent = JSON.stringify({ "@type": "JobPosting", title: "分析师", hiringOrganization: { name: "示例投递公司" }, jobLocation: { address: { addressLocality: "香港" } } });
+L0761 |         document.head.appendChild(node);
+L0762 |       }
+L0763 |     }, structured);
+L0764 |   };
+L0765 |   await recordFixture();
+L0766 |   await completePanelAction("#prepare");
+L0767 |   assert.equal(await panel.locator("#recordCard").isVisible(), false);
+L0768 |   assert.equal(recordCount(), recordBaseline);
+L0769 |   await completePanelAction("#fill");
+L0770 |   await panel.waitForFunction(() => document.getElementById("recordRole")?.value === "分析师");
+L0771 |   assert.equal(await panel.locator("#recordCard").isVisible(), true);
+L0772 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "示例投递公司");
+L0773 |   assert.match(await panel.locator("#recordCard [data-record-origin]").textContent(), /结构化数据/);
+L0774 |   assert.equal(recordCount(), recordBaseline);
+L0775 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+L0776 |   await panel.locator("#recordCard").scrollIntoViewIfNeeded();
+L0777 |   await panel.screenshot({ path: path.join(artifacts, "assistant-record-card.png"), fullPage: true });
+L0778 |   console.log("PASS UI prepares structured job information without saving and shows its source in the record card only after filling");
+L0779 | 
+L0780 |   await panel.locator("#saveRecord").click();
+L0781 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓") && !document.getElementById("prepare").disabled);
+L0782 |   assert.equal(recordCount(), recordBaseline + 1);
+L0783 |   const savedRecord = storage.local["applicationTracker.records"].at(-1);
+L0784 |   assert.deepEqual([savedRecord.company, savedRecord.role, savedRecord.portalLink, savedRecord.status, savedRecord.appliedDate], ["示例投递公司", "分析师", target.url(), "applied", toDateInputValue()]);
+L0785 |   await panel.reload();
+L0786 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓"));
+L0787 |   assert.equal(await panel.locator("#recordCard #saveRecord, #recordCard #saveRecordAnyway").count(), 0);
+L0788 |   assert.equal(recordCount(), recordBaseline + 1);
+L0789 |   console.log("PASS UI saves a record only after a click, preserves the correct page and date, and restores its saved state on panel reload");
+L0790 | 
+L0791 |   await recordFixture();
+L0792 |   await completePanelAction("#prepare");
+L0793 |   await completePanelAction("#fill");
+L0794 |   await panel.locator("#saveRecordAnyway").waitFor();
+L0795 |   assert.match(await panel.locator("#recordCard").textContent(), /已记录过：示例投递公司.*分析师/);
+L0796 |   assert.equal(recordCount(), recordBaseline + 1);
+L0797 |   await panel.locator("#recordRole").fill("人工核对岗位");
+L0798 |   assert.equal(await panel.locator("#saveRecordAnyway").isDisabled(), true);
+L0799 |   await panel.locator("#recordRole").press("Tab");
+L0800 |   await panel.waitForFunction(() => document.getElementById("saveRecordAnyway") && !document.getElementById("saveRecordAnyway").disabled);
+L0801 |   assert.equal(await panel.locator("#recordRole").inputValue(), "人工核对岗位");
+L0802 |   assert.equal(recordCount(), recordBaseline + 1);
+L0803 |   await panel.locator("#saveRecordAnyway").click();
+L0804 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓") && !document.getElementById("prepare").disabled);
+L0805 |   assert.equal(recordCount(), recordBaseline + 2);
+L0806 |   assert.equal(storage.local["applicationTracker.records"].at(-1).role, "人工核对岗位");
+L0807 |   console.log("PASS UI rechecks duplicates after an edit and blur, and records again only after the separate still-record confirmation");
+L0808 | 
+L0809 |   await recordFixture(false);
+L0810 |   await completePanelAction("#prepare");
+L0811 |   await completePanelAction("#fill");
+L0812 |   await panel.locator("#recordRecent").waitFor();
+L0813 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "");
+L0814 |   assert.equal(await panel.locator("#recordRole").inputValue(), "");
+L0815 |   await panel.locator("#saveRecordAnyway").click();
+L0816 |   await panel.locator("#recordCard [data-record-error]").waitFor();
+L0817 |   assert.match(await panel.locator("#recordCard [data-record-error]").textContent(), /请填写公司.*请填写岗位/);
+L0818 |   assert.equal(recordCount(), recordBaseline + 2);
+L0819 |   await panel.locator("#recordRecent").selectOption("0");
+L0820 |   await panel.waitForFunction(() => document.getElementById("recordRole")?.value === "分析师");
+L0821 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "示例投递公司");
+L0822 |   assert.match(await panel.locator("#recordCard [data-record-origin]").textContent(), /最近岗位/);
+L0823 |   assert.equal(recordCount(), recordBaseline + 2);
+L0824 |   console.log("PASS UI keeps recent jobs as unselected candidates, reports empty required record fields inline and fills a recent job only after selection");
+L0825 | 
+L0826 |   await panel.unroute("https://api.openai.com/v1/responses");
+L0827 |   let releaseJobInfo;
+L0828 |   let jobRequested = false;
+L0829 |   const jobGate = new Promise((resolve) => { releaseJobInfo = resolve; });
+L0830 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0831 |     const payload = route.request().postDataJSON(), batch = JSON.parse(payload.input[1].content);
+L0832 |     const format = payload.text.format.name;
+L0833 |     let output;
+L0834 |     if (format === "job_page_information") {
+L0835 |       jobRequested = true; await jobGate;
+L0836 |       output = { company: "AI 识别公司", role: "AI 识别岗位", base: "香港", confidence: "medium" };
+L0837 |     } else if (format === "application_field_pairing") output = { pairs: batch.fields.map((field) => ({ fieldId: field.fieldId, source: "none", factId: null, memoryId: null, transform: "none" })) };
+L0838 |     else output = { items: [] };
+L0839 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0840 |   });
+L0841 |   await recordFixture(false);
+L0842 |   await writeStorage("local", { "applicationTracker.aiSettings": { ...visualSettings, visionEnabled: false } });
+L0843 |   const jobStarted = panel.waitForRequest((request) => request.url() === "https://api.openai.com/v1/responses" && request.postDataJSON().text.format.name === "job_page_information");
+L0844 |   await completePanelAction("#prepare");
+L0845 |   await jobStarted;
+L0846 |   await completePanelAction("#fill");
+L0847 |   assert.equal(jobRequested, true);
+L0848 |   await panel.locator("#recordCompany").fill("手动填写公司");
+L0849 |   await panel.locator("#recordRole").fill("手动填写岗位");
+L0850 |   await panel.locator("#recordRole").fill("");
+L0851 |   releaseJobInfo();
+L0852 |   await panel.waitForFunction(async () => {
+L0853 |     const key = "applicationTracker.assistant.session.1";
+L0854 |     return (await chrome.storage.session.get(key))[key]?.recordDraft?.base === "香港";
+L0855 |   });
+L0856 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "手动填写公司");
+L0857 |   assert.equal(await panel.locator("#recordRole").inputValue(), "");
+L0858 |   assert.equal(recordCount(), recordBaseline + 2);
+L0859 |   console.log("PASS UI a late public job AI response preserves manual company edits and a deliberately cleared role");
+L0860 | 
+L0861 |   await panel.locator("#recordRole").fill("人工岗位");
+L0862 |   await panel.locator("#recordRole").press("Tab");
+L0863 |   await panel.waitForFunction(() => document.getElementById("saveRecordAnyway") && !document.getElementById("saveRecordAnyway").disabled);
+L0864 |   let releaseRecord;
+L0865 |   const recordEntered = new Promise((resolve) => { recordGate = { entered: resolve, wait: new Promise((release) => { releaseRecord = release; }) }; });
+L0866 |   await panel.locator("#saveRecordAnyway").click();
+L0867 |   await recordEntered;
+L0868 |   assert.equal(await panel.locator("#recordCompany").isDisabled(), true);
+L0869 |   assert.equal(await panel.locator("#recordRole").isDisabled(), true);
+L0870 |   assert.equal(await panel.locator("#prepare").isDisabled(), true);
+L0871 |   await panel.locator("#saveRecordAnyway").dispatchEvent("click");
+L0872 |   await target.reload();
+L0873 |   await panel.evaluate(() => chrome.tabs.onUpdated.emit(1, { status: "loading" }));
+L0874 |   releaseRecord();
+L0875 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓") && !document.getElementById("prepare").disabled);
+L0876 |   assert.equal(recordCount(), recordBaseline + 3);
+L0877 |   assert.match(await panel.locator("#recordCard").textContent(), /已记录.*页面已变化/);
+L0878 |   assert.ok(storage.session[sessionKey].recordSaved?.id);
+L0879 |   assert.equal(storage.local["applicationTracker.records"].at(-1).role, "人工岗位");
+L0880 |   console.log("PASS UI freezes record saving, rejects duplicate clicks and keeps a committed save marked successful when navigation precedes its response");
+L0881 |   assert.deepEqual(errors, []);
+L0882 |   console.log("UI integration cases passed: 43 (Chrome API adapter and local AI stub; not live-model validation)");
+L0883 | } finally { await browser.close(); await new Promise((r) => server.close(r)); }
+
+========================================================================
+FILE: application-tracker-extension/scripts/vision-browser-tests.mjs
+SHA256: 148892a5f2ce7191344951036a6d3937b81f8155d443966395704130431f3433
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { readFile } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0008 | 
+L0009 | // Only isolated synthetic pages are captured. Images remain in memory and no
+L0010 | // external AI service or existing user browser profile is used by this suite.
+L0011 | const require = createRequire(import.meta.url);
+L0012 | let playwright;
+L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0014 | const root = path.resolve(import.meta.dirname, "..");
+L0015 | const server = createServer(async (req, res) => {
+L0016 |   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+L0017 |   if (pathname === "/fixture") { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end('<!doctype html><html><head><title>Visual application fixture</title></head><body></body></html>'); return; }
+L0018 |   const file = path.resolve(root, "." + pathname);
+L0019 |   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+L0020 |   try { res.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript" : "text/html; charset=utf-8"); res.end(await readFile(file)); } catch { res.writeHead(404).end(); }
+L0021 | });
+L0022 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0023 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0024 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
+L0025 | const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, deviceScaleFactor: 1 });
+L0026 | const errors = [];
+L0027 | page.on("pageerror", (error) => errors.push(error.message));
+L0028 | let passed = 0;
+L0029 | const gray = [232, 236, 233, 255];
+L0030 | async function fixture() {
+L0031 |   await page.goto(origin + "/fixture");
+L0032 |   await page.evaluate(() => {
+L0033 |     document.body.innerHTML = `<style>
+L0034 |       body { margin:0; background:#fff; min-height:1600px; font-family:sans-serif }
+L0035 |       h2 { position:absolute; left:40px; top:12px }
+L0036 |       .form-item { position:absolute; width:300px; height:70px }
+L0037 |       label { display:block; height:25px }
+L0038 |       input, textarea { box-sizing:border-box; appearance:none; border:0; width:240px; height:40px; background:#e00000; color:#fff }
+L0039 |       #ordinary-box { left:40px; top:80px } #secret-box { left:40px; top:180px }
+L0040 |       #filled-box { left:40px; top:280px } #hidden-box { display:none }
+L0041 |       #shadow { position:absolute; left:40px; top:380px }
+L0042 |       #frame { position:absolute; left:400px; top:100px; width:250px; height:180px; border:0 }
+L0043 |       #offscreen-box { left:40px; top:1300px } #covered-box { left:700px; top:100px }
+L0044 |       #cover { position:absolute; left:690px; top:80px; width:290px; height:120px; background:#fafafa; z-index:2 }
+L0045 |       #readonly-answer { position:absolute; left:400px; top:350px; width:240px; height:40px; background:#e00000 }
+L0046 |     </style><h2>申请信息</h2>
+L0047 |     <div id="ordinary-box" class="form-item"><label for="ordinary">学校名称</label><input id="ordinary"></div>
+L0048 |     <div id="secret-box" class="form-item"><label for="secret">密码</label><input id="secret" type="password" value="SYNTHETIC_PASSWORD_ONLY"></div>
+L0049 |     <div id="filled-box" class="form-item"><label for="filled">邮箱</label><input id="filled" value="synthetic@example.test"></div>
+L0050 |     <div id="hidden-box" class="form-item"><input id="hidden"></div>
+L0051 |     <div id="offscreen-box" class="form-item"><label for="offscreen">其他说明</label><input id="offscreen"></div>
+L0052 |     <div id="covered-box" class="form-item"><label for="covered">被挡住的字段</label><input id="covered"></div><div id="cover"></div>
+L0053 |     <div id="shadow"></div>
+L0054 |     <iframe id="frame" srcdoc="<style>body { margin:0; background:#e00000 }</style>PRIVATE_FRAME_TEST_ONLY"></iframe>
+L0055 |     <div id="readonly-answer" data-answer>PRIVATE_READONLY_TEST_ONLY</div>`;
+L0056 |     document.getElementById("shadow").attachShadow({ mode: "open" }).innerHTML = '<style>.form-item { width:300px; height:70px }input { display:block; width:240px; height:40px; border:0; background:#e00000 }</style><div class="form-item"><label>私人字段<input value="PRIVATE_SHADOW_TEST_ONLY"></label></div>';
+L0057 |   });
+L0058 |   await page.locator("#frame").waitFor();
+L0059 |   await page.waitForFunction(() => document.getElementById("frame").contentDocument?.readyState === "complete");
+L0060 |   return page.evaluate(pageBridge, { action: "scan" });
+L0061 | }
+L0062 | const layoutFor = (scan, extra = {}) => page.evaluate(pageBridge, { action: "visual-layout", token: scan.token, scanId: scan.scanId, url: scan.url, ...extra });
+L0063 | const marked = (layout) => layout.fields.map((field, index) => ({ fieldId: `doc:${field.localFieldId}`, marker: `V${index + 1}`, rect: field.rect }));
+L0064 | const imageSamples = (imageUrl, coordinates) => page.evaluate(async ({ imageUrl, coordinates }) => {
+L0065 |   const bitmap = await createImageBitmap(await (await fetch(imageUrl)).blob());
+L0066 |   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+L0067 |   const ctx = canvas.getContext("2d"); ctx.drawImage(bitmap, 0, 0);
+L0068 |   const samples = coordinates.map(([x, y]) => [...ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data]);
+L0069 |   const result = { width: bitmap.width, height: bitmap.height, samples };
+L0070 |   bitmap.close(); canvas.width = 1; canvas.height = 1;
+L0071 |   return result;
+L0072 | }, { imageUrl, coordinates });
+L0073 | const render = (rawImageUrl, layout) => page.evaluate(async ({ rawImageUrl, layout, fields }) => (await import("/src/assistant/visualCapture.js")).renderVisualCapture(rawImageUrl, layout, fields), { rawImageUrl, layout, fields: marked(layout) });
+L0074 | async function check(name, run) { await run(); passed++; console.log(`PASS ${name}`); }
+L0075 | 
+L0076 | try {
+L0077 |   await check("visual geometry contains no field text or values and excludes filled, offscreen, covered and iframe fields", async () => {
+L0078 |     const scan = await fixture();
+L0079 |     const layout = await layoutFor(scan);
+L0080 |     const ids = new Set(layout.fields.map((field) => field.localFieldId));
+L0081 |     assert.equal(ids.has(scan.fields.find((field) => field.identity.id === "ordinary").fieldId), true);
+L0082 |     for (const id of ["secret", "filled", "offscreen", "covered"]) assert.equal(ids.has(scan.fields.find((field) => field.identity.id === id).fieldId), false, id);
+L0083 |     assert.equal(layout.fields.length, 1);
+L0084 |     assert.ok(layout.redactions.length >= 7);
+L0085 |     assert.doesNotMatch(JSON.stringify(layout), /SYNTHETIC|PRIVATE|synthetic@|学校|密码|iframe|input/);
+L0086 |   });
+L0087 |   await check("real Chrome pixels redact inputs, filled containers, iframe, open shadow controls and answer blocks before marking", async () => {
+L0088 |     const scan = await fixture();
+L0089 |     const layout = await layoutFor(scan);
+L0090 |     const raw = `data:image/png;base64,${(await page.screenshot({ type: "png" })).toString("base64")}`;
+L0091 |     const points = [[200, 135], [200, 235], [200, 335], [600, 240], [200, 415], [600, 370]];
+L0092 |     const original = await imageSamples(raw, points);
+L0093 |     assert.ok(original.samples.every((pixel) => JSON.stringify(pixel) !== JSON.stringify(gray)));
+L0094 |     const result = await render(raw, layout);
+L0095 |     assert.equal(result.scale, 1);
+L0096 |     const processed = await imageSamples(result.imageUrl, points);
+L0097 |     assert.ok(processed.samples.every((pixel) => JSON.stringify(pixel) === JSON.stringify(gray)), JSON.stringify(processed.samples));
+L0098 |     assert.notEqual(result.imageUrl, raw);
+L0099 |     const marker = await imageSamples(result.imageUrl, [[41, 107], [900, 500]]);
+L0100 |     assert.deepEqual(marker.samples, [[22, 93, 216, 255], [255, 255, 255, 255]]);
+L0101 |     assert.equal(await page.locator("#secret").inputValue(), "SYNTHETIC_PASSWORD_ONLY");
+L0102 |     assert.equal(await page.locator("#ordinary").inputValue(), "");
+L0103 |   });
+L0104 |   await check("large real screenshots scale to 1600 pixels while retaining redaction", async () => {
+L0105 |     await page.setViewportSize({ width: 2560, height: 1440 });
+L0106 |     const scan = await fixture();
+L0107 |     const layout = await layoutFor(scan);
+L0108 |     const raw = `data:image/png;base64,${(await page.screenshot({ type: "png" })).toString("base64")}`;
+L0109 |     const result = await render(raw, layout);
+L0110 |     assert.equal(result.scale, 0.625);
+L0111 |     const processed = await imageSamples(result.imageUrl, [[600 * result.scale, 240 * result.scale]]);
+L0112 |     assert.equal(processed.width, 1600); assert.equal(processed.height, 900);
+L0113 |     assert.deepEqual(processed.samples[0], gray);
+L0114 |     await page.setViewportSize({ width: 1000, height: 700 });
+L0115 |   });
+L0116 |   await check("transient geometry changes stay invalid after the original position returns", async () => {
+L0117 |     const scan = await fixture();
+L0118 |     const watchId = crypto.randomUUID();
+L0119 |     await layoutFor(scan, { startWatch: watchId });
+L0120 |     await page.locator("#ordinary").evaluate((el) => { el.style.transform = "translateX(10px)"; el.style.transform = ""; });
+L0121 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0122 |     assert.deepEqual(await layoutFor(scan, { releaseWatch: watchId }), { released: true });
+L0123 |     const second = crypto.randomUUID();
+L0124 |     assert.equal((await layoutFor(scan, { startWatch: second })).changed, false);
+L0125 |     await layoutFor(scan, { releaseWatch: second });
+L0126 |   });
+L0127 |   await check("transient aria label changes invalidate screenshots even without geometry changes", async () => {
+L0128 |     const scan = await fixture();
+L0129 |     const watchId = crypto.randomUUID();
+L0130 |     await layoutFor(scan, { startWatch: watchId });
+L0131 |     await page.locator("#ordinary").evaluate((el) => { el.setAttribute("aria-label", "父亲学校"); el.removeAttribute("aria-label"); });
+L0132 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0133 |     await layoutFor(scan, { releaseWatch: watchId });
+L0134 |   });
+L0135 |   await check("scrolling away and back invalidates a capture even with matching final coordinates", async () => {
+L0136 |     const scan = await fixture();
+L0137 |     const watchId = crypto.randomUUID();
+L0138 |     await layoutFor(scan, { startWatch: watchId });
+L0139 |     await page.evaluate(async () => { scrollTo(0, 200); await new Promise(requestAnimationFrame); scrollTo(0, 0); await new Promise(requestAnimationFrame); });
+L0140 |     assert.equal((await layoutFor(scan, { watchId })).changed, true);
+L0141 |     await layoutFor(scan, { releaseWatch: watchId });
+L0142 |   });
+L0143 |   await check("a fresh scan releases the previous capture watch and cannot reuse its old snapshot", async () => {
+L0144 |     const scan = await fixture();
+L0145 |     const watchId = crypto.randomUUID();
+L0146 |     await layoutFor(scan, { startWatch: watchId });
+L0147 |     const fresh = await page.evaluate(pageBridge, { action: "scan" });
+L0148 |     await assert.rejects(layoutFor(scan, { watchId }), /页面已变化/);
+L0149 |     const next = crypto.randomUUID();
+L0150 |     assert.equal((await layoutFor(fresh, { startWatch: next })).changed, false);
+L0151 |     await layoutFor(fresh, { releaseWatch: next });
+L0152 |   });
+L0153 |   assert.deepEqual(errors, []);
+L0154 |   console.log(`Vision browser cases passed: ${passed}`);
+L0155 | } finally { await browser.close(); await new Promise((resolve) => server.close(resolve)); }
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/README.md
+SHA256: 7032ca9a388671fb2bbcfaffeccc9070c41db9d397b1832382a50d68c55aacea
+L0001 | # 离线组件验收页
+L0002 | 
+L0003 | 这些页面直接运行本地依赖的真实 Ant Design 3、Ant Design 5 和 Element UI 2 组件。所有示例选项和数据都是虚构的，测试服务器只允许本地请求。
+L0004 | 
+L0005 | 安装开发依赖后执行 `npm.cmd run test:components`。组件测试也包含在 `test:browser` 中。使用 `BROWSER_EXECUTABLE` 可以指定 Chromium 浏览器路径。
+L0006 | 
+L0007 | 每个真实组件页面包含普通下拉、搜索下拉、三级级联、日期、月份、日期范围、单选、多选。测试同时核对页面读数和框架持有的值，避免只改 DOM 的假成功。My97 页面仅模拟输入接口及 `dateFmt`，不宣称覆盖 My97 弹出日历。
+L0008 | 
+L0009 | 依赖由 `package-lock.json` 固定，页面只读取 `/node_modules/` 下的 UMD 脚本与样式，不使用 CDN。
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd-fixture.js
+SHA256: a5d958fed9b8f9f042b5d856052dc2159891965f292a2b5cb40c3cbbeb3ad041
+L0001 | (function () {
+L0002 |   const h = React.createElement;
+L0003 |   const { Select, Cascader, DatePicker, Radio, Checkbox, Form } = antd;
+L0004 |   const isV3 = window.fixtureLibrary === "antd3";
+L0005 |   const locationOptions = [{ value: "广东省", label: "广东省", children: [
+L0006 |     { value: "深圳市", label: "深圳市", children: [{ value: "南山区", label: "南山区" }, { value: "福田区", label: "福田区" }] },
+L0007 |     { value: "广州市", label: "广州市", children: [{ value: "天河区", label: "天河区" }] }
+L0008 |   ] }];
+L0009 |   function App() {
+L0010 |     const [values, setValues] = React.useState({ degree: undefined, school: undefined, location: [], date: null, month: null, range: [], gender: undefined, languages: [] });
+L0011 |     const update = (key) => (value) => setValues((old) => ({ ...old, [key]: value }));
+L0012 |     window.fixtureValues = { ...values, date: values.date?.format("YYYY-MM-DD") || "", month: values.month?.format("YYYY-MM") || "", range: (values.range || []).map((value) => value.format("YYYY-MM-DD")) };
+L0013 |     const field = (id, label, component) => h("div", { className: "fixture-field", "data-fixture-field": id, key: id }, h(Form.Item, { label }, component));
+L0014 |     const select = (id, options, showSearch = false) => h(Select, { id, style: { width: 300 }, value: values[id], onChange: update(id), allowClear: true, showSearch, optionFilterProp: "children", placeholder: "请选择" }, options.map((value) => h(Select.Option, { key: value, value }, value)));
+L0015 |     const monthProps = { id: "month", value: values.month, onChange: update("month"), format: "YYYY-MM", placeholder: "YYYY-MM", allowClear: true, inputReadOnly: true };
+L0016 |     return h("section", null, h("h1", null, `${isV3 ? "Ant Design 3" : "Ant Design 5"} 真实组件`), h(Form, { layout: "vertical" }, [
+L0017 |       field("degree", "学历", select("degree", ["本科", "硕士", "博士"])),
+L0018 |       field("school", "学校", select("school", ["示例大学", "星海大学", "远山学院"], true)),
+L0019 |       field("location", "所在地", h(Cascader, { id: "location", options: locationOptions, value: values.location, onChange: update("location"), allowClear: true, placeholder: "请选择地区", style: { width: 300 } })),
+L0020 |       field("date", "日期", h(DatePicker, { id: "date", value: values.date, onChange: update("date"), format: "YYYY-MM-DD", placeholder: "YYYY-MM-DD", allowClear: true, inputReadOnly: true })),
+L0021 |       field("month", "月份", isV3 ? h(DatePicker.MonthPicker, monthProps) : h(DatePicker, { ...monthProps, picker: "month" })),
+L0022 |       field("range", "任职时间", h(DatePicker.RangePicker, { value: values.range, onChange: update("range"), format: "YYYY-MM-DD", placeholder: ["开始日期", "结束日期"], allowClear: true, inputReadOnly: true })),
+L0023 |       field("gender", "性别", h(Radio.Group, { value: values.gender, onChange: (event) => update("gender")(event.target.value) }, ["男", "女"].map((value) => h(Radio, { key: value, value }, value)))),
+L0024 |       field("languages", "语言", h(Checkbox.Group, { value: values.languages, onChange: update("languages"), options: ["中文", "英语"] }))
+L0025 |     ]));
+L0026 |   }
+L0027 |   ReactDOM.render(h(App), document.getElementById("root"));
+L0028 |   window.fixtureReady = true;
+L0029 | })();
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd3.html
+SHA256: de1920e9fcae6df20fc2f76ee474b63453b436bfb8a667b20e4ccc188dfc6eb0
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Ant Design 3 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/antd3/dist/antd.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root"></main>
+L0006 | <script src="/node_modules/react/umd/react.development.js"></script>
+L0007 | <script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+L0008 | <script src="/node_modules/moment/min/moment.min.js"></script>
+L0009 | <script src="/node_modules/antd3/dist/antd.js"></script>
+L0010 | <script>window.fixtureLibrary = "antd3";</script>
+L0011 | <script src="/test/fixtures/components/antd-fixture.js"></script></body></html>
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/antd5.html
+SHA256: 7fd10ccd3acc5efabc2b98565503b23677944d9477bd8ed40526cc9e3562d453
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Ant Design 5 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/antd5/dist/reset.css">
+L0004 | <link rel="stylesheet" href="/test/fixtures/components/fixture.css"></head>
+L0005 | <body><main id="root"></main>
+L0006 | <script src="/node_modules/react/umd/react.development.js"></script>
+L0007 | <script src="/node_modules/react-dom/umd/react-dom.development.js"></script>
+L0008 | <script src="/node_modules/dayjs/dayjs.min.js"></script>
+L0009 | <script src="/node_modules/antd5/dist/antd.js"></script>
+L0010 | <script>window.fixtureLibrary = "antd5";</script>
+L0011 | <script src="/test/fixtures/components/antd-fixture.js"></script></body></html>
+
+========================================================================
+FILE: application-tracker-extension/test/fixtures/components/element.html
+SHA256: 4f1c3d1efb845c1ac9c899fca67c05f87784c32a96a61994dab650d821fdd85c
+L0001 | <!doctype html>
+L0002 | <html lang="zh-CN"><head><meta charset="utf-8"><title>Element UI 2 组件验收</title>
+L0003 | <link rel="stylesheet" href="/node_modules/element-ui/lib/theme-chalk/index.css">

@@ -3,10 +3,11 @@ import { getBulkSelectionState, getSelectedVisibleIds, toggleAllVisibleIds } fro
 import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES, STORAGE_KEY, PROFILE_STORAGE_KEY } from "../constants.js";
 import { classifyNextActionDate, toDateInputValue } from "../dateUtils.js";
 import { findPotentialDuplicate } from "../duplicates.js";
-import { buildPreImportBackupFilename, buildWorkbookSheets, rowsToImportedRecords } from "../excel.js";
-import { emptyRecordDraft, validateRecordForSave } from "../model.js";
+import { buildPreImportBackupFilename, buildWorkbookSheets, workbookToImportedRecords } from "../excel.js";
+import { emptyRecordDraft, getPortalUrl, validateRecordForSave } from "../model.js";
 import { getCompanyInitial, getStatusTone, summarizeRecords } from "../presentation.js";
-import { deleteRecord, getProfile, getRecords, replaceAllRecords, saveExistingRecord, saveNewRecord } from "../storage.js";
+import { deleteRecord, getProfile, getRecords, saveExistingRecord, saveNewRecord } from "../storage.js";
+import { requestStorageMutation } from "../storageClient.js";
 
 const recordsBody = document.querySelector("#recordsBody");
 const summaryLine = document.querySelector("#summaryLine");
@@ -162,14 +163,15 @@ function renderRow(record) {
   const dueClass = classifyNextActionDate(record.nextActionDate, toDateInputValue());
   const statusTone = getStatusTone(record.status);
   const companyInitial = getCompanyInitial(record.company);
+  const portalUrl = getPortalUrl(record.portalLink);
   return `
     <tr class="${dueClass === "none" ? "" : dueClass}">
       <td><input class="row-checkbox" type="checkbox" data-action="select" data-id="${record.id}" aria-label="选择 ${escapeAttribute(record.company)}" ${selectedIds.has(record.id) ? "checked" : ""} /></td>
       <td>
-        <a class="company-link" href="${escapeAttribute(record.portalLink)}" target="_blank" rel="noreferrer">
+        <${portalUrl ? `a class="company-link" href="${escapeAttribute(portalUrl)}" target="_blank" rel="noreferrer"` : 'span class="company-link"'}>
           <span class="company-avatar">${escapeHtml(companyInitial)}</span>
           <span>${escapeHtml(record.company)}</span>
-        </a>
+        </${portalUrl ? "a" : "span"}>
       </td>
       <td>${escapeHtml(record.role)}</td>
       <td>${escapeHtml(record.base)}</td>
@@ -445,26 +447,18 @@ async function handleImport(event) {
   const file = event.target.files?.[0];
   event.target.value = "";
   if (!file) return;
-  if (!confirm("导入会覆盖当前本地记录。确认继续？")) return;
+  const baseline = structuredClone(records);
 
   try {
     assertXlsxLoaded();
-    if (records.length > 0) {
-      downloadRecordsAsXlsx(records, buildPreImportBackupFilename(toDateInputValue()));
-    }
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array" });
-    const sheetName = workbook.SheetNames.includes("_restore_data")
-      ? "_restore_data"
-      : workbook.SheetNames.includes("_data")
-        ? "_data"
-        : workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-    const imported = rowsToImportedRecords(rows);
-    await replaceAllRecords(imported);
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    const imported = workbookToImportedRecords(workbook, (sheet) => XLSX.utils.sheet_to_json(sheet, { defval: "" }));
+    if (!confirm(`将按 Excel 可见表导入 ${imported.length} 条记录，并覆盖当前本地记录。导入前会保存完整恢复点，确认继续？`)) return;
+    if (baseline.length > 0) downloadRecordsAsXlsx(baseline, buildPreImportBackupFilename(toDateInputValue()));
+    await requestStorageMutation({ operation: "records.replace", records: imported, expectedRecords: baseline });
     records = await getRecords();
-    showMessage("已导入并覆盖本地记录。");
+    showMessage("已按可见表导入并覆盖本地记录；完整恢复点已保存，可在问答记忆页恢复。");
     render();
   } catch (error) {
     showMessage(`导入失败：${error.message}`);
@@ -503,7 +497,8 @@ function applyDisplayWorksheetLayout(worksheet) {
     { wch: 36 },
     { wch: 56 },
     { wch: 22 },
-    { wch: 22 }
+    { wch: 22 },
+    { wch: 38, hidden: true }
   ];
   worksheet["!autofilter"] = { ref: worksheet["!ref"] };
 }

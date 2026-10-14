@@ -3,7 +3,7 @@ export function parseDateValue(value, format = "") {
   if (typeof value !== "string") return null;
   const text = value.normalize("NFKC").trim();
   let parts;
-  if (/^d/i.test(format)) {
+  if (/^D/.test(normalizeDateFormat(format))) {
     const match = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(text);
     if (match) parts = [Number(match[3]), Number(match[2]), Number(match[1])];
   }
@@ -23,7 +23,7 @@ export function parseDateValue(value, format = "") {
 export function formatDateValue(value, format = "", { allowDefaultDay = false } = {}) {
   const parsed = parseDateValue(value, format);
   if (!parsed) return "";
-  const output = format || (parsed.day === null ? "YYYY-MM" : "YYYY-MM-DD");
+  const output = normalizeDateFormat(format) || (parsed.day === null ? "YYYY-MM" : "YYYY-MM-DD");
   if (/[dD]/.test(output) && parsed.day === null && !allowDefaultDay) return "";
   return output.replace(/YYYY|yyyy|MM|DD|dd|M|D|d/g, (part) => {
     if (/y/i.test(part)) return String(parsed.year).padStart(4, "0");
@@ -32,12 +32,17 @@ export function formatDateValue(value, format = "", { allowDefaultDay = false } 
   });
 }
 
+// Keep only the date tokens of a hint such as "入学时间(yyyy-mm)" or "Start Date (YYYY-MM)".
+export function normalizeDateFormat(text) {
+  const token = String(text || "").match(/(?<![a-z])(?:y{4}\s*[-/.]\s*m{1,2}(?:\s*[-/.]\s*d{1,2})?|y{4}年m{1,2}月(?:d{1,2}日?)?|d{1,2}\s*[-/.]\s*m{1,2}\s*[-/.]\s*y{4})(?![a-z])/i)?.[0] || "";
+  return token.replace(/y{4}/gi, "YYYY").replace(/m{1,2}/gi, (part) => part.toUpperCase()).replace(/d{1,2}/gi, (part) => part.toUpperCase());
+}
 export function dateFormatFor(field) {
-  if (field.dateFormat) return field.dateFormat;
+  const explicit = normalizeDateFormat(field.dateFormat);
+  if (explicit) return explicit;
   if (field.type === "month") return "YYYY-MM";
   if (field.type === "date") return "YYYY-MM-DD";
-  const placeholder = field.placeholder || "";
-  return placeholder.match(/(?:YYYY|yyyy)[-/.年]MM(?:[-/.月](?:DD|dd)日?|月)?/)?.[0] || "";
+  return normalizeDateFormat(field.placeholder);
 }
 
 export function validateDateValue(field, value) {

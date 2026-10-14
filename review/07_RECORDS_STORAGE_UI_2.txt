@@ -1,1191 +1,7 @@
-Application Tracker / RECORDS_STORAGE_UI
-快照日期：2026-10-12（Asia/Shanghai）
-完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
-本附件包含：
-- application-tracker-extension/src/popup/popup.css
-- application-tracker-extension/src/popup/popup.html
-- application-tracker-extension/src/popup/popup.js
-- application-tracker-extension/src/presentation.js
-- application-tracker-extension/src/records/records.css
-- application-tracker-extension/src/records/records.html
-- application-tracker-extension/src/records/records.js
-- application-tracker-extension/src/sourceDetection.js
-- application-tracker-extension/src/storage.js
-- application-tracker-extension/src/storageClient.js
-- application-tracker-extension/src/storageKeys.js
 
 ========================================================================
-FILE: application-tracker-extension/src/popup/popup.css
-SHA256: 71a515536ec280f26a1c1d523db5222002c1967331fe17c0c846287e9dde3fc2
-LINES: 430
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | * {
-L0002 |   box-sizing: border-box;
-L0003 | }
-L0004 | 
-L0005 | body {
-L0006 |   margin: 0;
-L0007 |   min-width: 380px;
-L0008 |   max-width: 420px;
-L0009 |   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-L0010 |   color: #202124;
-L0011 |   background: #f8fafc;
-L0012 | }
-L0013 | 
-L0014 | [hidden] {
-L0015 |   display: none !important;
-L0016 | }
-L0017 | 
-L0018 | .popup-shell {
-L0019 |   padding: 16px;
-L0020 | }
-L0021 | 
-L0022 | .popup-header {
-L0023 |   display: flex;
-L0024 |   align-items: center;
-L0025 |   justify-content: space-between;
-L0026 |   gap: 12px;
-L0027 |   margin-bottom: 12px;
-L0028 | }
-L0029 | 
-L0030 | h1,
-L0031 | h2,
-L0032 | h3,
-L0033 | p {
-L0034 |   margin: 0;
-L0035 | }
-L0036 | 
-L0037 | h1 {
-L0038 |   font-size: 18px;
-L0039 | }
-L0040 | 
-L0041 | h2 {
-L0042 |   font-size: 15px;
-L0043 | }
-L0044 | 
-L0045 | h3 {
-L0046 |   font-size: 13px;
-L0047 | }
-L0048 | 
-L0049 | a {
-L0050 |   color: #1a73e8;
-L0051 |   font-size: 13px;
-L0052 |   text-decoration: none;
-L0053 | }
-L0054 | 
-L0055 | .tabs {
-L0056 |   display: grid;
-L0057 |   grid-template-columns: repeat(2, minmax(0, 1fr));
-L0058 |   gap: 4px;
-L0059 |   margin-bottom: 12px;
-L0060 |   border: 1px solid #cbd5e1;
-L0061 |   border-radius: 8px;
-L0062 |   padding: 4px;
-L0063 |   background: white;
-L0064 | }
-L0065 | 
-L0066 | .tab-button {
-L0067 |   border: 0;
-L0068 |   border-radius: 6px;
-L0069 |   padding: 8px 10px;
-L0070 |   color: #475569;
-L0071 |   background: transparent;
-L0072 | }
-L0073 | 
-L0074 | .tab-button.active {
-L0075 |   color: white;
-L0076 |   background: #166534;
-L0077 | }
-L0078 | 
-L0079 | form {
-L0080 |   display: grid;
-L0081 |   gap: 10px;
-L0082 | }
-L0083 | 
-L0084 | label {
-L0085 |   display: grid;
-L0086 |   gap: 4px;
-L0087 |   font-size: 13px;
-L0088 |   font-weight: 700;
-L0089 | }
-L0090 | 
-L0091 | [data-job-source] { color: #64748b; font-size: 11px; font-weight: 400; }
-L0092 | 
-L0093 | input,
-L0094 | select,
-L0095 | textarea {
-L0096 |   width: 100%;
-L0097 |   border: 1px solid #cbd5e1;
-L0098 |   border-radius: 6px;
-L0099 |   padding: 8px;
-L0100 |   font: inherit;
-L0101 |   background: white;
-L0102 | }
-L0103 | 
-L0104 | textarea {
-L0105 |   resize: vertical;
-L0106 | }
-L0107 | 
-L0108 | button {
-L0109 |   border: 0;
-L0110 |   border-radius: 6px;
-L0111 |   padding: 9px 11px;
-L0112 |   font: inherit;
-L0113 |   font-weight: 800;
-L0114 |   color: white;
-L0115 |   background: #166534;
-L0116 |   cursor: pointer;
-L0117 | }
-L0118 | 
-L0119 | button:disabled {
-L0120 |   cursor: wait;
-L0121 |   opacity: 0.65;
-L0122 | }
-L0123 | 
-L0124 | .secondary-button {
-L0125 |   border: 1px solid #cbd5e1;
-L0126 |   color: #111827;
-L0127 |   background: white;
-L0128 | }
-L0129 | 
-L0130 | .form-actions,
-L0131 | .application-info-actions,
-L0132 | .language-tabs {
-L0133 |   display: flex;
-L0134 |   align-items: center;
-L0135 |   flex-wrap: wrap;
-L0136 |   gap: 10px;
-L0137 | }
-L0138 | 
-L0139 | .form-actions button {
-L0140 |   flex: 0 0 auto;
-L0141 | }
-L0142 | 
-L0143 | .application-info-actions {
-L0144 |   margin-bottom: 12px;
-L0145 | }
-L0146 | 
-L0147 | .language-tabs {
-L0148 |   gap: 4px;
-L0149 |   border: 1px solid #cbd5e1;
-L0150 |   border-radius: 8px;
-L0151 |   padding: 4px;
-L0152 |   background: white;
-L0153 | }
-L0154 | 
-L0155 | .language-tab {
-L0156 |   border: 0;
-L0157 |   border-radius: 6px;
-L0158 |   padding: 7px 9px;
-L0159 |   color: #475569;
-L0160 |   background: transparent;
-L0161 | }
-L0162 | 
-L0163 | .language-tab.active {
-L0164 |   color: white;
-L0165 |   background: #166534;
-L0166 | }
-L0167 | 
-L0168 | .application-info-list {
-L0169 |   display: grid;
-L0170 |   gap: 10px;
-L0171 | }
-L0172 | 
-L0173 | .question-scan-results {
-L0174 |   margin-bottom: 12px;
-L0175 | }
-L0176 | 
-L0177 | .question-scan-card,
-L0178 | .question-scan-empty {
-L0179 |   border: 1px solid #e2e8f0;
-L0180 |   border-radius: 8px;
-L0181 |   padding: 12px;
-L0182 |   background: white;
-L0183 | }
-L0184 | 
-L0185 | .question-scan-card header {
-L0186 |   display: grid;
-L0187 |   gap: 4px;
-L0188 |   margin-bottom: 10px;
-L0189 | }
-L0190 | 
-L0191 | .question-scan-card header p,
-L0192 | .question-scan-empty p {
-L0193 |   color: #64748b;
-L0194 |   font-size: 12px;
-L0195 | }
-L0196 | 
-L0197 | .question-scan-list {
-L0198 |   display: grid;
-L0199 |   gap: 8px;
-L0200 |   max-height: 220px;
-L0201 |   overflow: auto;
-L0202 | }
-L0203 | 
-L0204 | .question-scan-item {
-L0205 |   display: grid;
-L0206 |   grid-template-columns: minmax(0, 1fr);
-L0207 |   align-items: start;
-L0208 |   gap: 8px;
-L0209 |   border: 1px solid #e2e8f0;
-L0210 |   border-radius: 8px;
-L0211 |   padding: 8px;
-L0212 |   background: #f8fafc;
-L0213 | }
-L0214 | 
-L0215 | .scan-select {
-L0216 |   display: flex;
-L0217 |   grid-template-columns: none;
-L0218 |   align-items: center;
-L0219 |   gap: 8px;
-L0220 |   margin: 0;
-L0221 | }
-L0222 | 
-L0223 | .scan-select input {
-L0224 |   width: auto;
-L0225 |   margin: 0;
-L0226 | }
-L0227 | 
-L0228 | .scan-select span {
-L0229 |   border-radius: 999px;
-L0230 |   padding: 3px 7px;
-L0231 |   font-size: 11px;
-L0232 |   font-weight: 800;
-L0233 |   white-space: nowrap;
-L0234 | }
-L0235 | 
-L0236 | .scan-question-body {
-L0237 |   display: grid;
-L0238 |   gap: 7px;
-L0239 | }
-L0240 | 
-L0241 | .scan-question-body p {
-L0242 |   color: #111827;
-L0243 |   font-size: 12px;
-L0244 |   overflow-wrap: anywhere;
-L0245 | }
-L0246 | 
-L0247 | .scan-question-body textarea {
-L0248 |   min-height: 54px;
-L0249 |   padding: 7px;
-L0250 |   font-size: 12px;
-L0251 | }
-L0252 | 
-L0253 | .ai-reason {
-L0254 |   color: #64748b;
-L0255 |   font-size: 11px;
-L0256 |   line-height: 1.35;
-L0257 |   overflow-wrap: anywhere;
-L0258 | }
-L0259 | 
-L0260 | .scan-debug-panel {
-L0261 |   display: grid;
-L0262 |   gap: 8px;
-L0263 |   margin-top: 10px;
-L0264 |   border: 1px solid #fde68a;
-L0265 |   border-radius: 8px;
-L0266 |   padding: 10px;
-L0267 |   background: #fffbeb;
-L0268 | }
-L0269 | 
-L0270 | .scan-debug-panel h3 {
-L0271 |   margin: 0;
-L0272 |   font-size: 13px;
-L0273 | }
-L0274 | 
-L0275 | .scan-debug-list {
-L0276 |   display: grid;
-L0277 |   gap: 6px;
-L0278 |   max-height: 220px;
-L0279 |   overflow: auto;
-L0280 | }
-L0281 | 
-L0282 | .scan-debug-list article {
-L0283 |   display: grid;
-L0284 |   gap: 3px;
-L0285 |   border: 1px solid #fef3c7;
-L0286 |   border-radius: 7px;
-L0287 |   padding: 7px;
-L0288 |   background: white;
-L0289 | }
-L0290 | 
-L0291 | .scan-debug-list strong,
-L0292 | .scan-debug-list small,
-L0293 | .scan-debug-list span {
-L0294 |   overflow-wrap: anywhere;
-L0295 | }
-L0296 | 
-L0297 | .scan-debug-list strong {
-L0298 |   font-size: 12px;
-L0299 | }
-L0300 | 
-L0301 | .scan-debug-list small,
-L0302 | .scan-debug-list span {
-L0303 |   color: #64748b;
-L0304 |   font-size: 11px;
-L0305 | }
-L0306 | 
-L0307 | .ai-suggest-button {
-L0308 |   justify-self: start;
-L0309 |   border: 1px solid #cbd5e1;
-L0310 |   padding: 6px 8px;
-L0311 |   color: #14532d;
-L0312 |   font-size: 12px;
-L0313 |   background: #ecfdf5;
-L0314 | }
-L0315 | 
-L0316 | .confirm-fill-button {
-L0317 |   width: 100%;
-L0318 |   margin-top: 10px;
-L0319 | }
-L0320 | 
-L0321 | .scan-recognized span {
-L0322 |   color: #14532d;
-L0323 |   background: #dcfce7;
-L0324 | }
-L0325 | 
-L0326 | .scan-common span {
-L0327 |   color: #1e3a8a;
-L0328 |   background: #dbeafe;
-L0329 | }
-L0330 | 
-L0331 | .scan-memory span {
-L0332 |   color: #365314;
-L0333 |   background: #ecfccb;
-L0334 | }
-L0335 | 
-L0336 | .scan-filled span {
-L0337 |   color: #334155;
-L0338 |   background: #e2e8f0;
-L0339 | }
-L0340 | 
-L0341 | .scan-unknown span {
-L0342 |   color: #713f12;
-L0343 |   background: #fef3c7;
-L0344 | }
-L0345 | 
-L0346 | .application-info-group {
-L0347 |   display: grid;
-L0348 |   gap: 10px;
-L0349 | }
-L0350 | 
-L0351 | .application-info-card,
-L0352 | .application-info-empty {
-L0353 |   border: 1px solid #e2e8f0;
-L0354 |   border-radius: 8px;
-L0355 |   padding: 12px;
-L0356 |   background: white;
-L0357 | }
-L0358 | 
-L0359 | .application-info-card header {
-L0360 |   display: flex;
-L0361 |   align-items: center;
-L0362 |   justify-content: space-between;
-L0363 |   gap: 10px;
-L0364 |   margin-bottom: 10px;
-L0365 | }
-L0366 | 
-L0367 | .application-info-card dl {
-L0368 |   display: grid;
-L0369 |   gap: 7px;
-L0370 |   margin: 0;
-L0371 | }
-L0372 | 
-L0373 | .application-info-card dl div {
-L0374 |   display: grid;
-L0375 |   grid-template-columns: 72px minmax(0, 1fr) auto;
-L0376 |   align-items: start;
-L0377 |   gap: 8px;
-L0378 | }
-L0379 | 
-L0380 | .application-info-card dt {
-L0381 |   color: #64748b;
-L0382 |   font-size: 12px;
-L0383 |   font-weight: 800;
-L0384 | }
-L0385 | 
-L0386 | .application-info-card dd {
-L0387 |   margin: 0;
-L0388 |   font-size: 13px;
-L0389 |   white-space: pre-wrap;
-L0390 |   overflow-wrap: anywhere;
-L0391 | }
-L0392 | 
-L0393 | .copy-item-button,
-L0394 | .application-info-card button[data-action="copy-item"] {
-L0395 |   border: 1px solid #cbd5e1;
-L0396 |   padding: 5px 7px;
-L0397 |   color: #111827;
-L0398 |   font-size: 12px;
-L0399 |   background: white;
-L0400 | }
-L0401 | 
-L0402 | .application-info-entry + .application-info-entry {
-L0403 |   margin-top: 12px;
-L0404 |   border-top: 1px solid #e2e8f0;
-L0405 |   padding-top: 12px;
-L0406 | }
-L0407 | 
-L0408 | .application-info-entry h3 {
-L0409 |   margin-bottom: 8px;
-L0410 | }
-L0411 | 
-L0412 | .warning,
-L0413 | .errors {
-L0414 |   margin: 0 0 10px;
-L0415 |   border-radius: 6px;
-L0416 |   padding: 8px;
-L0417 |   color: #7c2d12;
-L0418 |   background: #ffedd5;
-L0419 | }
-L0420 | 
-L0421 | .message {
-L0422 |   margin: 0;
-L0423 |   border-radius: 6px;
-L0424 |   padding: 7px 9px;
-L0425 |   font-size: 13px;
-L0426 |   font-weight: 700;
-L0427 |   color: #14532d;
-L0428 |   background: #dcfce7;
-L0429 | }
-L0430 | 
-
-========================================================================
-FILE: application-tracker-extension/src/popup/popup.html
-SHA256: 073106f48cd1dbdf77a06e9c4bdd4c4d0f1c2d4b512170d97bec712a5a0c3375
-LINES: 66
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | <!doctype html>
-L0002 | <html lang="zh-CN">
-L0003 |   <head>
-L0004 |     <meta charset="utf-8" />
-L0005 |     <meta name="viewport" content="width=device-width, initial-scale=1" />
-L0006 |     <title>记录投递</title>
-L0007 |     <link rel="stylesheet" href="./popup.css" />
-L0008 |   </head>
-L0009 |   <body>
-L0010 |     <main class="popup-shell">
-L0011 |       <header class="popup-header">
-L0012 |         <h1>记录投递</h1>
-L0013 |         <a href="../records/records.html" target="_blank">查看全部</a>
-L0014 |       </header>
-L0015 | 
-L0016 |       <nav class="tabs" aria-label="弹窗切换">
-L0017 |         <button class="tab-button active" type="button" data-tab="record">记录投递</button>
-L0018 |         <button class="tab-button" type="button" data-tab="applicationInfo">申请信息</button>
-L0019 |       </nav>
-L0020 | 
-L0021 |       <section id="recordPanel" class="tab-panel">
-L0022 |         <p id="tabWarning" class="warning" hidden>无法读取当前标签页，请手动填写链接和标题。</p>
-L0023 |         <form id="applicationForm" novalidate>
-L0024 |           <label>公司 <small data-job-source="company" hidden></small><input name="company" required /></label>
-L0025 |           <label>岗位 <small data-job-source="role" hidden></small><input name="role" required /></label>
-L0026 |           <label id="recentJobBox" hidden>用最近识别的岗位 <select id="recentJob"></select></label>
-L0027 |           <label>Base 地 <small data-job-source="base" hidden></small><input name="base" /></label>
-L0028 |           <label>Candidate portal link <input name="portalLink" type="url" required /></label>
-L0029 |           <label>网页标题 <input name="pageTitle" /></label>
-L0030 |           <label>投递来源 <select name="source" required></select></label>
-L0031 |           <label>投递日期 <input name="appliedDate" type="date" required /></label>
-L0032 |           <label>当前进度 <select name="status" required></select></label>
-L0033 |           <label>下次跟进 / 截止日期 <input name="nextActionDate" type="date" /></label>
-L0034 |           <label>JD 原文或要点 <textarea name="jdText" rows="4"></textarea></label>
-L0035 |           <label>备注 <textarea name="notes" rows="3"></textarea></label>
-L0036 | 
-L0037 |           <div id="formErrors" class="errors" hidden></div>
-L0038 | 
-L0039 |           <div class="form-actions">
-L0040 |             <button type="submit">保存记录</button>
-L0041 |             <button id="clearDraft" type="button">清空草稿</button>
-L0042 |             <span id="saveMessage" class="message" hidden></span>
-L0043 |           </div>
-L0044 |         </form>
-L0045 |       </section>
-L0046 | 
-L0047 |       <section id="applicationInfoPanel" class="tab-panel" hidden>
-L0048 |         <div class="application-info-actions">
-L0049 |           <button id="autofillButton" type="button">打开申请助手</button>
-L0050 |           <div class="language-tabs" aria-label="申请语言切换">
-L0051 |             <button class="language-tab active" type="button" data-language-tab="zh">中文申请</button>
-L0052 |             <button class="language-tab" type="button" data-language-tab="en">English Application</button>
-L0053 |           </div>
-L0054 |           <a href="../profile/profile.html" target="_blank">编辑个人信息</a>
-L0055 |           <a href="../memory/memory.html" target="_blank">记忆库</a>
-L0056 |           <a href="../ai/ai.html" target="_blank">AI 设置</a>
-L0057 |           <span id="autofillMessage" class="message" hidden></span>
-L0058 |         </div>
-L0059 |         <div id="applicationInfoList" class="application-info-list"></div>
-L0060 |       </section>
-L0061 |     </main>
-L0062 |     <script type="module" src="./popup.js"></script>
-L0063 |   </body>
-L0064 | </html>
-L0065 | 
-L0066 | 
-
-========================================================================
-FILE: application-tracker-extension/src/popup/popup.js
-SHA256: 89edf18f5807d352c8ff7100aaa3f2fd8cff46a91204198c001bc0de61d349bf
-LINES: 390
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES } from "../constants.js";
-L0002 | import { buildApplicationInfoGroups } from "../applicationInfo.js";
-L0003 | import { collectJobSignals } from "../jobInfo/collectSignals.js";
-L0004 | import { extractJobInfo, sortRecentJobs, sanitizeJobUrl } from "../jobInfo/extractJobInfo.js";
-L0005 | import { requestJobInfo } from "../jobInfo/aiJobInfo.js";
-L0006 | import { findPotentialDuplicate } from "../duplicates.js";
-L0007 | import { emptyRecordDraft, validateRecordForSave } from "../model.js";
-L0008 | import { detectSourceFromUrl } from "../sourceDetection.js";
-L0009 | import { getProfile, getRecords, saveNewRecord, getAiSettings } from "../storage.js";
-L0010 | import { toDateInputValue } from "../dateUtils.js";
-L0011 | import { scopeFor } from "../assistant/planner.js";
-L0012 | 
-L0013 | const form = document.querySelector("#applicationForm");
-L0014 | const tabWarning = document.querySelector("#tabWarning");
-L0015 | const saveMessage = document.querySelector("#saveMessage");
-L0016 | const formErrors = document.querySelector("#formErrors");
-L0017 | const autofillButton = document.querySelector("#autofillButton");
-L0018 | const autofillMessage = document.querySelector("#autofillMessage");
-L0019 | const recordPanel = document.querySelector("#recordPanel");
-L0020 | const applicationInfoPanel = document.querySelector("#applicationInfoPanel");
-L0021 | const applicationInfoList = document.querySelector("#applicationInfoList");
-L0022 | let activeApplicationLanguage = "zh";
-L0023 | let targetPageTab = null;
-L0024 | let draftKey;
-L0025 | let initialDraft;
-L0026 | let draftWrite = Promise.resolve();
-L0027 | const recentJobsKey = "applicationTracker.recentJobs";
-L0028 | const editedJobFields = new Set();
-L0029 | let jobInfo = null;
-L0030 | let initialJobInfo = null;
-L0031 | let signals = null;
-L0032 | let popupGeneration = 0;
-L0033 | 
-L0034 | init();
-L0035 | 
-L0036 | async function init() {
-L0037 |   fillSelect(form.elements.source, SOURCES, DEFAULT_SOURCE);
-L0038 |   fillSelect(form.elements.status, STATUSES, DEFAULT_STATUS);
-L0039 | 
-L0040 |   const draft = emptyRecordDraft();
-L0041 |   draft.source = DEFAULT_SOURCE;
-L0042 |   draft.appliedDate = toDateInputValue();
-L0043 | 
-L0044 |   try {
-L0045 |     const tab = await getTargetPageTab();
-L0046 |     targetPageTab = tab;
-L0047 |     draft.portalLink = tab?.url || "";
-L0048 |     draft.pageTitle = tab?.title || "";
-L0049 |     draft.source = detectSourceFromUrl(draft.portalLink);
-L0050 |     if (tab?.id) {
-L0051 |       const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: collectJobSignals });
-L0052 |       signals = result?.result;
-L0053 |       if (signals) {
-L0054 |         jobInfo = extractJobInfo(signals);
-L0055 |         for (const key of ["company", "role", "base"]) draft[key] = jobInfo[key] || "";
-L0056 |         await rememberJob(jobInfo);
-L0057 |       }
-L0058 |     }
-L0059 |   } catch {
-L0060 |     tabWarning.hidden = false;
-L0061 |   }
-L0062 | 
-L0063 |   initialDraft = { ...draft };
-L0064 |   initialJobInfo = structuredClone(jobInfo);
-L0065 |   const identity = scopeFor(draft.portalLink) || "manual";
-L0066 |   const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity)))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-L0067 |   draftKey = `applicationTracker.popup.draft.${hash}`;
-L0068 |   const saved = (await chrome.storage.session.get(draftKey))[draftKey];
-L0069 |   if (saved?.draft) {
-L0070 |     Object.assign(draft, saved.draft);
-L0071 |     for (const key of ["company", "role", "base"]) if (draft[key] !== initialDraft[key]) editedJobFields.add(key);
-L0072 |     saveMessage.textContent = "已恢复此岗位的未保存草稿";
-L0073 |     saveMessage.hidden = false;
-L0074 |   }
-L0075 |   setFormValues(draft);
-L0076 |   renderSources();
-L0077 |   await renderRecentJobs();
-L0078 |   form.addEventListener("input", (event) => {
-L0079 |     const key = event.target.name;
-L0080 |     if (["company", "role", "base"].includes(key)) { editedJobFields.add(key); renderSources(); }
-L0081 |   });
-L0082 |   form.addEventListener("input", saveDraft);
-L0083 |   form.addEventListener("change", saveDraft);
-L0084 |   document.querySelector("#clearDraft").addEventListener("click", async () => {
-L0085 |     popupGeneration++;
-L0086 |     await draftWrite.catch(() => {});
-L0087 |     await chrome.storage.session.remove(draftKey);
-L0088 |     editedJobFields.clear();
-L0089 |     jobInfo = structuredClone(initialJobInfo);
-L0090 |     setFormValues(initialDraft);
-L0091 |     renderSources();
-L0092 |     saveMessage.textContent = "已清空草稿，保留网页预填信息";
-L0093 |     saveMessage.hidden = false;
-L0094 |   });
-L0095 |   form.addEventListener("submit", handleSubmit);
-L0096 |   void fillAiJobInfo();
-L0097 |   autofillButton.addEventListener("click", openAssistant);
-L0098 |   applicationInfoList.addEventListener("click", handleApplicationInfoClick);
-L0099 |   document.querySelectorAll(".tab-button").forEach((button) => {
-L0100 |     button.addEventListener("click", () => switchTab(button.dataset.tab));
-L0101 |   });
-L0102 |   document.querySelectorAll(".language-tab").forEach((button) => {
-L0103 |     button.addEventListener("click", () => switchApplicationLanguage(button.dataset.languageTab));
-L0104 |   });
-L0105 | }
-L0106 | 
-L0107 | function saveDraft() {
-L0108 |   if (!draftKey) return;
-L0109 |   // Dispatch immediately so closing the popup does not discard a debounce timer.
-L0110 |   draftWrite = chrome.storage.session.set({ [draftKey]: { draft: getFormValues(), updatedAt: Date.now() } });
-L0111 |   draftWrite.catch(() => { saveMessage.textContent = "草稿暂存失败，请先保存记录"; saveMessage.hidden = false; });
-L0112 | }
-L0113 | 
-L0114 | async function getTargetPageTab() {
-L0115 |   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-L0116 |   return tab && /^https?:\/\//.test(tab.url || "") ? tab : null;
-L0117 | }
-L0118 | 
-L0119 | function openAssistant() {
-L0120 |   if (!targetPageTab?.id) {
-L0121 |     autofillMessage.textContent = "请在申请网站中打开插件";
-L0122 |     autofillMessage.hidden = false;
-L0123 |     return;
-L0124 |   }
-L0125 |   const tab = targetPageTab;
-L0126 |   // Start open() in the click gesture; save the binding without delaying the gesture.
-L0127 |   Promise.all([
-L0128 |     chrome.storage.session.set({ [`applicationTracker.assistant.target.${tab.windowId}`]: tab.id }),
-L0129 |     chrome.sidePanel.open({ tabId: tab.id })
-L0130 |   ]).then(() => {
-L0131 |     autofillMessage.textContent = "已打开申请助手，请在侧栏核对填写";
-L0132 |     autofillMessage.hidden = false;
-L0133 |   }).catch(() => {
-L0134 |     autofillMessage.textContent = "无法打开侧栏，请刷新插件并使用 Chrome 120 或更新版本";
-L0135 |     autofillMessage.hidden = false;
-L0136 |   });
-L0137 | }
-L0138 | 
-L0139 | function isExtensionTab(tab) {
-L0140 |   return /^chrome-extension:\/\//i.test(tab?.url || "");
-L0141 | }
-L0142 | 
-L0143 | async function switchTab(tab) {
-L0144 |   const isApplicationInfo = tab === "applicationInfo";
-L0145 |   recordPanel.hidden = isApplicationInfo;
-L0146 |   applicationInfoPanel.hidden = !isApplicationInfo;
-L0147 |   document.querySelectorAll(".tab-button").forEach((button) => {
-L0148 |     button.classList.toggle("active", button.dataset.tab === tab);
-L0149 |   });
-L0150 |   if (isApplicationInfo) {
-L0151 |     await renderApplicationInfo();
-L0152 |   }
-L0153 | }
-L0154 | 
-L0155 | async function renderApplicationInfo() {
-L0156 |   const groups = buildApplicationInfoGroups(await getProfile());
-L0157 |   const group = groups.find((item) => languageKeyForGroup(item) === activeApplicationLanguage) || groups[0];
-L0158 |   if (!group) {
-L0159 |     applicationInfoList.innerHTML = `
-L0160 |       <section class="application-info-empty">
-L0161 |         <p>还没有个人信息。</p>
-L0162 |         <a href="../profile/profile.html" target="_blank">去填写</a>
-L0163 |       </section>
-L0164 |     `;
-L0165 |     return;
-L0166 |   }
-L0167 |   applicationInfoList.innerHTML = renderApplicationInfoGroup(group);
-L0168 | }
-L0169 | 
-L0170 | function renderApplicationInfoGroup(group) {
-L0171 |   return `
-L0172 |     <section class="application-info-group">
-L0173 |       ${group.sections.map(renderApplicationInfoSection).join("")}
-L0174 |     </section>
-L0175 |   `;
-L0176 | }
-L0177 | 
-L0178 | async function switchApplicationLanguage(language) {
-L0179 |   activeApplicationLanguage = language;
-L0180 |   document.querySelectorAll(".language-tab").forEach((button) => {
-L0181 |     button.classList.toggle("active", button.dataset.languageTab === language);
-L0182 |   });
-L0183 |   await renderApplicationInfo();
-L0184 | }
-L0185 | 
-L0186 | function languageKeyForGroup(group) {
-L0187 |   return group.title === "English Application" ? "en" : "zh";
-L0188 | }
-L0189 | function renderApplicationInfoSection(section) {
-L0190 |   return `
-L0191 |     <section class="application-info-card">
-L0192 |       <header>
-L0193 |         <h2>${escapeHtml(section.title)}</h2>
-L0194 |       </header>
-L0195 |       ${renderApplicationInfoItems(section)}
-L0196 |     </section>
-L0197 |   `;
-L0198 | }
-L0199 | 
-L0200 | function renderApplicationInfoItems(section) {
-L0201 |   if (section.entries?.length) {
-L0202 |     return section.entries.map((entry) => `
-L0203 |       <div class="application-info-entry">
-L0204 |         <h3>${escapeHtml(entry.title || "实习经历")}</h3>
-L0205 |         <dl>
-L0206 |           ${entry.items.map(renderCopyableItem).join("")}
-L0207 |         </dl>
-L0208 |       </div>
-L0209 |     `).join("");
-L0210 |   }
-L0211 |   return `
-L0212 |     <dl>
-L0213 |       ${section.items.map(renderCopyableItem).join("")}
-L0214 |     </dl>
-L0215 |   `;
-L0216 | }
-L0217 | 
-L0218 | function renderCopyableItem(item) {
-L0219 |   return `
-L0220 |     <div>
-L0221 |       <dt>${escapeHtml(item.label)}</dt>
-L0222 |       <dd>${escapeHtml(item.value)}</dd>
-L0223 |       <button class="copy-item-button" type="button" data-action="copy-item" data-copy-text="${escapeAttribute(item.copyText || item.value)}">复制</button>
-L0224 |     </div>
-L0225 |   `;
-L0226 | }
-L0227 | 
-L0228 | async function handleApplicationInfoClick(event) {
-L0229 |   const button = event.target.closest("button[data-action='copy-item']");
-L0230 |   if (!button) return;
-L0231 |   await navigator.clipboard.writeText(button.dataset.copyText || "");
-L0232 |   autofillMessage.textContent = "已复制";
-L0233 |   autofillMessage.hidden = false;
-L0234 | }
-L0235 | 
-L0236 | function renderSources() {
-L0237 |   for (const key of ["company", "role", "base"]) {
-L0238 |     const label = document.querySelector('[data-job-source="' + key + '"]');
-L0239 |     label.textContent = !editedJobFields.has(key) && form.elements[key].value ? jobInfo?.source?.[key] || "" : "";
-L0240 |     label.hidden = !label.textContent;
-L0241 |   }
-L0242 | }
-L0243 | 
-L0244 | async function rememberJob(info) {
-L0245 |   if (!targetPageTab?.url) return;
-L0246 |   const trusted = (key) => ["high", "medium"].includes(info.confidence?.[key]) && info[key];
-L0247 |   if (!trusted("company") && !trusted("role")) return;
-L0248 |   const url = sanitizeJobUrl(targetPageTab.url);
-L0249 |   if (!url) return;
-L0250 |   const stored = (await chrome.storage.session.get(recentJobsKey))[recentJobsKey];
-L0251 |   const jobs = Array.isArray(stored) ? stored : [];
-L0252 |   const entry = { company: trusted("company") || "", role: trusted("role") || "", base: trusted("base") || "", url, host: new URL(url).hostname, capturedAt: Date.now(), source: info.source };
-L0253 |   await chrome.storage.session.set({ [recentJobsKey]: [entry, ...jobs.filter((job) => job.url !== url)].slice(0, 20) });
-L0254 | }
-L0255 | 
-L0256 | async function renderRecentJobs() {
-L0257 |   const box = document.querySelector("#recentJobBox");
-L0258 |   const select = document.querySelector("#recentJob");
-L0259 |   const stored = (await chrome.storage.session.get(recentJobsKey))[recentJobsKey];
-L0260 |   const jobs = sortRecentJobs(Array.isArray(stored) ? stored : [], signals?.hostname || "").filter((job) => job.role);
-L0261 |   box.hidden = !!jobInfo?.role || !jobs.length;
-L0262 |   select.replaceChildren(new Option("请选择最近识别的岗位", ""), ...jobs.map((job, index) => new Option([job.company, job.role, job.base].filter(Boolean).join(" · "), String(index))));
-L0263 |   select.onchange = () => {
-L0264 |     if (!select.value) return;
-L0265 |     const job = jobs[Number(select.value)];
-L0266 |     popupGeneration++;
-L0267 |     for (const key of ["company", "role", "base"]) { form.elements[key].value = job[key] || ""; editedJobFields.delete(key); }
-L0268 |     jobInfo = { ...job, source: { company: "最近岗位", role: "最近岗位", base: "最近岗位" } };
-L0269 |     renderSources();
-L0270 |     saveDraft();
-L0271 |   };
-L0272 | }
-L0273 | 
-L0274 | async function fillAiJobInfo() {
-L0275 |   const generation = popupGeneration;
-L0276 |   if (!signals || !["company", "role"].some((key) => !jobInfo?.[key] || jobInfo.confidence?.[key] === "low")) return;
-L0277 |   try {
-L0278 |     const result = await requestJobInfo(await getAiSettings(), signals);
-L0279 |     if (!result || generation !== popupGeneration) return;
-L0280 |     const source = { company: "AI 识别，请核对", role: "AI 识别，请核对", base: "AI 识别，请核对" };
-L0281 |     const confidence = Object.fromEntries(["company", "role", "base"].map((key) => [key, result.confidence]));
-L0282 |     for (const key of ["company", "role", "base"]) {
-L0283 |       if (!form.elements[key].value && !editedJobFields.has(key) && result[key]) {
-L0284 |         form.elements[key].value = result[key];
-L0285 |         jobInfo ||= { source: {}, confidence: {} };
-L0286 |         jobInfo[key] = result[key]; jobInfo.source[key] = source[key]; jobInfo.confidence[key] = confidence[key];
-L0287 |       }
-L0288 |     }
-L0289 |     renderSources();
-L0290 |     await rememberJob(jobInfo);
-L0291 |     if (generation === popupGeneration) saveDraft();
-L0292 |   } catch { /* Local extraction and manual entry remain available. */ }
-L0293 | }
-L0294 | 
-L0295 | async function handleSubmit(event) {
-L0296 |   event.preventDefault();
-L0297 |   popupGeneration++;
-L0298 |   hideMessages();
-L0299 | 
-L0300 |   const draft = getFormValues();
-L0301 |   const errors = validateRecordForSave(draft);
-L0302 |   if (Object.keys(errors).length > 0) {
-L0303 |     formErrors.innerHTML = Object.values(errors).map((error) => `<div>${escapeHtml(error)}</div>`).join("");
-L0304 |     formErrors.hidden = false;
-L0305 |     return;
-L0306 |   }
-L0307 | 
-L0308 |   try {
-L0309 |     const duplicate = findPotentialDuplicate(draft, await getRecords());
-L0310 |     if (duplicate && !confirm(buildDuplicateMessage(duplicate))) {
-L0311 |       return;
-L0312 |     }
-L0313 | 
-L0314 |     await saveNewRecord(draft);
-L0315 |     await draftWrite.catch(() => {});
-L0316 |     await chrome.storage.session.remove(draftKey);
-L0317 |     saveMessage.textContent = "已保存";
-L0318 |     saveMessage.hidden = false;
-L0319 |     form.reset();
-L0320 |     setFormValues({
-L0321 |       ...emptyRecordDraft(),
-L0322 |       source: DEFAULT_SOURCE,
-L0323 |       appliedDate: toDateInputValue(),
-L0324 |       status: DEFAULT_STATUS,
-L0325 |       portalLink: draft.portalLink,
-L0326 |       pageTitle: draft.pageTitle
-L0327 |     });
-L0328 |   } catch (error) {
-L0329 |     formErrors.textContent = `保存失败：${error.message}`;
-L0330 |     formErrors.hidden = false;
-L0331 |   }
-L0332 | }
-L0333 | 
-L0334 | function buildDuplicateMessage(duplicate) {
-L0335 |   const reason = duplicate.reason === "portalLink" ? "链接相同" : "公司和岗位相同";
-L0336 |   return `可能已记录过这条投递（${reason}）：${duplicate.record.company} - ${duplicate.record.role}\n\n仍然保存吗？`;
-L0337 | }
-L0338 | 
-L0339 | function fillSelect(select, options, selectedKey) {
-L0340 |   select.innerHTML = options
-L0341 |     .map((option) => `<option value="${option.key}">${option.label}</option>`)
-L0342 |     .join("");
-L0343 |   select.value = selectedKey;
-L0344 | }
-L0345 | 
-L0346 | function setFormValues(values) {
-L0347 |   for (const [key, value] of Object.entries(values)) {
-L0348 |     if (form.elements[key]) {
-L0349 |       form.elements[key].value = value;
-L0350 |     }
-L0351 |   }
-L0352 | }
-L0353 | 
-L0354 | function getFormValues() {
-L0355 |   return {
-L0356 |     company: form.elements.company.value,
-L0357 |     role: form.elements.role.value,
-L0358 |     base: form.elements.base.value,
-L0359 |     portalLink: form.elements.portalLink.value,
-L0360 |     pageTitle: form.elements.pageTitle.value,
-L0361 |     source: form.elements.source.value,
-L0362 |     appliedDate: form.elements.appliedDate.value,
-L0363 |     status: form.elements.status.value,
-L0364 |     nextActionDate: form.elements.nextActionDate.value,
-L0365 |     jdText: form.elements.jdText.value,
-L0366 |     notes: form.elements.notes.value
-L0367 |   };
-L0368 | }
-L0369 | 
-L0370 | function hideMessages() {
-L0371 |   saveMessage.hidden = true;
-L0372 |   autofillMessage.hidden = true;
-L0373 |   formErrors.hidden = true;
-L0374 |   formErrors.textContent = "";
-L0375 | }
-L0376 | 
-L0377 | function escapeHtml(value) {
-L0378 |   return String(value ?? "")
-L0379 |     .replaceAll("&", "&amp;")
-L0380 |     .replaceAll("<", "&lt;")
-L0381 |     .replaceAll(">", "&gt;")
-L0382 |     .replaceAll('"', "&quot;")
-L0383 |     .replaceAll("'", "&#039;");
-L0384 | }
-L0385 | 
-L0386 | function escapeAttribute(value) {
-L0387 |   return escapeHtml(value);
-L0388 | }
-L0389 | 
-L0390 | 
-
-========================================================================
-FILE: application-tracker-extension/src/presentation.js
-SHA256: e3d7d63f44a5a84f124bdff05afb21e59da97ebdd66817fbc6b75308c56cad9e
-LINES: 32
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | const ACTIVE_STATUSES = new Set(["applied", "oa", "first_interview", "second_interview", "final_interview", "on_hold"]);
-L0002 | const REJECTED_STATUSES = new Set(["rejected", "withdrawn"]);
-L0003 | 
-L0004 | const STATUS_TONES = {
-L0005 |   applied: "neutral",
-L0006 |   oa: "active",
-L0007 |   first_interview: "active",
-L0008 |   second_interview: "active",
-L0009 |   final_interview: "active",
-L0010 |   offer: "success",
-L0011 |   rejected: "danger",
-L0012 |   withdrawn: "danger",
-L0013 |   on_hold: "warning"
-L0014 | };
-L0015 | 
-L0016 | export function getStatusTone(status) {
-L0017 |   return STATUS_TONES[status] || "neutral";
-L0018 | }
-L0019 | 
-L0020 | export function summarizeRecords(records) {
-L0021 |   return {
-L0022 |     total: records.length,
-L0023 |     active: records.filter((record) => ACTIVE_STATUSES.has(record.status)).length,
-L0024 |     offers: records.filter((record) => record.status === "offer").length,
-L0025 |     rejected: records.filter((record) => REJECTED_STATUSES.has(record.status)).length
-L0026 |   };
-L0027 | }
-L0028 | 
-L0029 | export function getCompanyInitial(company) {
-L0030 |   return company?.trim()?.at(0)?.toUpperCase() || "?";
-L0031 | }
-L0032 | 
-
-========================================================================
-FILE: application-tracker-extension/src/records/records.css
+FILE: application-tracker-extension/src/records/records.css (continued)
 SHA256: 7b6669e7290aedff8154aae73f2bb2de3d6310872ebb5604cd9448c56217d19f
-LINES: 414
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
-L0001 | * {
-L0002 |   box-sizing: border-box;
-L0003 | }
-L0004 | 
-L0005 | body {
-L0006 |   margin: 0;
-L0007 |   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-L0008 |   color: #202124;
-L0009 |   background: #f8fafc;
-L0010 | }
-L0011 | 
-L0012 | .records-shell {
-L0013 |   max-width: 1180px;
-L0014 |   margin: 0 auto;
-L0015 |   padding: 24px;
-L0016 | }
-L0017 | 
-L0018 | .page-header,
-L0019 | .toolbar,
-L0020 | .actions,
-L0021 | menu {
-L0022 |   display: flex;
-L0023 |   align-items: center;
-L0024 |   gap: 12px;
-L0025 | }
-L0026 | 
-L0027 | .tabs {
-L0028 |   display: inline-flex;
-L0029 |   gap: 4px;
-L0030 |   margin-bottom: 16px;
-L0031 |   border: 1px solid #cbd5e1;
-L0032 |   border-radius: 8px;
-L0033 |   padding: 4px;
-L0034 |   background: white;
-L0035 | }
-L0036 | 
-L0037 | .tab-button {
-L0038 |   border: 0;
-L0039 |   border-radius: 6px;
-L0040 |   padding: 8px 12px;
-L0041 |   color: #475569;
-L0042 |   font-weight: 800;
-L0043 |   background: transparent;
-L0044 | }
-L0045 | 
-L0046 | .tab-button.active {
-L0047 |   color: white;
-L0048 |   background: #166534;
-L0049 | }
-L0050 | 
-L0051 | .page-header {
-L0052 |   justify-content: space-between;
-L0053 |   margin-bottom: 16px;
-L0054 | }
-L0055 | 
-L0056 | h1,
-L0057 | h2,
-L0058 | h3 {
-L0059 |   margin: 0;
-L0060 | }
-L0061 | 
-L0062 | h1 {
-L0063 |   font-size: 24px;
-L0064 | }
-L0065 | 
-L0066 | .summary-line {
-L0067 |   margin: 6px 0 0;
-L0068 |   color: #475569;
-L0069 |   font-size: 14px;
-L0070 | }
-L0071 | 
-L0072 | h2 {
-L0073 |   font-size: 20px;
-L0074 | }
-L0075 | 
-L0076 | h3 {
-L0077 |   font-size: 15px;
-L0078 | }
-L0079 | 
-L0080 | button,
-L0081 | .import-label,
-L0082 | .primary-action,
-L0083 | .secondary-action {
-L0084 |   border: 1px solid #cbd5e1;
-L0085 |   border-radius: 6px;
-L0086 |   padding: 8px 10px;
-L0087 |   font: inherit;
-L0088 |   color: #111827;
-L0089 |   background: white;
-L0090 |   cursor: pointer;
-L0091 |   text-decoration: none;
-L0092 | }
-L0093 | 
-L0094 | .actions button,
-L0095 | .import-label,
-L0096 | .primary-action,
-L0097 | .secondary-action {
-L0098 |   font-weight: 700;
-L0099 | }
-L0100 | 
-L0101 | .primary-action {
-L0102 |   border-color: #166534;
-L0103 |   color: white;
-L0104 |   background: #166534;
-L0105 | }
-L0106 | 
-L0107 | .secondary-action {
-L0108 |   color: #1a73e8;
-L0109 | }
-L0110 | 
-L0111 | .toolbar {
-L0112 |   margin-bottom: 16px;
-L0113 | }
-L0114 | 
-L0115 | .application-info-header {
-L0116 |   display: flex;
-L0117 |   align-items: flex-start;
-L0118 |   justify-content: space-between;
-L0119 |   gap: 16px;
-L0120 |   margin-bottom: 16px;
-L0121 | }
-L0122 | 
-L0123 | .application-info-header p,
-L0124 | .application-info-empty p {
-L0125 |   margin: 6px 0 0;
-L0126 |   color: #475569;
-L0127 | }
-L0128 | 
-L0129 | .application-info-list {
-L0130 |   display: grid;
-L0131 |   grid-template-columns: repeat(2, minmax(0, 1fr));
-L0132 |   gap: 14px;
-L0133 | }
-L0134 | 
-L0135 | .application-info-group {
-L0136 |   display: grid;
-L0137 |   gap: 14px;
-L0138 | }
-L0139 | 
-L0140 | .application-info-card,
-L0141 | .application-info-empty {
-L0142 |   border: 1px solid #e2e8f0;
-L0143 |   border-radius: 8px;
-L0144 |   padding: 16px;
-L0145 |   background: white;
-L0146 | }
-L0147 | 
-L0148 | .application-info-card header {
-L0149 |   display: flex;
-L0150 |   align-items: center;
-L0151 |   justify-content: space-between;
-L0152 |   gap: 12px;
-L0153 |   margin-bottom: 12px;
-L0154 | }
-L0155 | 
-L0156 | .application-info-card h3,
-L0157 | .application-info-card h4 {
-L0158 |   margin: 0;
-L0159 | }
-L0160 | 
-L0161 | .application-info-card h4 {
-L0162 |   margin-top: 12px;
-L0163 |   font-size: 14px;
-L0164 | }
-L0165 | 
-L0166 | .application-info-card dl {
-L0167 |   display: grid;
-L0168 |   gap: 8px;
-L0169 |   margin: 0;
-L0170 | }
-L0171 | 
-L0172 | .application-info-card dl div {
-L0173 |   display: grid;
-L0174 |   grid-template-columns: 88px minmax(0, 1fr) auto;
-L0175 |   align-items: start;
-L0176 |   gap: 10px;
-L0177 | }
-L0178 | 
-L0179 | .application-info-card dt {
-L0180 |   color: #64748b;
-L0181 |   font-size: 13px;
-L0182 |   font-weight: 800;
-L0183 | }
-L0184 | 
-L0185 | .application-info-card dd {
-L0186 |   margin: 0;
-L0187 |   white-space: pre-wrap;
-L0188 |   overflow-wrap: anywhere;
-L0189 | }
-L0190 | 
-L0191 | .application-info-card button[data-action="copy-item"] {
-L0192 |   border: 1px solid #cbd5e1;
-L0193 |   padding: 5px 8px;
-L0194 |   color: #111827;
-L0195 |   font-size: 12px;
-L0196 |   background: white;
-L0197 | }
-L0198 | 
-L0199 | .bulk-toolbar {
-L0200 |   display: flex;
-L0201 |   align-items: center;
-L0202 |   gap: 10px;
-L0203 |   margin-bottom: 12px;
-L0204 |   border: 1px solid #bfdbfe;
-L0205 |   border-radius: 8px;
-L0206 |   padding: 10px;
-L0207 |   color: #1e3a8a;
-L0208 |   background: #eff6ff;
-L0209 | }
-L0210 | 
-L0211 | .bulk-toolbar select {
-L0212 |   border: 1px solid #93c5fd;
-L0213 |   border-radius: 6px;
-L0214 |   padding: 7px;
-L0215 |   font: inherit;
-L0216 |   background: white;
-L0217 | }
-L0218 | 
-L0219 | .danger-button {
-L0220 |   border-color: #fecaca;
 L0221 |   color: #7f1d1d;
 L0222 |   background: #fee2e2;
 L0223 | }
@@ -1379,14 +195,10 @@ L0410 |   justify-content: flex-end;
 L0411 |   padding: 0;
 L0412 |   margin: 8px 0 0;
 L0413 | }
-L0414 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/records/records.html
-SHA256: f3599d8ad8558c581994cbcb6e1d3ec656fe8e2833b40fa4bbb9b064e2d6a8a7
-LINES: 109
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: b4d0075b10f46691d491fea9f4789c372348b11cd27eeec317fe74e4058effcb
 L0001 | <!doctype html>
 L0002 | <html lang="zh-CN">
 L0003 |   <head>
@@ -1471,7 +283,7 @@ L0081 |           <input name="id" type="hidden" />
 L0082 |           <label>公司 <input name="company" required /></label>
 L0083 |           <label>岗位 <input name="role" required /></label>
 L0084 |           <label>Base 地 <input name="base" /></label>
-L0085 |           <label>Candidate portal link <input name="portalLink" type="url" required /></label>
+L0085 |           <label>投递链接 / 来源说明 <input name="portalLink" type="text" placeholder="https://… 或微信内推" required /></label>
 L0086 |           <label>网页标题 <input name="pageTitle" /></label>
 L0087 |           <label>投递来源 <select name="source" required></select></label>
 L0088 |           <label>投递日期 <input name="appliedDate" type="date" required /></label>
@@ -1495,570 +307,557 @@ L0105 |     <script src="../../vendor/xlsx.full.min.js"></script>
 L0106 |     <script type="module" src="./records.js"></script>
 L0107 |   </body>
 L0108 | </html>
-L0109 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/records/records.js
-SHA256: 42b33a50106ea8038be4d992b0dc9a94443184759548544c784f3bfae2ccd4e8
-LINES: 549
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: 3784b2d4eabf5197f3544139b46faeae1e7f88d8aedb12f13c93e63877e8b521
 L0001 | import { buildApplicationInfoGroups } from "../applicationInfo.js";
 L0002 | import { getBulkSelectionState, getSelectedVisibleIds, toggleAllVisibleIds } from "../bulk.js";
 L0003 | import { DEFAULT_SOURCE, DEFAULT_STATUS, SOURCES, STATUSES, STORAGE_KEY, PROFILE_STORAGE_KEY } from "../constants.js";
 L0004 | import { classifyNextActionDate, toDateInputValue } from "../dateUtils.js";
 L0005 | import { findPotentialDuplicate } from "../duplicates.js";
-L0006 | import { buildPreImportBackupFilename, buildWorkbookSheets, rowsToImportedRecords } from "../excel.js";
-L0007 | import { emptyRecordDraft, validateRecordForSave } from "../model.js";
+L0006 | import { buildPreImportBackupFilename, buildWorkbookSheets, workbookToImportedRecords } from "../excel.js";
+L0007 | import { emptyRecordDraft, getPortalUrl, validateRecordForSave } from "../model.js";
 L0008 | import { getCompanyInitial, getStatusTone, summarizeRecords } from "../presentation.js";
-L0009 | import { deleteRecord, getProfile, getRecords, replaceAllRecords, saveExistingRecord, saveNewRecord } from "../storage.js";
-L0010 | 
-L0011 | const recordsBody = document.querySelector("#recordsBody");
-L0012 | const summaryLine = document.querySelector("#summaryLine");
-L0013 | const selectAllCheckbox = document.querySelector("#selectAllCheckbox");
-L0014 | const bulkToolbar = document.querySelector("#bulkToolbar");
-L0015 | const bulkCount = document.querySelector("#bulkCount");
-L0016 | const bulkStatusSelect = document.querySelector("#bulkStatusSelect");
-L0017 | const searchInput = document.querySelector("#searchInput");
-L0018 | const statusFilter = document.querySelector("#statusFilter");
-L0019 | const message = document.querySelector("#message");
-L0020 | const dialog = document.querySelector("#recordDialog");
-L0021 | const dialogTitle = document.querySelector("#dialogTitle");
-L0022 | const editForm = document.querySelector("#editForm");
-L0023 | const editErrors = document.querySelector("#editErrors");
-L0024 | const historyList = document.querySelector("#historyList");
-L0025 | const recordsPanel = document.querySelector("#recordsPanel");
-L0026 | const applicationInfoPanel = document.querySelector("#applicationInfoPanel");
-L0027 | const applicationInfoList = document.querySelector("#applicationInfoList");
-L0028 | 
-L0029 | let records = [];
-L0030 | let sortKey = "appliedDate";
-L0031 | let sortDirection = "desc";
-L0032 | let visibleRecords = [];
-L0033 | let selectedIds = new Set();
-L0034 | let editBaseline = null;
-L0035 | 
-L0036 | init();
-L0037 | 
-L0038 | async function init() {
-L0039 |   fillFilter();
-L0040 |   fillSelect(bulkStatusSelect, STATUSES);
-L0041 |   fillSelect(editForm.elements.source, SOURCES);
-L0042 |   fillSelect(editForm.elements.status, STATUSES);
-L0043 |   records = await getRecords();
-L0044 |   render();
-L0045 | 
-L0046 |   searchInput.addEventListener("input", render);
-L0047 |   statusFilter.addEventListener("change", render);
-L0048 |   document.querySelectorAll(".sort-button").forEach((button) => {
-L0049 |     button.addEventListener("click", () => changeSort(button.dataset.sort));
-L0050 |   });
-L0051 |   recordsBody.addEventListener("click", handleTableClick);
-L0052 |   recordsBody.addEventListener("change", handleTableChange);
-L0053 |   selectAllCheckbox.addEventListener("change", handleSelectAllChange);
-L0054 |   document.querySelector("#bulkStatusButton").addEventListener("click", handleBulkStatusUpdate);
-L0055 |   document.querySelector("#bulkDeleteButton").addEventListener("click", handleBulkDelete);
-L0056 |   editForm.addEventListener("submit", handleEditSubmit);
-L0057 |   document.querySelector("#cancelEditButton").addEventListener("click", () => dialog.close());
-L0058 |   document.querySelector("#newRecordButton").addEventListener("click", openNewRecordDialog);
-L0059 |   document.querySelector("#exportButton").addEventListener("click", handleExport);
-L0060 |   document.querySelector("#importInput").addEventListener("change", handleImport);
-L0061 |   document.querySelectorAll(".tab-button").forEach((button) => {
-L0062 |     button.addEventListener("click", () => switchTab(button.dataset.tab));
-L0063 |   });
-L0064 |   applicationInfoList.addEventListener("click", handleApplicationInfoClick);
-L0065 |   chrome.storage.onChanged.addListener((changes, area) => {
-L0066 |     if (area !== "local") return;
-L0067 |     if (changes[STORAGE_KEY]) {
-L0068 |       records = Array.isArray(changes[STORAGE_KEY].newValue) ? changes[STORAGE_KEY].newValue : [];
-L0069 |       selectedIds = new Set([...selectedIds].filter((id) => records.some((record) => record.id === id)));
-L0070 |       render();
-L0071 |     }
-L0072 |     if (changes[PROFILE_STORAGE_KEY] && !applicationInfoPanel.hidden) renderApplicationInfo().catch((error) => showMessage(error.message));
-L0073 |   });
-L0074 | }
-L0075 | 
-L0076 | function render() {
-L0077 |   renderSummary();
-L0078 |   visibleRecords = getVisibleRecords();
-L0079 |   recordsBody.innerHTML = visibleRecords.map(renderRow).join("");
-L0080 |   renderBulkControls();
-L0081 | }
-L0082 | 
-L0083 | async function switchTab(tab) {
-L0084 |   const isApplicationInfo = tab === "applicationInfo";
-L0085 |   recordsPanel.hidden = isApplicationInfo;
-L0086 |   applicationInfoPanel.hidden = !isApplicationInfo;
-L0087 |   document.querySelectorAll(".tab-button").forEach((button) => {
-L0088 |     button.classList.toggle("active", button.dataset.tab === tab);
-L0089 |   });
-L0090 |   if (isApplicationInfo) await renderApplicationInfo();
-L0091 | }
-L0092 | 
-L0093 | async function renderApplicationInfo() {
-L0094 |   const groups = buildApplicationInfoGroups(await getProfile());
-L0095 |   if (groups.length === 0) {
-L0096 |     applicationInfoList.innerHTML = `
-L0097 |       <section class="application-info-empty">
-L0098 |         <p>还没有个人信息。</p>
-L0099 |         <a class="primary-action" href="../profile/profile.html" target="_blank">去填写</a>
-L0100 |       </section>
-L0101 |     `;
-L0102 |     return;
-L0103 |   }
-L0104 |   applicationInfoList.innerHTML = groups.map(renderApplicationInfoGroup).join("");
-L0105 | }
-L0106 | 
-L0107 | function renderApplicationInfoGroup(group) {
-L0108 |   return `
-L0109 |     <section class="application-info-group">
-L0110 |       <h3>${escapeHtml(group.title)}</h3>
-L0111 |       ${group.sections.map(renderApplicationInfoSection).join("")}
-L0112 |     </section>
-L0113 |   `;
-L0114 | }
-L0115 | 
-L0116 | function renderApplicationInfoSection(section) {
-L0117 |   return `
-L0118 |     <section class="application-info-card">
-L0119 |       <header><h3>${escapeHtml(section.title)}</h3></header>
-L0120 |       ${renderApplicationInfoItems(section)}
-L0121 |     </section>
-L0122 |   `;
-L0123 | }
-L0124 | 
-L0125 | function renderApplicationInfoItems(section) {
-L0126 |   if (section.entries?.length) {
-L0127 |     return section.entries.map((entry) => `
-L0128 |       <div class="application-info-entry">
-L0129 |         <h4>${escapeHtml(entry.title || "实习经历")}</h4>
-L0130 |         <dl>${entry.items.map(renderCopyableItem).join("")}</dl>
-L0131 |       </div>
-L0132 |     `).join("");
-L0133 |   }
-L0134 |   return `<dl>${section.items.map(renderCopyableItem).join("")}</dl>`;
-L0135 | }
-L0136 | 
-L0137 | function renderCopyableItem(item) {
-L0138 |   return `
-L0139 |     <div>
-L0140 |       <dt>${escapeHtml(item.label)}</dt>
-L0141 |       <dd>${escapeHtml(item.value)}</dd>
-L0142 |       <button type="button" data-action="copy-item" data-copy-text="${escapeAttribute(item.copyText || item.value)}">复制</button>
-L0143 |     </div>
-L0144 |   `;
-L0145 | }
-L0146 | 
-L0147 | async function handleApplicationInfoClick(event) {
-L0148 |   const button = event.target.closest("button[data-action='copy-item']");
-L0149 |   if (!button) return;
-L0150 |   await navigator.clipboard.writeText(button.dataset.copyText || "");
-L0151 |   showMessage("已复制");
-L0152 | }
-L0153 | 
-L0154 | function getVisibleRecords() {
-L0155 |   return records
-L0156 |     .filter(matchesSearch)
-L0157 |     .filter(matchesStatus)
-L0158 |     .sort(compareRecords);
-L0159 | }
-L0160 | 
-L0161 | function renderRow(record) {
-L0162 |   const dueClass = classifyNextActionDate(record.nextActionDate, toDateInputValue());
-L0163 |   const statusTone = getStatusTone(record.status);
-L0164 |   const companyInitial = getCompanyInitial(record.company);
-L0165 |   return `
-L0166 |     <tr class="${dueClass === "none" ? "" : dueClass}">
-L0167 |       <td><input class="row-checkbox" type="checkbox" data-action="select" data-id="${record.id}" aria-label="选择 ${escapeAttribute(record.company)}" ${selectedIds.has(record.id) ? "checked" : ""} /></td>
-L0168 |       <td>
-L0169 |         <a class="company-link" href="${escapeAttribute(record.portalLink)}" target="_blank" rel="noreferrer">
-L0170 |           <span class="company-avatar">${escapeHtml(companyInitial)}</span>
-L0171 |           <span>${escapeHtml(record.company)}</span>
-L0172 |         </a>
-L0173 |       </td>
-L0174 |       <td>${escapeHtml(record.role)}</td>
-L0175 |       <td>${escapeHtml(record.base)}</td>
-L0176 |       <td>
-L0177 |         <select class="status-select status-${statusTone}" data-action="status" data-id="${record.id}" aria-label="修改 ${escapeAttribute(record.company)} 的状态">
-L0178 |           ${renderStatusOptions(record.status)}
-L0179 |         </select>
-L0180 |       </td>
-L0181 |       <td>${escapeHtml(record.appliedDate)}</td>
-L0182 |       <td>${escapeHtml(record.nextActionDate)}</td>
-L0183 |       <td>
-L0184 |         <button data-action="edit" data-id="${record.id}">编辑</button>
-L0185 |         <button data-action="delete" data-id="${record.id}">删除</button>
-L0186 |       </td>
-L0187 |     </tr>
-L0188 |   `;
-L0189 | }
-L0190 | 
-L0191 | function renderStatusOptions(selectedStatus) {
-L0192 |   return STATUSES.map((status) => {
-L0193 |     const selected = status.key === selectedStatus ? " selected" : "";
-L0194 |     return `<option value="${status.key}"${selected}>${status.label}</option>`;
-L0195 |   }).join("");
-L0196 | }
-L0197 | 
-L0198 | function renderSummary() {
-L0199 |   const summary = summarizeRecords(records);
-L0200 |   summaryLine.textContent = `共 ${summary.total} 条 · 进行中 ${summary.active} · Offer ${summary.offers} · 已拒 ${summary.rejected}`;
-L0201 | }
-L0202 | 
-L0203 | function matchesSearch(record) {
-L0204 |   const query = searchInput.value.trim().toLowerCase();
-L0205 |   if (!query) return true;
-L0206 |   return `${record.company} ${record.role}`.toLowerCase().includes(query);
-L0207 | }
-L0208 | 
-L0209 | function matchesStatus(record) {
-L0210 |   return !statusFilter.value || record.status === statusFilter.value;
-L0211 | }
-L0212 | 
-L0213 | function compareRecords(a, b) {
-L0214 |   const result = String(a[sortKey] || "").localeCompare(String(b[sortKey] || ""));
-L0215 |   return sortDirection === "asc" ? result : -result;
-L0216 | }
-L0217 | 
-L0218 | function changeSort(key) {
-L0219 |   if (sortKey === key) {
-L0220 |     sortDirection = sortDirection === "asc" ? "desc" : "asc";
-L0221 |   } else {
-L0222 |     sortKey = key;
-L0223 |     sortDirection = "desc";
-L0224 |   }
-L0225 |   render();
-L0226 | }
-L0227 | 
-L0228 | async function handleTableClick(event) {
-L0229 |   const button = event.target.closest("button[data-action]");
-L0230 |   if (!button) return;
-L0231 |   const record = records.find((item) => item.id === button.dataset.id);
-L0232 |   if (!record) return;
-L0233 | 
-L0234 |   if (button.dataset.action === "edit") {
-L0235 |     openEditDialog(record);
-L0236 |   }
-L0237 | 
-L0238 |   if (button.dataset.action === "delete") {
-L0239 |     if (!confirm(`确认删除 ${record.company} - ${record.role}？`)) return;
-L0240 |     await deleteRecord(record.id);
-L0241 |     records = await getRecords();
-L0242 |     showMessage("已删除。");
-L0243 |     render();
-L0244 |   }
-L0245 | }
-L0246 | 
-L0247 | async function handleTableChange(event) {
-L0248 |   const checkbox = event.target.closest("input[data-action='select']");
-L0249 |   if (checkbox) {
-L0250 |     if (checkbox.checked) selectedIds.add(checkbox.dataset.id);
-L0251 |     else selectedIds.delete(checkbox.dataset.id);
-L0252 |     renderBulkControls();
-L0253 |     return;
-L0254 |   }
-L0255 | 
-L0256 |   const select = event.target.closest("select[data-action='status']");
-L0257 |   if (!select) return;
-L0258 | 
-L0259 |   const record = records.find((item) => item.id === select.dataset.id);
-L0260 |   if (!record || record.status === select.value) return;
-L0261 | 
-L0262 |   try {
-L0263 |     await saveExistingRecord(record.id, { status: select.value });
-L0264 |     records = await getRecords();
-L0265 |     selectedIds.delete(record.id);
-L0266 |     showMessage("状态已更新。");
-L0267 |     render();
-L0268 |   } catch (error) {
-L0269 |     select.value = record.status;
-L0270 |     showMessage(`状态更新失败：${error.message}`);
-L0271 |   }
-L0272 | }
-L0273 | 
-L0274 | function handleSelectAllChange(event) {
-L0275 |   selectedIds = toggleAllVisibleIds(selectedIds, visibleRecords, event.target.checked);
-L0276 |   render();
-L0277 | }
-L0278 | 
-L0279 | async function handleBulkStatusUpdate() {
-L0280 |   const ids = selectedVisibleIds();
-L0281 |   if (ids.length === 0) return;
-L0282 |   const status = bulkStatusSelect.value;
-L0283 | 
-L0284 |   for (const id of ids) {
-L0285 |     const record = records.find((item) => item.id === id);
-L0286 |     if (record && record.status !== status) {
-L0287 |       await saveExistingRecord(id, { status });
-L0288 |     }
-L0289 |   }
-L0290 | 
-L0291 |   records = await getRecords();
-L0292 |   selectedIds = new Set();
-L0293 |   showMessage(`已批量更新 ${ids.length} 条状态。`);
-L0294 |   render();
-L0295 | }
-L0296 | 
-L0297 | async function handleBulkDelete() {
-L0298 |   const ids = selectedVisibleIds();
-L0299 |   if (ids.length === 0) return;
-L0300 |   if (!confirm(`确认删除选中的 ${ids.length} 条记录？`)) return;
-L0301 | 
-L0302 |   for (const id of ids) {
-L0303 |     await deleteRecord(id);
-L0304 |   }
-L0305 | 
-L0306 |   records = await getRecords();
-L0307 |   selectedIds = new Set();
-L0308 |   showMessage(`已批量删除 ${ids.length} 条记录。`);
-L0309 |   render();
-L0310 | }
-L0311 | 
-L0312 | function renderBulkControls() {
-L0313 |   const selectionState = getBulkSelectionState(selectedIds, visibleRecords);
-L0314 |   selectAllCheckbox.checked = selectionState.checked;
-L0315 |   selectAllCheckbox.indeterminate = selectionState.indeterminate;
-L0316 |   bulkToolbar.hidden = selectionState.count === 0;
-L0317 |   bulkCount.textContent = `已选择 ${selectionState.count} 条`;
-L0318 | }
-L0319 | 
-L0320 | function selectedVisibleIds() {
-L0321 |   return getSelectedVisibleIds(selectedIds, visibleRecords);
-L0322 | }
-L0323 | 
-L0324 | function openEditDialog(record) {
-L0325 |   editBaseline = structuredClone(record);
-L0326 |   dialogTitle.textContent = "编辑记录";
-L0327 |   setFormValues(record);
-L0328 |   historyList.innerHTML = (record.statusHistory || [])
-L0329 |     .map((item) => `<li>${escapeHtml(labelFor(STATUSES, item.status))}：${escapeHtml(item.date)}</li>`)
-L0330 |     .join("");
-L0331 |   editErrors.hidden = true;
-L0332 |   dialog.showModal();
-L0333 | }
-L0334 | 
-L0335 | function openNewRecordDialog() {
-L0336 |   editBaseline = null;
-L0337 |   dialogTitle.textContent = "新增投递";
-L0338 |   setFormValues({
-L0339 |     ...emptyRecordDraft(),
-L0340 |     id: "",
-L0341 |     source: DEFAULT_SOURCE,
-L0342 |     status: DEFAULT_STATUS,
-L0343 |     appliedDate: toDateInputValue()
-L0344 |   });
-L0345 |   historyList.innerHTML = "";
-L0346 |   editErrors.hidden = true;
-L0347 |   dialog.showModal();
-L0348 | }
-L0349 | 
-L0350 | async function handleEditSubmit(event) {
-L0351 |   event.preventDefault();
-L0352 |   const id = editForm.elements.id.value;
-L0353 |   const draft = getFormValues();
-L0354 |   const errors = validateRecordForSave(draft);
-L0355 |   if (Object.keys(errors).length > 0) {
-L0356 |     editErrors.innerHTML = Object.values(errors).map((error) => `<div>${escapeHtml(error)}</div>`).join("");
-L0357 |     editErrors.hidden = false;
-L0358 |     return;
-L0359 |   }
-L0360 | 
-L0361 |   const saveButton = document.querySelector("#saveEditButton");
-L0362 |   saveButton.disabled = true;
-L0363 |   try {
-L0364 |     if (id) {
-L0365 |       const changes = Object.fromEntries(Object.entries(draft).filter(([key, value]) => value !== (editBaseline?.[key] ?? "")));
-L0366 |       const expected = Object.fromEntries(Object.keys(changes).map((key) => [key, editBaseline?.[key] ?? ""]));
-L0367 |       if (Object.keys(changes).length) await saveExistingRecord(id, changes, expected);
-L0368 |     } else {
-L0369 |       const duplicate = findPotentialDuplicate(draft, records);
-L0370 |       if (duplicate && !confirm(buildDuplicateMessage(duplicate))) return;
-L0371 |       await saveNewRecord(draft);
-L0372 |     }
-L0373 |     records = await getRecords();
-L0374 |     dialog.close();
-L0375 |     showMessage(id ? "已保存修改。" : "已新增投递。");
-L0376 |     render();
-L0377 |   } catch (error) {
-L0378 |     editErrors.textContent = `保存失败：${error.message}`;
-L0379 |     editErrors.hidden = false;
-L0380 |   } finally { saveButton.disabled = false; }
-L0381 | }
-L0382 | 
-L0383 | function fillFilter() {
-L0384 |   statusFilter.innerHTML = [
-L0385 |     `<option value="">全部状态</option>`,
-L0386 |     ...STATUSES.map((status) => `<option value="${status.key}">${status.label}</option>`)
-L0387 |   ].join("");
-L0388 | }
-L0389 | 
-L0390 | function fillSelect(select, options) {
-L0391 |   select.innerHTML = options
-L0392 |     .map((option) => `<option value="${option.key}">${option.label}</option>`)
-L0393 |     .join("");
-L0394 | }
-L0395 | 
-L0396 | function setFormValues(record) {
-L0397 |   for (const [key, value] of Object.entries(record)) {
-L0398 |     if (editForm.elements[key]) {
-L0399 |       editForm.elements[key].value = value ?? "";
-L0400 |     }
-L0401 |   }
-L0402 | }
-L0403 | 
-L0404 | function getFormValues() {
-L0405 |   return {
-L0406 |     company: editForm.elements.company.value,
-L0407 |     role: editForm.elements.role.value,
-L0408 |     base: editForm.elements.base.value,
-L0409 |     portalLink: editForm.elements.portalLink.value,
-L0410 |     pageTitle: editForm.elements.pageTitle.value,
-L0411 |     source: editForm.elements.source.value,
-L0412 |     appliedDate: editForm.elements.appliedDate.value,
-L0413 |     status: editForm.elements.status.value,
-L0414 |     nextActionDate: editForm.elements.nextActionDate.value,
-L0415 |     jdText: editForm.elements.jdText.value,
-L0416 |     notes: editForm.elements.notes.value
-L0417 |   };
-L0418 | }
-L0419 | 
-L0420 | function labelFor(options, key) {
-L0421 |   return options.find((option) => option.key === key)?.label || key || "";
-L0422 | }
-L0423 | 
-L0424 | function buildDuplicateMessage(duplicate) {
-L0425 |   const reason = duplicate.reason === "portalLink" ? "链接相同" : "公司和岗位相同";
-L0426 |   return `可能已记录过这条投递（${reason}）：${duplicate.record.company} - ${duplicate.record.role}\n\n仍然保存吗？`;
-L0427 | }
-L0428 | 
-L0429 | function showMessage(text) {
-L0430 |   message.textContent = text;
-L0431 |   message.hidden = false;
-L0432 | }
-L0433 | 
-L0434 | function handleExport() {
-L0435 |   try {
-L0436 |     assertXlsxLoaded();
-L0437 |     downloadRecordsAsXlsx(records, `application-records-${toDateInputValue()}.xlsx`);
-L0438 |     showMessage("已导出 Excel。");
-L0439 |   } catch (error) {
-L0440 |     showMessage(`导出失败：${error.message}`);
-L0441 |   }
-L0442 | }
-L0443 | 
-L0444 | async function handleImport(event) {
-L0445 |   const file = event.target.files?.[0];
-L0446 |   event.target.value = "";
-L0447 |   if (!file) return;
-L0448 |   if (!confirm("导入会覆盖当前本地记录。确认继续？")) return;
-L0449 | 
-L0450 |   try {
-L0451 |     assertXlsxLoaded();
-L0452 |     if (records.length > 0) {
-L0453 |       downloadRecordsAsXlsx(records, buildPreImportBackupFilename(toDateInputValue()));
-L0454 |     }
-L0455 |     const buffer = await file.arrayBuffer();
-L0456 |     const workbook = XLSX.read(buffer, { type: "array" });
-L0457 |     const sheetName = workbook.SheetNames.includes("_restore_data")
-L0458 |       ? "_restore_data"
-L0459 |       : workbook.SheetNames.includes("_data")
-L0460 |         ? "_data"
-L0461 |         : workbook.SheetNames[0];
-L0462 |     const worksheet = workbook.Sheets[sheetName];
-L0463 |     const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-L0464 |     const imported = rowsToImportedRecords(rows);
-L0465 |     await replaceAllRecords(imported);
-L0466 |     records = await getRecords();
-L0467 |     showMessage("已导入并覆盖本地记录。");
-L0468 |     render();
-L0469 |   } catch (error) {
-L0470 |     showMessage(`导入失败：${error.message}`);
-L0471 |   }
-L0472 | }
-L0473 | 
-L0474 | function downloadRecordsAsXlsx(recordsToDownload, filename) {
-L0475 |   const sheets = buildWorkbookSheets(recordsToDownload);
-L0476 |   const workbook = XLSX.utils.book_new();
-L0477 |   const workbookSheetMetadata = [];
-L0478 | 
-L0479 |   for (const sheet of sheets) {
-L0480 |     const worksheet = XLSX.utils.json_to_sheet(sheet.rows);
-L0481 |     if (sheet.type === "display") applyDisplayWorksheetLayout(worksheet);
-L0482 |     else applyRawWorksheetLayout(worksheet);
-L0483 |     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
-L0484 |     workbookSheetMetadata.push({ name: sheet.name, Hidden: sheet.hidden });
-L0485 |   }
-L0486 | 
-L0487 |   workbook.Workbook = { Sheets: workbookSheetMetadata };
-L0488 |   XLSX.writeFile(workbook, filename);
-L0489 | }
-L0490 | 
-L0491 | function applyDisplayWorksheetLayout(worksheet) {
-L0492 |   worksheet["!cols"] = [
+L0009 | import { deleteRecord, getProfile, getRecords, saveExistingRecord, saveNewRecord } from "../storage.js";
+L0010 | import { requestStorageMutation } from "../storageClient.js";
+L0011 | 
+L0012 | const recordsBody = document.querySelector("#recordsBody");
+L0013 | const summaryLine = document.querySelector("#summaryLine");
+L0014 | const selectAllCheckbox = document.querySelector("#selectAllCheckbox");
+L0015 | const bulkToolbar = document.querySelector("#bulkToolbar");
+L0016 | const bulkCount = document.querySelector("#bulkCount");
+L0017 | const bulkStatusSelect = document.querySelector("#bulkStatusSelect");
+L0018 | const searchInput = document.querySelector("#searchInput");
+L0019 | const statusFilter = document.querySelector("#statusFilter");
+L0020 | const message = document.querySelector("#message");
+L0021 | const dialog = document.querySelector("#recordDialog");
+L0022 | const dialogTitle = document.querySelector("#dialogTitle");
+L0023 | const editForm = document.querySelector("#editForm");
+L0024 | const editErrors = document.querySelector("#editErrors");
+L0025 | const historyList = document.querySelector("#historyList");
+L0026 | const recordsPanel = document.querySelector("#recordsPanel");
+L0027 | const applicationInfoPanel = document.querySelector("#applicationInfoPanel");
+L0028 | const applicationInfoList = document.querySelector("#applicationInfoList");
+L0029 | 
+L0030 | let records = [];
+L0031 | let sortKey = "appliedDate";
+L0032 | let sortDirection = "desc";
+L0033 | let visibleRecords = [];
+L0034 | let selectedIds = new Set();
+L0035 | let editBaseline = null;
+L0036 | 
+L0037 | init();
+L0038 | 
+L0039 | async function init() {
+L0040 |   fillFilter();
+L0041 |   fillSelect(bulkStatusSelect, STATUSES);
+L0042 |   fillSelect(editForm.elements.source, SOURCES);
+L0043 |   fillSelect(editForm.elements.status, STATUSES);
+L0044 |   records = await getRecords();
+L0045 |   render();
+L0046 | 
+L0047 |   searchInput.addEventListener("input", render);
+L0048 |   statusFilter.addEventListener("change", render);
+L0049 |   document.querySelectorAll(".sort-button").forEach((button) => {
+L0050 |     button.addEventListener("click", () => changeSort(button.dataset.sort));
+L0051 |   });
+L0052 |   recordsBody.addEventListener("click", handleTableClick);
+L0053 |   recordsBody.addEventListener("change", handleTableChange);
+L0054 |   selectAllCheckbox.addEventListener("change", handleSelectAllChange);
+L0055 |   document.querySelector("#bulkStatusButton").addEventListener("click", handleBulkStatusUpdate);
+L0056 |   document.querySelector("#bulkDeleteButton").addEventListener("click", handleBulkDelete);
+L0057 |   editForm.addEventListener("submit", handleEditSubmit);
+L0058 |   document.querySelector("#cancelEditButton").addEventListener("click", () => dialog.close());
+L0059 |   document.querySelector("#newRecordButton").addEventListener("click", openNewRecordDialog);
+L0060 |   document.querySelector("#exportButton").addEventListener("click", handleExport);
+L0061 |   document.querySelector("#importInput").addEventListener("change", handleImport);
+L0062 |   document.querySelectorAll(".tab-button").forEach((button) => {
+L0063 |     button.addEventListener("click", () => switchTab(button.dataset.tab));
+L0064 |   });
+L0065 |   applicationInfoList.addEventListener("click", handleApplicationInfoClick);
+L0066 |   chrome.storage.onChanged.addListener((changes, area) => {
+L0067 |     if (area !== "local") return;
+L0068 |     if (changes[STORAGE_KEY]) {
+L0069 |       records = Array.isArray(changes[STORAGE_KEY].newValue) ? changes[STORAGE_KEY].newValue : [];
+L0070 |       selectedIds = new Set([...selectedIds].filter((id) => records.some((record) => record.id === id)));
+L0071 |       render();
+L0072 |     }
+L0073 |     if (changes[PROFILE_STORAGE_KEY] && !applicationInfoPanel.hidden) renderApplicationInfo().catch((error) => showMessage(error.message));
+L0074 |   });
+L0075 | }
+L0076 | 
+L0077 | function render() {
+L0078 |   renderSummary();
+L0079 |   visibleRecords = getVisibleRecords();
+L0080 |   recordsBody.innerHTML = visibleRecords.map(renderRow).join("");
+L0081 |   renderBulkControls();
+L0082 | }
+L0083 | 
+L0084 | async function switchTab(tab) {
+L0085 |   const isApplicationInfo = tab === "applicationInfo";
+L0086 |   recordsPanel.hidden = isApplicationInfo;
+L0087 |   applicationInfoPanel.hidden = !isApplicationInfo;
+L0088 |   document.querySelectorAll(".tab-button").forEach((button) => {
+L0089 |     button.classList.toggle("active", button.dataset.tab === tab);
+L0090 |   });
+L0091 |   if (isApplicationInfo) await renderApplicationInfo();
+L0092 | }
+L0093 | 
+L0094 | async function renderApplicationInfo() {
+L0095 |   const groups = buildApplicationInfoGroups(await getProfile());
+L0096 |   if (groups.length === 0) {
+L0097 |     applicationInfoList.innerHTML = `
+L0098 |       <section class="application-info-empty">
+L0099 |         <p>还没有个人信息。</p>
+L0100 |         <a class="primary-action" href="../profile/profile.html" target="_blank">去填写</a>
+L0101 |       </section>
+L0102 |     `;
+L0103 |     return;
+L0104 |   }
+L0105 |   applicationInfoList.innerHTML = groups.map(renderApplicationInfoGroup).join("");
+L0106 | }
+L0107 | 
+L0108 | function renderApplicationInfoGroup(group) {
+L0109 |   return `
+L0110 |     <section class="application-info-group">
+L0111 |       <h3>${escapeHtml(group.title)}</h3>
+L0112 |       ${group.sections.map(renderApplicationInfoSection).join("")}
+L0113 |     </section>
+L0114 |   `;
+L0115 | }
+L0116 | 
+L0117 | function renderApplicationInfoSection(section) {
+L0118 |   return `
+L0119 |     <section class="application-info-card">
+L0120 |       <header><h3>${escapeHtml(section.title)}</h3></header>
+L0121 |       ${renderApplicationInfoItems(section)}
+L0122 |     </section>
+L0123 |   `;
+L0124 | }
+L0125 | 
+L0126 | function renderApplicationInfoItems(section) {
+L0127 |   if (section.entries?.length) {
+L0128 |     return section.entries.map((entry) => `
+L0129 |       <div class="application-info-entry">
+L0130 |         <h4>${escapeHtml(entry.title || "实习经历")}</h4>
+L0131 |         <dl>${entry.items.map(renderCopyableItem).join("")}</dl>
+L0132 |       </div>
+L0133 |     `).join("");
+L0134 |   }
+L0135 |   return `<dl>${section.items.map(renderCopyableItem).join("")}</dl>`;
+L0136 | }
+L0137 | 
+L0138 | function renderCopyableItem(item) {
+L0139 |   return `
+L0140 |     <div>
+L0141 |       <dt>${escapeHtml(item.label)}</dt>
+L0142 |       <dd>${escapeHtml(item.value)}</dd>
+L0143 |       <button type="button" data-action="copy-item" data-copy-text="${escapeAttribute(item.copyText || item.value)}">复制</button>
+L0144 |     </div>
+L0145 |   `;
+L0146 | }
+L0147 | 
+L0148 | async function handleApplicationInfoClick(event) {
+L0149 |   const button = event.target.closest("button[data-action='copy-item']");
+L0150 |   if (!button) return;
+L0151 |   await navigator.clipboard.writeText(button.dataset.copyText || "");
+L0152 |   showMessage("已复制");
+L0153 | }
+L0154 | 
+L0155 | function getVisibleRecords() {
+L0156 |   return records
+L0157 |     .filter(matchesSearch)
+L0158 |     .filter(matchesStatus)
+L0159 |     .sort(compareRecords);
+L0160 | }
+L0161 | 
+L0162 | function renderRow(record) {
+L0163 |   const dueClass = classifyNextActionDate(record.nextActionDate, toDateInputValue());
+L0164 |   const statusTone = getStatusTone(record.status);
+L0165 |   const companyInitial = getCompanyInitial(record.company);
+L0166 |   const portalUrl = getPortalUrl(record.portalLink);
+L0167 |   return `
+L0168 |     <tr class="${dueClass === "none" ? "" : dueClass}">
+L0169 |       <td><input class="row-checkbox" type="checkbox" data-action="select" data-id="${record.id}" aria-label="选择 ${escapeAttribute(record.company)}" ${selectedIds.has(record.id) ? "checked" : ""} /></td>
+L0170 |       <td>
+L0171 |         <${portalUrl ? `a class="company-link" href="${escapeAttribute(portalUrl)}" target="_blank" rel="noreferrer"` : 'span class="company-link"'}>
+L0172 |           <span class="company-avatar">${escapeHtml(companyInitial)}</span>
+L0173 |           <span>${escapeHtml(record.company)}</span>
+L0174 |         </${portalUrl ? "a" : "span"}>
+L0175 |       </td>
+L0176 |       <td>${escapeHtml(record.role)}</td>
+L0177 |       <td>${escapeHtml(record.base)}</td>
+L0178 |       <td>
+L0179 |         <select class="status-select status-${statusTone}" data-action="status" data-id="${record.id}" aria-label="修改 ${escapeAttribute(record.company)} 的状态">
+L0180 |           ${renderStatusOptions(record.status)}
+L0181 |         </select>
+L0182 |       </td>
+L0183 |       <td>${escapeHtml(record.appliedDate)}</td>
+L0184 |       <td>${escapeHtml(record.nextActionDate)}</td>
+L0185 |       <td>
+L0186 |         <button data-action="edit" data-id="${record.id}">编辑</button>
+L0187 |         <button data-action="delete" data-id="${record.id}">删除</button>
+L0188 |       </td>
+L0189 |     </tr>
+L0190 |   `;
+L0191 | }
+L0192 | 
+L0193 | function renderStatusOptions(selectedStatus) {
+L0194 |   return STATUSES.map((status) => {
+L0195 |     const selected = status.key === selectedStatus ? " selected" : "";
+L0196 |     return `<option value="${status.key}"${selected}>${status.label}</option>`;
+L0197 |   }).join("");
+L0198 | }
+L0199 | 
+L0200 | function renderSummary() {
+L0201 |   const summary = summarizeRecords(records);
+L0202 |   summaryLine.textContent = `共 ${summary.total} 条 · 进行中 ${summary.active} · Offer ${summary.offers} · 已拒 ${summary.rejected}`;
+L0203 | }
+L0204 | 
+L0205 | function matchesSearch(record) {
+L0206 |   const query = searchInput.value.trim().toLowerCase();
+L0207 |   if (!query) return true;
+L0208 |   return `${record.company} ${record.role}`.toLowerCase().includes(query);
+L0209 | }
+L0210 | 
+L0211 | function matchesStatus(record) {
+L0212 |   return !statusFilter.value || record.status === statusFilter.value;
+L0213 | }
+L0214 | 
+L0215 | function compareRecords(a, b) {
+L0216 |   const result = String(a[sortKey] || "").localeCompare(String(b[sortKey] || ""));
+L0217 |   return sortDirection === "asc" ? result : -result;
+L0218 | }
+L0219 | 
+L0220 | function changeSort(key) {
+L0221 |   if (sortKey === key) {
+L0222 |     sortDirection = sortDirection === "asc" ? "desc" : "asc";
+L0223 |   } else {
+L0224 |     sortKey = key;
+L0225 |     sortDirection = "desc";
+L0226 |   }
+L0227 |   render();
+L0228 | }
+L0229 | 
+L0230 | async function handleTableClick(event) {
+L0231 |   const button = event.target.closest("button[data-action]");
+L0232 |   if (!button) return;
+L0233 |   const record = records.find((item) => item.id === button.dataset.id);
+L0234 |   if (!record) return;
+L0235 | 
+L0236 |   if (button.dataset.action === "edit") {
+L0237 |     openEditDialog(record);
+L0238 |   }
+L0239 | 
+L0240 |   if (button.dataset.action === "delete") {
+L0241 |     if (!confirm(`确认删除 ${record.company} - ${record.role}？`)) return;
+L0242 |     await deleteRecord(record.id);
+L0243 |     records = await getRecords();
+L0244 |     showMessage("已删除。");
+L0245 |     render();
+L0246 |   }
+L0247 | }
+L0248 | 
+L0249 | async function handleTableChange(event) {
+L0250 |   const checkbox = event.target.closest("input[data-action='select']");
+L0251 |   if (checkbox) {
+L0252 |     if (checkbox.checked) selectedIds.add(checkbox.dataset.id);
+L0253 |     else selectedIds.delete(checkbox.dataset.id);
+L0254 |     renderBulkControls();
+L0255 |     return;
+L0256 |   }
+L0257 | 
+L0258 |   const select = event.target.closest("select[data-action='status']");
+L0259 |   if (!select) return;
+L0260 | 
+L0261 |   const record = records.find((item) => item.id === select.dataset.id);
+L0262 |   if (!record || record.status === select.value) return;
+L0263 | 
+L0264 |   try {
+L0265 |     await saveExistingRecord(record.id, { status: select.value });
+L0266 |     records = await getRecords();
+L0267 |     selectedIds.delete(record.id);
+L0268 |     showMessage("状态已更新。");
+L0269 |     render();
+L0270 |   } catch (error) {
+L0271 |     select.value = record.status;
+L0272 |     showMessage(`状态更新失败：${error.message}`);
+L0273 |   }
+L0274 | }
+L0275 | 
+L0276 | function handleSelectAllChange(event) {
+L0277 |   selectedIds = toggleAllVisibleIds(selectedIds, visibleRecords, event.target.checked);
+L0278 |   render();
+L0279 | }
+L0280 | 
+L0281 | async function handleBulkStatusUpdate() {
+L0282 |   const ids = selectedVisibleIds();
+L0283 |   if (ids.length === 0) return;
+L0284 |   const status = bulkStatusSelect.value;
+L0285 | 
+L0286 |   for (const id of ids) {
+L0287 |     const record = records.find((item) => item.id === id);
+L0288 |     if (record && record.status !== status) {
+L0289 |       await saveExistingRecord(id, { status });
+L0290 |     }
+L0291 |   }
+L0292 | 
+L0293 |   records = await getRecords();
+L0294 |   selectedIds = new Set();
+L0295 |   showMessage(`已批量更新 ${ids.length} 条状态。`);
+L0296 |   render();
+L0297 | }
+L0298 | 
+L0299 | async function handleBulkDelete() {
+L0300 |   const ids = selectedVisibleIds();
+L0301 |   if (ids.length === 0) return;
+L0302 |   if (!confirm(`确认删除选中的 ${ids.length} 条记录？`)) return;
+L0303 | 
+L0304 |   for (const id of ids) {
+L0305 |     await deleteRecord(id);
+L0306 |   }
+L0307 | 
+L0308 |   records = await getRecords();
+L0309 |   selectedIds = new Set();
+L0310 |   showMessage(`已批量删除 ${ids.length} 条记录。`);
+L0311 |   render();
+L0312 | }
+L0313 | 
+L0314 | function renderBulkControls() {
+L0315 |   const selectionState = getBulkSelectionState(selectedIds, visibleRecords);
+L0316 |   selectAllCheckbox.checked = selectionState.checked;
+L0317 |   selectAllCheckbox.indeterminate = selectionState.indeterminate;
+L0318 |   bulkToolbar.hidden = selectionState.count === 0;
+L0319 |   bulkCount.textContent = `已选择 ${selectionState.count} 条`;
+L0320 | }
+L0321 | 
+L0322 | function selectedVisibleIds() {
+L0323 |   return getSelectedVisibleIds(selectedIds, visibleRecords);
+L0324 | }
+L0325 | 
+L0326 | function openEditDialog(record) {
+L0327 |   editBaseline = structuredClone(record);
+L0328 |   dialogTitle.textContent = "编辑记录";
+L0329 |   setFormValues(record);
+L0330 |   historyList.innerHTML = (record.statusHistory || [])
+L0331 |     .map((item) => `<li>${escapeHtml(labelFor(STATUSES, item.status))}：${escapeHtml(item.date)}</li>`)
+L0332 |     .join("");
+L0333 |   editErrors.hidden = true;
+L0334 |   dialog.showModal();
+L0335 | }
+L0336 | 
+L0337 | function openNewRecordDialog() {
+L0338 |   editBaseline = null;
+L0339 |   dialogTitle.textContent = "新增投递";
+L0340 |   setFormValues({
+L0341 |     ...emptyRecordDraft(),
+L0342 |     id: "",
+L0343 |     source: DEFAULT_SOURCE,
+L0344 |     status: DEFAULT_STATUS,
+L0345 |     appliedDate: toDateInputValue()
+L0346 |   });
+L0347 |   historyList.innerHTML = "";
+L0348 |   editErrors.hidden = true;
+L0349 |   dialog.showModal();
+L0350 | }
+L0351 | 
+L0352 | async function handleEditSubmit(event) {
+L0353 |   event.preventDefault();
+L0354 |   const id = editForm.elements.id.value;
+L0355 |   const draft = getFormValues();
+L0356 |   const errors = validateRecordForSave(draft);
+L0357 |   if (Object.keys(errors).length > 0) {
+L0358 |     editErrors.innerHTML = Object.values(errors).map((error) => `<div>${escapeHtml(error)}</div>`).join("");
+L0359 |     editErrors.hidden = false;
+L0360 |     return;
+L0361 |   }
+L0362 | 
+L0363 |   const saveButton = document.querySelector("#saveEditButton");
+L0364 |   saveButton.disabled = true;
+L0365 |   try {
+L0366 |     if (id) {
+L0367 |       const changes = Object.fromEntries(Object.entries(draft).filter(([key, value]) => value !== (editBaseline?.[key] ?? "")));
+L0368 |       const expected = Object.fromEntries(Object.keys(changes).map((key) => [key, editBaseline?.[key] ?? ""]));
+L0369 |       if (Object.keys(changes).length) await saveExistingRecord(id, changes, expected);
+L0370 |     } else {
+L0371 |       const duplicate = findPotentialDuplicate(draft, records);
+L0372 |       if (duplicate && !confirm(buildDuplicateMessage(duplicate))) return;
+L0373 |       await saveNewRecord(draft);
+L0374 |     }
+L0375 |     records = await getRecords();
+L0376 |     dialog.close();
+L0377 |     showMessage(id ? "已保存修改。" : "已新增投递。");
+L0378 |     render();
+L0379 |   } catch (error) {
+L0380 |     editErrors.textContent = `保存失败：${error.message}`;
+L0381 |     editErrors.hidden = false;
+L0382 |   } finally { saveButton.disabled = false; }
+L0383 | }
+L0384 | 
+L0385 | function fillFilter() {
+L0386 |   statusFilter.innerHTML = [
+L0387 |     `<option value="">全部状态</option>`,
+L0388 |     ...STATUSES.map((status) => `<option value="${status.key}">${status.label}</option>`)
+L0389 |   ].join("");
+L0390 | }
+L0391 | 
+L0392 | function fillSelect(select, options) {
+L0393 |   select.innerHTML = options
+L0394 |     .map((option) => `<option value="${option.key}">${option.label}</option>`)
+L0395 |     .join("");
+L0396 | }
+L0397 | 
+L0398 | function setFormValues(record) {
+L0399 |   for (const [key, value] of Object.entries(record)) {
+L0400 |     if (editForm.elements[key]) {
+L0401 |       editForm.elements[key].value = value ?? "";
+L0402 |     }
+L0403 |   }
+L0404 | }
+L0405 | 
+L0406 | function getFormValues() {
+L0407 |   return {
+L0408 |     company: editForm.elements.company.value,
+L0409 |     role: editForm.elements.role.value,
+L0410 |     base: editForm.elements.base.value,
+L0411 |     portalLink: editForm.elements.portalLink.value,
+L0412 |     pageTitle: editForm.elements.pageTitle.value,
+L0413 |     source: editForm.elements.source.value,
+L0414 |     appliedDate: editForm.elements.appliedDate.value,
+L0415 |     status: editForm.elements.status.value,
+L0416 |     nextActionDate: editForm.elements.nextActionDate.value,
+L0417 |     jdText: editForm.elements.jdText.value,
+L0418 |     notes: editForm.elements.notes.value
+L0419 |   };
+L0420 | }
+L0421 | 
+L0422 | function labelFor(options, key) {
+L0423 |   return options.find((option) => option.key === key)?.label || key || "";
+L0424 | }
+L0425 | 
+L0426 | function buildDuplicateMessage(duplicate) {
+L0427 |   const reason = duplicate.reason === "portalLink" ? "链接相同" : "公司和岗位相同";
+L0428 |   return `可能已记录过这条投递（${reason}）：${duplicate.record.company} - ${duplicate.record.role}\n\n仍然保存吗？`;
+L0429 | }
+L0430 | 
+L0431 | function showMessage(text) {
+L0432 |   message.textContent = text;
+L0433 |   message.hidden = false;
+L0434 | }
+L0435 | 
+L0436 | function handleExport() {
+L0437 |   try {
+L0438 |     assertXlsxLoaded();
+L0439 |     downloadRecordsAsXlsx(records, `application-records-${toDateInputValue()}.xlsx`);
+L0440 |     showMessage("已导出 Excel。");
+L0441 |   } catch (error) {
+L0442 |     showMessage(`导出失败：${error.message}`);
+L0443 |   }
+L0444 | }
+L0445 | 
+L0446 | async function handleImport(event) {
+L0447 |   const file = event.target.files?.[0];
+L0448 |   event.target.value = "";
+L0449 |   if (!file) return;
+L0450 |   const baseline = structuredClone(records);
+L0451 | 
+L0452 |   try {
+L0453 |     assertXlsxLoaded();
+L0454 |     const buffer = await file.arrayBuffer();
+L0455 |     const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+L0456 |     const imported = workbookToImportedRecords(workbook, (sheet) => XLSX.utils.sheet_to_json(sheet, { defval: "" }));
+L0457 |     if (!confirm(`将按 Excel 可见表导入 ${imported.length} 条记录，并覆盖当前本地记录。导入前会保存完整恢复点，确认继续？`)) return;
+L0458 |     if (baseline.length > 0) downloadRecordsAsXlsx(baseline, buildPreImportBackupFilename(toDateInputValue()));
+L0459 |     await requestStorageMutation({ operation: "records.replace", records: imported, expectedRecords: baseline });
+L0460 |     records = await getRecords();
+L0461 |     showMessage("已按可见表导入并覆盖本地记录；完整恢复点已保存，可在问答记忆页恢复。");
+L0462 |     render();
+L0463 |   } catch (error) {
+L0464 |     showMessage(`导入失败：${error.message}`);
+L0465 |   }
+L0466 | }
+L0467 | 
+L0468 | function downloadRecordsAsXlsx(recordsToDownload, filename) {
+L0469 |   const sheets = buildWorkbookSheets(recordsToDownload);
+L0470 |   const workbook = XLSX.utils.book_new();
+L0471 |   const workbookSheetMetadata = [];
+L0472 | 
+L0473 |   for (const sheet of sheets) {
+L0474 |     const worksheet = XLSX.utils.json_to_sheet(sheet.rows);
+L0475 |     if (sheet.type === "display") applyDisplayWorksheetLayout(worksheet);
+L0476 |     else applyRawWorksheetLayout(worksheet);
+L0477 |     XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+L0478 |     workbookSheetMetadata.push({ name: sheet.name, Hidden: sheet.hidden });
+L0479 |   }
+L0480 | 
+L0481 |   workbook.Workbook = { Sheets: workbookSheetMetadata };
+L0482 |   XLSX.writeFile(workbook, filename);
+L0483 | }
+L0484 | 
+L0485 | function applyDisplayWorksheetLayout(worksheet) {
+L0486 |   worksheet["!cols"] = [
+L0487 |     { wch: 18 },
+L0488 |     { wch: 28 },
+L0489 |     { wch: 16 },
+L0490 |     { wch: 22 },
+L0491 |     { wch: 12 },
+L0492 |     { wch: 12 },
 L0493 |     { wch: 18 },
-L0494 |     { wch: 28 },
-L0495 |     { wch: 16 },
-L0496 |     { wch: 22 },
-L0497 |     { wch: 12 },
-L0498 |     { wch: 12 },
-L0499 |     { wch: 18 },
-L0500 |     { wch: 46 },
-L0501 |     { wch: 36 },
-L0502 |     { wch: 42 },
-L0503 |     { wch: 36 },
-L0504 |     { wch: 56 },
-L0505 |     { wch: 22 },
-L0506 |     { wch: 22 }
-L0507 |   ];
-L0508 |   worksheet["!autofilter"] = { ref: worksheet["!ref"] };
-L0509 | }
-L0510 | 
-L0511 | function applyRawWorksheetLayout(worksheet) {
-L0512 |   worksheet["!cols"] = [
-L0513 |     { wch: 38 },
+L0494 |     { wch: 46 },
+L0495 |     { wch: 36 },
+L0496 |     { wch: 42 },
+L0497 |     { wch: 36 },
+L0498 |     { wch: 56 },
+L0499 |     { wch: 22 },
+L0500 |     { wch: 22 },
+L0501 |     { wch: 38, hidden: true }
+L0502 |   ];
+L0503 |   worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+L0504 | }
+L0505 | 
+L0506 | function applyRawWorksheetLayout(worksheet) {
+L0507 |   worksheet["!cols"] = [
+L0508 |     { wch: 38 },
+L0509 |     { wch: 18 },
+L0510 |     { wch: 28 },
+L0511 |     { wch: 16 },
+L0512 |     { wch: 46 },
+L0513 |     { wch: 36 },
 L0514 |     { wch: 18 },
-L0515 |     { wch: 28 },
-L0516 |     { wch: 16 },
-L0517 |     { wch: 46 },
-L0518 |     { wch: 36 },
-L0519 |     { wch: 18 },
-L0520 |     { wch: 12 },
-L0521 |     { wch: 18 },
-L0522 |     { wch: 56 },
-L0523 |     { wch: 12 },
-L0524 |     { wch: 42 },
-L0525 |     { wch: 36 },
-L0526 |     { wch: 22 },
-L0527 |     { wch: 22 }
-L0528 |   ];
-L0529 | }
-L0530 | 
-L0531 | function assertXlsxLoaded() {
-L0532 |   if (!globalThis.XLSX) {
-L0533 |     throw new Error("Excel 库未加载，请确认 vendor/xlsx.full.min.js 存在。");
-L0534 |   }
-L0535 | }
-L0536 | 
-L0537 | function escapeHtml(value) {
-L0538 |   return String(value ?? "")
-L0539 |     .replaceAll("&", "&amp;")
-L0540 |     .replaceAll("<", "&lt;")
-L0541 |     .replaceAll(">", "&gt;")
-L0542 |     .replaceAll('"', "&quot;")
-L0543 |     .replaceAll("'", "&#039;");
-L0544 | }
-L0545 | 
-L0546 | function escapeAttribute(value) {
-L0547 |   return escapeHtml(value || "#");
-L0548 | }
-L0549 | 
+L0515 |     { wch: 12 },
+L0516 |     { wch: 18 },
+L0517 |     { wch: 56 },
+L0518 |     { wch: 12 },
+L0519 |     { wch: 42 },
+L0520 |     { wch: 36 },
+L0521 |     { wch: 22 },
+L0522 |     { wch: 22 }
+L0523 |   ];
+L0524 | }
+L0525 | 
+L0526 | function assertXlsxLoaded() {
+L0527 |   if (!globalThis.XLSX) {
+L0528 |     throw new Error("Excel 库未加载，请确认 vendor/xlsx.full.min.js 存在。");
+L0529 |   }
+L0530 | }
+L0531 | 
+L0532 | function escapeHtml(value) {
+L0533 |   return String(value ?? "")
+L0534 |     .replaceAll("&", "&amp;")
+L0535 |     .replaceAll("<", "&lt;")
+L0536 |     .replaceAll(">", "&gt;")
+L0537 |     .replaceAll('"', "&quot;")
+L0538 |     .replaceAll("'", "&#039;");
+L0539 | }
+L0540 | 
+L0541 | function escapeAttribute(value) {
+L0542 |   return escapeHtml(value || "#");
+L0543 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/sourceDetection.js
 SHA256: 2070ac7c8b2f7be3fb612a740c1a47dfc5b4f096707a1f13334b55bd7cfbe087
-LINES: 31
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import { DEFAULT_SOURCE } from "./constants.js";
 L0002 | 
 L0003 | export function detectSourceFromUrl(url) {
@@ -2089,14 +888,10 @@ L0027 |   return hostname === "job.swsmu.com"
 L0028 |     || hostname.endsWith(".mokahr.com")
 L0029 |     || hostname === "mokahr.com";
 L0030 | }
-L0031 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/storage.js
 SHA256: fb2d5c79861f4e3adc24b6533eacad7055047b54f049f2ebf8c79cfd799b6ba1
-LINES: 73
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import { AI_PROFILE_MEMORY_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY, PROFILE_STORAGE_KEY, QUESTION_MEMORY_STORAGE_KEY, STORAGE_KEY } from "./constants.js";
 L0002 | import { normalizeProfileMemory } from "./aiProfileMemory.js";
 L0003 | import { normalizeAiSettings } from "./aiSettings.js";
@@ -2169,14 +964,10 @@ L0069 |
 L0070 | export async function saveAiProfileMemory(memory) {
 L0071 |   return requestStorageMutation({ operation: "aiProfile.save", value: memory });
 L0072 | }
-L0073 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/storageClient.js
 SHA256: 18bd10366d57a0cb9218fbfef950bc2386dc05ab988b43068c3549006bfce8b0
-LINES: 8
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | export const MUTATION_MESSAGE = "application-tracker-mutation";
 L0002 | 
 L0003 | export async function requestStorageMutation(mutation) {
@@ -2184,15 +975,137 @@ L0004 |   const response = await chrome.runtime.sendMessage({ type: MUTATION_MES
 L0005 |   if (!response?.ok) throw new Error(response?.error || "保存未完成，请刷新插件后重试");
 L0006 |   return response.value;
 L0007 | }
-L0008 | 
 
 ========================================================================
 FILE: application-tracker-extension/src/storageKeys.js
 SHA256: 3a61c54e28fcfc5a6eaf6d994f0f3de5d3ded036b4dd8db7376c3c1b26e37ffd
-LINES: 4
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | export const MEMORY_KEY = "applicationTracker.assistant.memories.v2";
 L0002 | export const LEGACY_MEMORY_BACKUP_KEY = "applicationTracker.assistant.legacyMemoryBackup.v1";
 L0003 | export const RECOVERY_KEY = "applicationTracker.backup.recovery.v1";
-L0004 | 
+
+========================================================================
+FILE: application-tracker-extension/src/storageMutations.js
+SHA256: 4203e188ee5c154ae7fe8d7f2958111e328086cfa6b7aa40111520a1f9f5aac9
+L0001 | import { AI_PROFILE_MEMORY_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY, PROFILE_STORAGE_KEY, QUESTION_MEMORY_STORAGE_KEY, STORAGE_KEY } from "./constants.js";
+L0002 | import { createRecord, updateRecord, normalizeImportedRecord } from "./model.js";
+L0003 | import { normalizeProfile } from "./profile.js";
+L0004 | import { normalizeAiSettings } from "./aiSettings.js";
+L0005 | import { normalizeProfileMemory } from "./aiProfileMemory.js";
+L0006 | import { buildQuestionMemoryEntry, mergeQuestionMemories } from "./questionMemory.js";
+L0007 | import { scopeFor, MEMORY_SCOPE_VERSION, versionOf } from "./assistant/planner.js";
+L0008 | import { createBackup, prepareRestore, validateRecords } from "./backup.js";
+L0009 | import { MEMORY_KEY, LEGACY_MEMORY_BACKUP_KEY, RECOVERY_KEY } from "./storageKeys.js";
+L0010 | export { MUTATION_MESSAGE } from "./storageClient.js";
+L0011 | 
+L0012 | const backupKeys = [STORAGE_KEY, PROFILE_STORAGE_KEY, MEMORY_KEY, QUESTION_MEMORY_STORAGE_KEY, LEGACY_MEMORY_BACKUP_KEY];
+L0013 | const list = (value) => Array.isArray(value) ? value : [];
+L0014 | const id = () => crypto.randomUUID();
+L0015 | const legacyEntries = (data) => list(data[QUESTION_MEMORY_STORAGE_KEY]).map((entry) => buildQuestionMemoryEntry(entry, entry.updatedAt || entry.createdAt || ""));
+L0016 | function migratedMemories(data) { return legacyEntries(data).map((entry) => ({ ...entry, id: entry.id || id(), confirmed: false, entityId: "self", scope: scopeFor(entry.pageUrl), origin: "legacy", history: [] })); }
+L0017 | function backupData(data) {
+L0018 |   return { records: list(data[STORAGE_KEY]), profile: data[PROFILE_STORAGE_KEY] || {}, memories: Array.isArray(data[MEMORY_KEY]) ? data[MEMORY_KEY] : migratedMemories(data), legacyMemories: legacyEntries(data), legacyMemoryBackup: list(data[LEGACY_MEMORY_BACKUP_KEY]) };
+L0019 | }
+L0020 | function storageData(data) { return { [STORAGE_KEY]: data.records, [PROFILE_STORAGE_KEY]: data.profile, [MEMORY_KEY]: data.memories, [QUESTION_MEMORY_STORAGE_KEY]: data.legacyMemories, [LEGACY_MEMORY_BACKUP_KEY]: data.legacyMemoryBackup }; }
+L0021 | function conflict(expected, actual) {
+L0022 |   if (expected && Object.entries(expected).some(([key, value]) => JSON.stringify(actual[key]) !== JSON.stringify(value))) throw new Error("这条内容已在另一页面修改，请重新打开并核对后保存");
+L0023 | }
+L0024 | 
+L0025 | // One queue is instantiated in the background worker; every context submits to it.
+L0026 | // The next mutation re-reads storage only after the preceding write has finished.
+L0027 | export function createMutationQueue(storage) {
+L0028 |   let queue = Promise.resolve();
+L0029 |   return (mutation) => {
+L0030 |     const task = queue.catch(() => {}).then(() => applyMutation(storage, mutation));
+L0031 |     queue = task;
+L0032 |     return task;
+L0033 |   };
+L0034 | }
+L0035 | 
+L0036 | async function applyMutation(storage, mutation) {
+L0037 |   if (!mutation || typeof mutation.operation !== "string") throw new Error("无效的数据操作");
+L0038 |   const { operation } = mutation;
+L0039 |   if (operation === "records.replace") {
+L0040 |     const data = await storage.get(backupKeys);
+L0041 |     if (Object.hasOwn(mutation, "expectedRecords") && JSON.stringify(list(data[STORAGE_KEY])) !== JSON.stringify(mutation.expectedRecords)) {
+L0042 |       throw new Error("导入准备后本地记录发生变化，请重新导入并核对");
+L0043 |     }
+L0044 |     if (!Array.isArray(mutation.records)) throw new Error("投递记录格式不正确");
+L0045 |     const records = validateRecords(mutation.records.map((entry) => normalizeImportedRecord(entry)));
+L0046 |     const recovery = createBackup(backupData(data));
+L0047 |     // The worker queue snapshots the latest full state and commits it with the
+L0048 |     // replacement. A quota error leaves records and the old recovery untouched.
+L0049 |     await storage.set({ [STORAGE_KEY]: records, [RECOVERY_KEY]: recovery });
+L0050 |     return;
+L0051 |   }
+L0052 |   if (operation.startsWith("record.")) {
+L0053 |     const data = await storage.get(STORAGE_KEY);
+L0054 |     let records = list(data[STORAGE_KEY]);
+L0055 |     let result;
+L0056 |     if (operation === "record.create") { result = createRecord(mutation.draft); records = [...records, result]; }
+L0057 |     else if (operation === "record.patch") {
+L0058 |       const index = records.findIndex((entry) => entry.id === mutation.id);
+L0059 |       if (index < 0) throw new Error("此投递记录已删除，请刷新列表");
+L0060 |       conflict(mutation.expected, records[index]);
+L0061 |       result = updateRecord(records[index], mutation.changes); records[index] = result;
+L0062 |     } else if (operation === "record.delete") records = records.filter((entry) => entry.id !== mutation.id);
+L0063 |     else throw new Error("未知的记录操作");
+L0064 |     await storage.set({ [STORAGE_KEY]: records }); return result;
+L0065 |   }
+L0066 |   if (operation.startsWith("memory.")) {
+L0067 |     const data = await storage.get([MEMORY_KEY, QUESTION_MEMORY_STORAGE_KEY, LEGACY_MEMORY_BACKUP_KEY]);
+L0068 |     const migrated = !Array.isArray(data[MEMORY_KEY]);
+L0069 |     let memories = migrated ? migratedMemories(data) : data[MEMORY_KEY];
+L0070 |     let result;
+L0071 |     if (operation === "memory.ensure") result = memories;
+L0072 |     else if (operation === "memory.save") {
+L0073 |       const draft = mutation.draft;
+L0074 |       const index = draft.id ? memories.findIndex((entry) => entry.id === draft.id) : -1;
+L0075 |       if (draft.id && index < 0) throw new Error("这条问答已删除，请刷新列表");
+L0076 |       const previous = memories[index];
+L0077 |       conflict(mutation.expected, previous || {});
+L0078 |       const now = new Date().toISOString();
+L0079 |       const scope = draft.scope === "global" ? "global" : scopeFor(draft.scope);
+L0080 |       result = { ...draft, scope, scopeVersion: MEMORY_SCOPE_VERSION, id: previous?.id || id(), updatedAt: now, confirmed: true, history: previous ? [...(previous.history || []), { answer: previous.answer, scope: previous.scope, updatedAt: previous.updatedAt || "" }].slice(-10) : [] };
+L0081 |       if (!result.question?.trim() || !result.answer?.trim() || !result.scope || !result.entityId?.trim() || !["zh", "en"].includes(result.language)) throw new Error("请完整填写问题、答案、语言、主体和适用范围");
+L0082 |       if (index < 0) memories.push(result); else memories[index] = result;
+L0083 |     } else if (operation === "memory.delete") memories = memories.filter((entry) => entry.id !== mutation.id);
+L0084 |     else throw new Error("未知的记忆操作");
+L0085 |     if (migrated || operation !== "memory.ensure") await storage.set({ [MEMORY_KEY]: memories, ...(migrated && !data[LEGACY_MEMORY_BACKUP_KEY] ? { [LEGACY_MEMORY_BACKUP_KEY]: legacyEntries(data) } : {}) });
+L0086 |     return result;
+L0087 |   }
+L0088 |   if (operation.startsWith("legacy.")) {
+L0089 |     const data = await storage.get(QUESTION_MEMORY_STORAGE_KEY);
+L0090 |     const existing = legacyEntries(data);
+L0091 |     let entries;
+L0092 |     if (operation === "legacy.learn") entries = mergeQuestionMemories(existing, mutation.entries);
+L0093 |     else if (operation === "legacy.replace") entries = mutation.memories.map((entry) => buildQuestionMemoryEntry(entry, entry.updatedAt));
+L0094 |     else if (operation === "legacy.delete") entries = existing.filter((entry) => entry.id !== mutation.id);
+L0095 |     else throw new Error("未知的历史记忆操作");
+L0096 |     await storage.set({ [QUESTION_MEMORY_STORAGE_KEY]: entries }); return entries;
+L0097 |   }
+L0098 |   const setters = { "profile.save": [PROFILE_STORAGE_KEY, normalizeProfile], "aiSettings.save": [AI_SETTINGS_STORAGE_KEY, normalizeAiSettings], "aiProfile.save": [AI_PROFILE_MEMORY_STORAGE_KEY, normalizeProfileMemory] };
+L0099 |   if (Object.hasOwn(setters, operation)) {
+L0100 |     const [key, normalize] = setters[operation];
+L0101 |     const value = normalize(mutation.value); await storage.set({ [key]: value }); return value;
+L0102 |   }
+L0103 |   if (operation.startsWith("backup.")) {
+L0104 |     const data = await storage.get([...backupKeys, RECOVERY_KEY]);
+L0105 |     const current = backupData(data);
+L0106 |     const currentVersion = versionOf(Object.fromEntries(backupKeys.map((key) => [key, data[key] ?? null])));
+L0107 |     if (operation === "backup.export") return createBackup(current);
+L0108 |     if (operation === "backup.recovery") return data[RECOVERY_KEY] || null;
+L0109 |     if (operation === "backup.preview") {
+L0110 |       const restored = prepareRestore(current, mutation.backup, mutation.mode);
+L0111 |       return { ...restored.summary, currentVersion };
+L0112 |     }
+L0113 |     if (operation === "backup.import") {
+L0114 |       if (mutation.currentVersion !== currentVersion) throw new Error("预览后本地数据发生变化，请重新预览再恢复");
+L0115 |       const restored = prepareRestore(current, mutation.backup, mutation.mode);
+L0116 |       const recovery = createBackup(current);
+L0117 |       // Recovery point and imported data are committed together. Failure leaves both unchanged.
+L0118 |       await storage.set({ ...storageData(restored.data), [RECOVERY_KEY]: recovery });
+L0119 |       return restored.summary;
+L0120 |     }
+L0121 |   }
+L0122 |   throw new Error("未知的数据操作");
+L0123 | }

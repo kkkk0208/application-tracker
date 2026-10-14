@@ -62,3 +62,12 @@ test("replace restores all data while a version-2 partial backup preserves curre
   assert.equal(partial.data.profile.fullNameZh, "旧版资料");
   assert.equal(partial.data.legacyMemoryBackup[0].id, "historical");
 });
+
+test("text referral references round-trip and do not block restore previews", () => {
+  const current = state({ records: [{ ...record("referral"), portalLink: "微信内推", source: "referral" }] });
+  const backup = createBackup(current, now);
+  assert.equal(validateBackup(backup).data.records[0].portalLink, "微信内推");
+  const incoming = createBackup(state({ records: [record("new")] }), now);
+  assert.equal(prepareRestore(current, incoming, "merge").data.records.length, 2);
+  assert.equal(prepareRestore(current, incoming, "replace").data.records[0].id, "new");
+});

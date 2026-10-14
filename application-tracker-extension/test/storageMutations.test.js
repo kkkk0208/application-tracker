@@ -112,3 +112,50 @@ test("storage quota failure leaves current data and previous recovery point inta
   await assert.rejects(fixture.mutate({ operation: "backup.import", backup, mode: "replace", currentVersion: preview.currentVersion }), /QUOTA/);
   assert.deepEqual(fixture.snapshot(), before);
 });
+
+test("text referral records allow export, restore preview and recovery creation", async () => {
+  const record = createRecord({ ...draft(), portalLink: "微信内推", source: "referral" }, now);
+  const fixture = storageFixture({ [STORAGE_KEY]: [record], [MEMORY_KEY]: [] });
+  const backup = await fixture.mutate({ operation: "backup.export" });
+  assert.equal(backup.data.records[0].portalLink, "微信内推");
+  const incoming = createBackup({ records: [], profile: {}, memories: [], legacyMemories: [], legacyMemoryBackup: [] }, now);
+  const preview = await fixture.mutate({ operation: "backup.preview", backup: incoming, mode: "replace" });
+  await fixture.mutate({ operation: "backup.import", backup: incoming, mode: "replace", currentVersion: preview.currentVersion });
+  assert.equal(fixture.snapshot()[RECOVERY_KEY].data.records[0].portalLink, "微信内推");
+});
+
+test("Excel replacement commits a full recovery point atomically and can be restored", async () => {
+  const record = createRecord({ ...draft(), portalLink: "微信内推", source: "referral" }, now);
+  const fixture = storageFixture({ [STORAGE_KEY]: [record], [PROFILE_STORAGE_KEY]: { fullNameZh: "原资料" }, [MEMORY_KEY]: [], [AI_SETTINGS_STORAGE_KEY]: { apiKey: "PRIVATE_KEY" } });
+  const replacement = createRecord(draft(2), now);
+  await fixture.mutate({ operation: "records.replace", records: [replacement], expectedRecords: [record] });
+  const after = fixture.snapshot();
+  assert.equal(after[RECOVERY_KEY].data.records[0].id, record.id);
+  assert.equal(after[RECOVERY_KEY].data.profile.fullNameZh, "原资料");
+  assert.equal(JSON.stringify(after[RECOVERY_KEY]).includes("PRIVATE_KEY"), false);
+  assert.equal(after[AI_SETTINGS_STORAGE_KEY].apiKey, "PRIVATE_KEY");
+  const preview = await fixture.mutate({ operation: "backup.preview", backup: after[RECOVERY_KEY], mode: "replace" });
+  await fixture.mutate({ operation: "backup.import", backup: after[RECOVERY_KEY], mode: "replace", currentVersion: preview.currentVersion });
+  assert.equal(fixture.snapshot()[STORAGE_KEY][0].id, record.id);
+});
+
+test("Excel quota failure and stale record snapshots preserve data and previous recovery", async () => {
+  const record = createRecord(draft(), now);
+  const oldRecovery = createBackup({ records: [], profile: {}, memories: [], legacyMemories: [], legacyMemoryBackup: [] }, now);
+  const fixture = storageFixture({ [STORAGE_KEY]: [record], [RECOVERY_KEY]: oldRecovery });
+  await fixture.mutate({ operation: "record.patch", id: record.id, changes: { notes: "另一页修改" } });
+  const before = fixture.snapshot();
+  await assert.rejects(fixture.mutate({ operation: "records.replace", records: [], expectedRecords: [record] }), /重新导入/);
+  assert.deepEqual(fixture.snapshot(), before);
+  fixture.failNextWrites(true);
+  await assert.rejects(fixture.mutate({ operation: "records.replace", records: [], expectedRecords: before[STORAGE_KEY] }), /QUOTA/);
+  assert.deepEqual(fixture.snapshot(), before);
+});
+
+test("invalid Excel replacement cannot write a recovery point or change current data", async () => {
+  const record = createRecord(draft(), now);
+  const fixture = storageFixture({ [STORAGE_KEY]: [record] });
+  const before = fixture.snapshot();
+  await assert.rejects(fixture.mutate({ operation: "records.replace", records: [{ ...record, appliedDate: "2026-02-30" }], expectedRecords: [record] }), /日期/);
+  assert.deepEqual(fixture.snapshot(), before);
+});

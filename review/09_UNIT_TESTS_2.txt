@@ -1,154 +1,361 @@
-Application Tracker / UNIT_TESTS
-快照日期：2026-10-12（Asia/Shanghai）
-完整文件内容，未做代码摘要。先阅读 00_START_HERE.txt。
-本附件包含：
-- application-tracker-extension/test/model.test.js
-- application-tracker-extension/test/mokaJobExtractor.test.js
-- application-tracker-extension/test/optionMatch.test.js
-- application-tracker-extension/test/presentation.test.js
-- application-tracker-extension/test/preview.test.js
-- application-tracker-extension/test/profile.test.js
-- application-tracker-extension/test/questionMemory.test.js
-- application-tracker-extension/test/reconcile.test.js
-- application-tracker-extension/test/session.test.js
-- application-tracker-extension/test/sourceDetection.test.js
-- application-tracker-extension/test/storageMutations.test.js
-- application-tracker-extension/test/vision.test.js
-- application-tracker-extension/test/visualCapture.test.js
+
+========================================================================
+FILE: application-tracker-extension/test/excel.test.js (continued)
+SHA256: 4ef082bf7a57649058fc480d6f65b512071391c29884c079d2e0ab2ce01ef62c
+L0152 |   const [unchanged, changed] = importSheets(sheets);
+L0153 |   assert.deepEqual(unchanged, second);
+L0154 |   assert.equal(changed.id, first.id);
+L0155 |   assert.equal(changed.notes, "Excel 修改后的备注");
+L0156 |   assert.equal(changed.status, "offer");
+L0157 |   assert.equal(changed.createdAt, first.createdAt);
+L0158 |   assert.equal(changed.updatedAt, "2026-10-14T08:00:00.000Z");
+L0159 |   assert.deepEqual(changed.statusHistory[0], first.statusHistory[0]);
+L0160 |   assert.equal(changed.statusHistory[1].status, "offer");
+L0161 | });
+L0162 | 
+L0163 | test("visible-only Excel imports readable labels, history and date cells", () => {
+L0164 |   const sheets = buildWorkbookSheets([excelRecord("first")]).slice(0, 1);
+L0165 |   sheets[0].rows[0]["投递日期"] = new Date("2026-10-13T00:00:00Z");
+L0166 |   sheets[0].rows[0]["投递来源"] = "内推";
+L0167 |   const [record] = importSheets(sheets);
+L0168 |   assert.equal(record.source, "referral");
+L0169 |   assert.equal(record.appliedDate, "2026-10-13");
+L0170 |   assert.equal(record.statusHistory[0].status, "applied");
+L0171 |   assert.equal(record.portalLink, "微信内推");
+L0172 | });
+L0173 | 
+L0174 | test("new visible rows receive their own IDs without taking another row's history", () => {
+L0175 |   const first = excelRecord("first");
+L0176 |   const sheets = buildWorkbookSheets([first]);
+L0177 |   sheets[0].rows.push({ ...sheets[0].rows[0], "公司": "新增示例公司", "记录 ID": "", "创建时间": "", "更新时间": "", "进度时间线": "" });
+L0178 |   const imported = importSheets(sheets);
+L0179 |   assert.equal(imported.length, 2);
+L0180 |   assert.notEqual(imported[1].id, first.id);
+L0181 |   assert.equal(imported[1].createdAt, "2026-10-14T08:00:00.000Z");
+L0182 | });
+L0183 | 
+L0184 | test("old Excel metadata remains compatible when association is unambiguous", () => {
+L0185 |   const first = excelRecord("first");
+L0186 |   const sheets = buildWorkbookSheets([first]);
+L0187 |   delete sheets[0].rows[0]["记录 ID"];
+L0188 |   sheets[0].rows[0]["备注"] = "旧版可见表的编辑";
+L0189 |   const [record] = importSheets(sheets);
+L0190 |   assert.equal(record.id, first.id);
+L0191 |   assert.equal(record.notes, "旧版可见表的编辑");
+L0192 |   assert.deepEqual(record.statusHistory, first.statusHistory);
+L0193 |   assert.deepEqual(importSheets([sheets[1]])[0], first);
+L0194 | });
+L0195 | 
+L0196 | test("ambiguous old Excel rows and changed system metadata fail clearly instead of ignoring edits", () => {
+L0197 |   const first = excelRecord("first"), second = excelRecord("second");
+L0198 |   const sheets = buildWorkbookSheets([first, second]);
+L0199 |   delete sheets[0].rows[0]["记录 ID"];
+L0200 |   sheets[0].rows[0]["备注"] = "无法按创建时间唯一关联的编辑";
+L0201 |   assert.throws(() => importSheets(sheets), /无法唯一关联/);
+L0202 |   const changedId = buildWorkbookSheets([first]); changedId[0].rows[0]["记录 ID"] = "unrecognized";
+L0203 |   assert.throws(() => importSheets(changedId), /记录 ID/);
+L0204 |   const changedTime = buildWorkbookSheets([first]); changedTime[0].rows[0]["创建时间"] = "2025-01-01T00:00:00Z";
+L0205 |   assert.throws(() => importSheets(changedTime), /系统时间列/);
+L0206 | });
+L0207 | 
+L0208 | test("Excel import validates visible data and explicitly reads edited timelines", () => {
+L0209 |   const first = excelRecord("first");
+L0210 |   const sheets = buildWorkbookSheets([first]);
+L0211 |   sheets[0].rows[0]["进度时间线"] += " -> 2026-10-14T08:00:00Z Offer";
+L0212 |   assert.equal(importSheets(sheets)[0].statusHistory.length, 3);
+L0213 |   assert.equal(importSheets(sheets)[0].statusHistory.at(-1).status, "applied");
+L0214 |   sheets[0].rows[0]["投递日期"] = "2026-02-30";
+L0215 |   assert.throws(() => importSheets(sheets), /日期/);
+L0216 |   sheets[0].rows[0]["投递日期"] = "2026-10-13";
+L0217 |   sheets[0].rows[0]["Portal 链接"] = "javascript:alert(1)";
+L0218 |   assert.throws(() => importSheets(sheets), /http/);
+L0219 | });
+L0220 | 
+L0221 | test("visible-only status edits retain supplied history and append the current status", () => {
+L0222 |   const first = excelRecord("first");
+L0223 |   const sheets = buildWorkbookSheets([first]).slice(0, 1);
+L0224 |   sheets[0].rows[0]["当前进度"] = "Offer";
+L0225 |   const [record] = importSheets(sheets);
+L0226 |   assert.equal(record.id, first.id);
+L0227 |   assert.equal(record.status, "offer");
+L0228 |   assert.deepEqual(record.statusHistory[0], first.statusHistory[0]);
+L0229 |   assert.deepEqual(record.statusHistory[1], { status: "offer", date: "2026-10-14T08:00:00.000Z" });
+L0230 |   assert.equal(record.createdAt, first.createdAt);
+L0231 |   assert.equal(record.updatedAt, "2026-10-14T08:00:00.000Z");
+L0232 | });
+L0233 | 
+L0234 | test("explicit Excel history edits keep intermediate events and reconcile current status", () => {
+L0235 |   const first = excelRecord("first");
+L0236 |   const sheets = buildWorkbookSheets([first]);
+L0237 |   sheets[0].rows[0]["当前进度"] = "Offer";
+L0238 |   sheets[0].rows[0]["进度时间线"] += " -> 2026-10-13T12:00:00Z OA / 笔试 / Online Assessment";
+L0239 |   const [record] = importSheets(sheets);
+L0240 |   assert.deepEqual(record.statusHistory, [
+L0241 |     first.statusHistory[0],
+L0242 |     { status: "oa", date: "2026-10-13T12:00:00Z" },
+L0243 |     { status: "offer", date: "2026-10-14T08:00:00.000Z" }
+L0244 |   ]);
+L0245 |   assert.equal(record.updatedAt, "2026-10-14T08:00:00.000Z");
+L0246 |   sheets[0].rows[0]["进度时间线"] += " -> 2026-10-13T14:00:00Z Offer";
+L0247 |   const [alreadyConsistent] = importSheets(sheets);
+L0248 |   assert.equal(alreadyConsistent.statusHistory.length, 3);
+L0249 |   assert.deepEqual(alreadyConsistent.statusHistory.at(-1), { status: "offer", date: "2026-10-13T14:00:00Z" });
+L0250 | });
+
+========================================================================
+FILE: application-tracker-extension/test/jobInfo.test.js
+SHA256: 8174589e5743330e6df788986110b3a4e1a807539284b507b65f091f1596e356
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import vm from "node:vm";
+L0004 | import { collectJobSignals } from "../src/jobInfo/collectSignals.js";
+L0005 | import { extractJobInfo, sortRecentJobs, sanitizeJobUrl } from "../src/jobInfo/extractJobInfo.js";
+L0006 | 
+L0007 | function collectJsonLd(values, extra = {}) {
+L0008 |   const scripts = values.map((value) => ({ textContent: typeof value === "string" ? value : JSON.stringify(value) }));
+L0009 |   const document = { title: "", querySelector: () => null, querySelectorAll: (selector) => selector === "script[type='application/ld+json']" ? scripts : [] };
+L0010 |   // Recreate the function from its source, as chrome.scripting.executeScript does.
+L0011 |   return JSON.parse(JSON.stringify(vm.runInNewContext(`(${collectJobSignals.toString()})()`, {
+L0012 |     document: Object.assign(document, extra), location: { hostname: "careers.example.com", pathname: "/jobs/123" }
+L0013 |   })));
+L0014 | }
+L0015 | 
+L0016 | test("collectJobSignals reads object, array, @graph and nested JobPosting JSON-LD", () => {
+L0017 |   const posting = { "@type": "JobPosting", title: "财务实习生", hiringOrganization: { name: "某某集团" }, jobLocation: { address: { addressLocality: "深圳" } } };
+L0018 |   for (const data of [posting, [posting], { "@graph": [{ "@type": "Organization" }, posting] }, { mainEntity: posting }]) {
+L0019 |     const signals = collectJsonLd([data]);
+L0020 |     assert.deepEqual(signals.jobPostings, [{ title: "财务实习生", company: "某某集团", base: "深圳" }]);
+L0021 |     assert.equal(signals.hostname, "careers.example.com");
+L0022 |     assert.equal(signals.pathname, "/jobs/123");
+L0023 |     assert.equal(extractJobInfo(signals).source.role, "结构化数据");
+L0024 |   }
+L0025 | });
+L0026 | 
+L0027 | test("JSON-LD skips malformed scripts and combines location arrays without duplicate regions", () => {
+L0028 |   const signals = collectJsonLd(["{broken", { "@type": ["Thing", "JobPosting"], title: "Graduate Analyst", hiringOrganization: { name: "Some Bank" }, jobLocation: [
+L0029 |     { address: { addressRegion: "广东省", addressLocality: "深圳" } }, { address: { addressRegion: "香港", addressLocality: "香港" } }
+L0030 |   ] }]);
+L0031 |   assert.deepEqual(signals.jobPostings, [{ title: "Graduate Analyst", company: "Some Bank", base: "广东省 深圳 / 香港" }]);
+L0032 | });
+L0033 | 
+L0034 | test("extractJobInfo follows each field's structured, label, site, title and text priority", () => {
+L0035 |   const result = extractJobInfo({
+L0036 |     jobPostings: [{ company: "某某集团" }], labels: { company: ["另一集团"], role: ["财务实习生"] },
+L0037 |     siteCandidates: { role: ["审计助理"], base: ["深圳"] }, meta: { "og:site_name": "某某科技" },
+L0038 |     classCandidates: { company: ["页面集团"], role: ["管培生"], base: ["北京"] }
+L0039 |   });
+L0040 |   assert.deepEqual(result, { company: "某某集团", role: "财务实习生", base: "深圳", source: { company: "结构化数据", role: "页面标签", base: "页面标签" }, confidence: { company: "high", role: "high", base: "high" } });
+L0041 | });
+L0042 | 
+L0043 | test("extractJobInfo reads meta names and page headings", () => {
+L0044 |   const result = extractJobInfo({ meta: { "og:site_name": "Example Partners", "og:title": "Graduate Analyst" }, headings: ["财务实习生"] });
+L0045 |   assert.equal(result.company, "Example Partners");
+L0046 |   assert.equal(result.role, "财务实习生");
+L0047 |   assert.equal(result.confidence.company, "medium");
+L0048 |   assert.equal(result.source.role, "网页标题");
+L0049 | });
+L0050 | 
+L0051 | test("extractJobInfo handles the agreed Chinese and English title examples", () => {
+L0052 |   for (const [documentTitle, company, role, base] of [
+L0053 |     ["财务实习生-某某集团-招聘官网", "某某集团", "财务实习生", ""],
+L0054 |     ["【审计助理_深圳】某某会计师事务所招聘", "某某会计师事务所", "审计助理", "深圳"],
+L0055 |     ["Graduate Analyst | Some Bank Careers", "Some Bank", "Graduate Analyst", ""],
+L0056 |     ["「Graduate Analyst」Some Bank / Hong Kong / LinkedIn", "Some Bank", "Graduate Analyst", "Hong Kong"],
+L0057 |     ["华润集团招聘官网", "华润集团", "", ""],
+L0058 |     ["某某集团校园招聘", "某某集团", "", ""],
+L0059 |     ["审计助理招聘 · 某某事务所", "某某事务所", "审计助理", ""]
+L0060 |   ]) {
+L0061 |     const result = extractJobInfo({ documentTitle });
+L0062 |     assert.deepEqual([result.company, result.role, result.base], [company, role, base], documentTitle);
+L0063 |   }
+L0064 | });
+L0065 | 
+L0066 | test("platform and application page names cannot become a company or role", () => {
+L0067 |   for (const name of ["智联招聘", "智联", "BOSS直聘", "前程无忧", "51job", "猎聘", "猎聘网", "拉勾", "拉勾招聘", "实习僧", "牛客", "牛客网", "应届生求职网", "脉脉", "LinkedIn", "领英", "JobsDB", "CTgoodjobs", "Indeed", "Moka", "填写简历", "简历填写", "我的简历", "职位详情", "岗位详情", "申请职位", "投递简历", "个人中心", "首页", "登录", "注册", "校园招聘", "Careers", "Jobs"]) {
+L0068 |     const result = extractJobInfo({ documentTitle: name, meta: { "og:site_name": name }, headings: [name], labels: { company: [name], role: [name] }, classCandidates: { company: [name], role: [name] } });
+L0069 |     assert.equal(result.company, "", name);
+L0070 |     assert.equal(result.role, "", name);
+L0071 |   }
+L0072 | });
+L0073 | 
+L0074 | test("known-site candidates preserve CTgoodjobs, JobsDB and Moka extraction", () => {
+L0075 |   for (const hostname of ["www.ctgoodjobs.hk", "hk.jobsdb.com", "jobs.mokahr.com", "job.swsmu.com"]) {
+L0076 |     const result = extractJobInfo({ hostname, siteCandidates: { company: ["Example Capital Limited"], role: ["Graduate Analyst"], base: ["Hong Kong"] } });
+L0077 |     assert.deepEqual([result.company, result.role, result.base], ["Example Capital Limited", "Graduate Analyst", "Hong Kong"]);
+L0078 |     assert.equal(result.source.role, "页面标签");
+L0079 |   }
+L0080 |   const result = extractJobInfo({ documentTitle: "某某公司 - 校园招聘", siteCandidates: { company: ["某某公司"], role: ["2027届-财务专员（上海）", "校园"] } });
+L0081 |   assert.equal(result.role, "2027届-财务专员（上海）");
+L0082 |   assert.equal(extractJobInfo({ documentTitle: "某某基金管理有限公司-招聘", siteCandidates: { role: ["职位申请", "量化研究员"] } }).role, "量化研究员");
+L0083 | });
+L0084 | 
+L0085 | test("class guesses and logo alt are low confidence and empty locations stay empty", () => {
+L0086 |   const result = extractJobInfo({ classCandidates: { role: ["量化研究员"], base: ["-", "工作地点"] }, logoAlts: ["某某集团"] });
+L0087 |   assert.equal(result.company, "某某集团");
+L0088 |   assert.equal(result.role, "量化研究员");
+L0089 |   assert.equal(result.confidence.company, "low");
+L0090 |   assert.equal(result.source.role, "页面文字");
+L0091 |   assert.equal(result.base, "");
+L0092 | });
+L0093 | 
+L0094 | test("recent jobs prioritize the exact host then newest capture, without mutating inputs or assigning another job", () => {
+L0095 |   const jobs = [
+L0096 |     { company: "甲公司", role: "分析师", host: "other.example", capturedAt: 500 },
+L0097 |     { company: "乙公司", role: "专员", host: "careers.example", capturedAt: 100 },
+L0098 |     { company: "丙公司", role: "管培生", url: "https://careers.example/jobs/3", capturedAt: 200 }
+L0099 |   ];
+L0100 |   assert.deepEqual(sortRecentJobs(jobs, "careers.example").map((job) => job.company), ["丙公司", "乙公司", "甲公司"]);
+L0101 |   assert.equal(jobs[0].company, "甲公司");
+L0102 |   assert.equal(extractJobInfo({ documentTitle: "填写简历", hostname: "careers.example" }, { recentJobs: jobs }).role, "");
+L0103 | });
+L0104 | 
+L0105 | test("job URL identity strips query, hash and credentials and rejects invalid URLs", () => {
+L0106 |   assert.equal(sanitizeJobUrl("https://careers.example/jobs/1?token=private#application"), "https://careers.example/jobs/1");
+L0107 |   assert.equal(sanitizeJobUrl("https://user:secret@careers.example/jobs/2"), "https://careers.example/jobs/2");
+L0108 |   assert.equal(sanitizeJobUrl("not a URL"), "");
+L0109 |   assert.equal(sanitizeJobUrl("javascript:alert(1)"), "");
+L0110 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/model.test.js
-SHA256: 88aab7073ff36ca0091b45c492ec891cd12a60faf955e57553f8d909cfa5cf59
-LINES: 120
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: 98a17883d5ba4132ed214a7ea85f501df78b229d0aa5cae95123e619ee32171e
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import {
 L0004 |   createRecord,
 L0005 |   updateRecord,
 L0006 |   validateRecordForSave,
-L0007 |   normalizeImportedRecord
-L0008 | } from "../src/model.js";
-L0009 | 
-L0010 | test("createRecord fills system fields and initial status history", () => {
-L0011 |   const record = createRecord({
-L0012 |     company: "Acme",
-L0013 |     role: "Analyst",
-L0014 |     base: "",
-L0015 |     portalLink: "https://example.com/job",
-L0016 |     pageTitle: "Analyst - Acme",
-L0017 |     source: "company_portal",
-L0018 |     appliedDate: "2026-06-02",
-L0019 |     status: "applied",
-L0020 |     nextActionDate: "",
-L0021 |     jdText: "",
-L0022 |     notes: ""
-L0023 |   }, "2026-06-02T10:00:00.000Z");
-L0024 | 
-L0025 |   assert.equal(record.company, "Acme");
-L0026 |   assert.equal(record.status, "applied");
-L0027 |   assert.equal(record.statusHistory.length, 1);
-L0028 |   assert.equal(record.statusHistory[0].status, "applied");
-L0029 |   assert.equal(record.statusHistory[0].date, "2026-06-02T10:00:00.000Z");
-L0030 |   assert.ok(record.id.length > 8);
-L0031 |   assert.equal(record.createdAt, "2026-06-02T10:00:00.000Z");
-L0032 |   assert.equal(record.updatedAt, "2026-06-02T10:00:00.000Z");
-L0033 | });
-L0034 | 
-L0035 | test("updateRecord appends status history only when status changes", () => {
-L0036 |   const original = createRecord({
-L0037 |     company: "Acme",
-L0038 |     role: "Analyst",
-L0039 |     base: "",
-L0040 |     portalLink: "https://example.com/job",
-L0041 |     pageTitle: "Analyst - Acme",
-L0042 |     source: "company_portal",
-L0043 |     appliedDate: "2026-06-02",
-L0044 |     status: "applied",
-L0045 |     nextActionDate: "",
-L0046 |     jdText: "",
-L0047 |     notes: ""
-L0048 |   }, "2026-06-02T10:00:00.000Z");
-L0049 | 
-L0050 |   const unchanged = updateRecord(original, { notes: "first note" }, "2026-06-03T10:00:00.000Z");
-L0051 |   assert.equal(unchanged.statusHistory.length, 1);
-L0052 |   assert.equal(unchanged.updatedAt, "2026-06-03T10:00:00.000Z");
-L0053 | 
-L0054 |   const changed = updateRecord(unchanged, { status: "oa" }, "2026-06-04T10:00:00.000Z");
-L0055 |   assert.equal(changed.status, "oa");
-L0056 |   assert.equal(changed.statusHistory.length, 2);
-L0057 |   assert.deepEqual(changed.statusHistory[1], {
-L0058 |     status: "oa",
-L0059 |     date: "2026-06-04T10:00:00.000Z"
-L0060 |   });
-L0061 | });
-L0062 | 
-L0063 | test("validateRecordForSave requires only MVP required-to-save fields", () => {
-L0064 |   const errors = validateRecordForSave({
-L0065 |     company: "",
-L0066 |     role: "",
-L0067 |     portalLink: "",
-L0068 |     source: "",
-L0069 |     appliedDate: "",
-L0070 |     status: ""
-L0071 |   });
-L0072 | 
-L0073 |   assert.deepEqual(errors, {
-L0074 |     company: "请填写公司",
-L0075 |     role: "请填写岗位",
-L0076 |     portalLink: "请填写 candidate portal link",
-L0077 |     source: "请选择投递来源",
-L0078 |     appliedDate: "请选择投递日期",
-L0079 |     status: "请选择当前进度"
-L0080 |   });
-L0081 | });
-L0082 | 
-L0083 | test("normalizeImportedRecord rejects invalid enum values", () => {
-L0084 |   assert.throws(() => normalizeImportedRecord({
-L0085 |     id: "id-1",
-L0086 |     company: "Acme",
-L0087 |     role: "Analyst",
-L0088 |     base: "",
-L0089 |     portalLink: "https://example.com/job",
-L0090 |     pageTitle: "",
-L0091 |     source: "unknown",
-L0092 |     appliedDate: "2026-06-02",
-L0093 |     status: "applied",
-L0094 |     statusHistory: "[]",
-L0095 |     nextActionDate: "",
-L0096 |     jdText: "",
-L0097 |     notes: "",
-L0098 |     createdAt: "2026-06-02T10:00:00.000Z",
-L0099 |     updatedAt: "2026-06-02T10:00:00.000Z"
-L0100 |   }), /Invalid source/);
-L0101 | });
-L0102 | 
-L0103 | test("createRecord accepts CTgoodjobs source", () => {
-L0104 |   const record = createRecord({
-L0105 |     company: "Acme",
-L0106 |     role: "Analyst",
-L0107 |     base: "Hong Kong",
-L0108 |     portalLink: "https://www.ctgoodjobs.hk/job/123",
-L0109 |     pageTitle: "Analyst - Acme",
-L0110 |     source: "ctgoodjobs",
-L0111 |     appliedDate: "2026-06-03",
-L0112 |     status: "applied",
-L0113 |     nextActionDate: "",
-L0114 |     jdText: "",
-L0115 |     notes: ""
-L0116 |   }, "2026-06-03T10:00:00.000Z");
-L0117 | 
-L0118 |   assert.equal(record.source, "ctgoodjobs");
-L0119 | });
-L0120 | 
+L0007 |   normalizeImportedRecord,
+L0008 |   getPortalUrl
+L0009 | } from "../src/model.js";
+L0010 | 
+L0011 | test("createRecord fills system fields and initial status history", () => {
+L0012 |   const record = createRecord({
+L0013 |     company: "Acme",
+L0014 |     role: "Analyst",
+L0015 |     base: "",
+L0016 |     portalLink: "https://example.com/job",
+L0017 |     pageTitle: "Analyst - Acme",
+L0018 |     source: "company_portal",
+L0019 |     appliedDate: "2026-06-02",
+L0020 |     status: "applied",
+L0021 |     nextActionDate: "",
+L0022 |     jdText: "",
+L0023 |     notes: ""
+L0024 |   }, "2026-06-02T10:00:00.000Z");
+L0025 | 
+L0026 |   assert.equal(record.company, "Acme");
+L0027 |   assert.equal(record.status, "applied");
+L0028 |   assert.equal(record.statusHistory.length, 1);
+L0029 |   assert.equal(record.statusHistory[0].status, "applied");
+L0030 |   assert.equal(record.statusHistory[0].date, "2026-06-02T10:00:00.000Z");
+L0031 |   assert.ok(record.id.length > 8);
+L0032 |   assert.equal(record.createdAt, "2026-06-02T10:00:00.000Z");
+L0033 |   assert.equal(record.updatedAt, "2026-06-02T10:00:00.000Z");
+L0034 | });
+L0035 | 
+L0036 | test("updateRecord appends status history only when status changes", () => {
+L0037 |   const original = createRecord({
+L0038 |     company: "Acme",
+L0039 |     role: "Analyst",
+L0040 |     base: "",
+L0041 |     portalLink: "https://example.com/job",
+L0042 |     pageTitle: "Analyst - Acme",
+L0043 |     source: "company_portal",
+L0044 |     appliedDate: "2026-06-02",
+L0045 |     status: "applied",
+L0046 |     nextActionDate: "",
+L0047 |     jdText: "",
+L0048 |     notes: ""
+L0049 |   }, "2026-06-02T10:00:00.000Z");
+L0050 | 
+L0051 |   const unchanged = updateRecord(original, { notes: "first note" }, "2026-06-03T10:00:00.000Z");
+L0052 |   assert.equal(unchanged.statusHistory.length, 1);
+L0053 |   assert.equal(unchanged.updatedAt, "2026-06-03T10:00:00.000Z");
+L0054 | 
+L0055 |   const changed = updateRecord(unchanged, { status: "oa" }, "2026-06-04T10:00:00.000Z");
+L0056 |   assert.equal(changed.status, "oa");
+L0057 |   assert.equal(changed.statusHistory.length, 2);
+L0058 |   assert.deepEqual(changed.statusHistory[1], {
+L0059 |     status: "oa",
+L0060 |     date: "2026-06-04T10:00:00.000Z"
+L0061 |   });
+L0062 | });
+L0063 | 
+L0064 | test("validateRecordForSave requires only MVP required-to-save fields", () => {
+L0065 |   const errors = validateRecordForSave({
+L0066 |     company: "",
+L0067 |     role: "",
+L0068 |     portalLink: "",
+L0069 |     source: "",
+L0070 |     appliedDate: "",
+L0071 |     status: ""
+L0072 |   });
+L0073 | 
+L0074 |   assert.deepEqual(errors, {
+L0075 |     company: "请填写公司",
+L0076 |     role: "请填写岗位",
+L0077 |     portalLink: "请填写 candidate portal link",
+L0078 |     source: "请选择投递来源",
+L0079 |     appliedDate: "请选择投递日期",
+L0080 |     status: "请选择当前进度"
+L0081 |   });
+L0082 | });
+L0083 | 
+L0084 | test("normalizeImportedRecord rejects invalid enum values", () => {
+L0085 |   assert.throws(() => normalizeImportedRecord({
+L0086 |     id: "id-1",
+L0087 |     company: "Acme",
+L0088 |     role: "Analyst",
+L0089 |     base: "",
+L0090 |     portalLink: "https://example.com/job",
+L0091 |     pageTitle: "",
+L0092 |     source: "unknown",
+L0093 |     appliedDate: "2026-06-02",
+L0094 |     status: "applied",
+L0095 |     statusHistory: "[]",
+L0096 |     nextActionDate: "",
+L0097 |     jdText: "",
+L0098 |     notes: "",
+L0099 |     createdAt: "2026-06-02T10:00:00.000Z",
+L0100 |     updatedAt: "2026-06-02T10:00:00.000Z"
+L0101 |   }), /Invalid source/);
+L0102 | });
+L0103 | 
+L0104 | test("createRecord accepts CTgoodjobs source", () => {
+L0105 |   const record = createRecord({
+L0106 |     company: "Acme",
+L0107 |     role: "Analyst",
+L0108 |     base: "Hong Kong",
+L0109 |     portalLink: "https://www.ctgoodjobs.hk/job/123",
+L0110 |     pageTitle: "Analyst - Acme",
+L0111 |     source: "ctgoodjobs",
+L0112 |     appliedDate: "2026-06-03",
+L0113 |     status: "applied",
+L0114 |     nextActionDate: "",
+L0115 |     jdText: "",
+L0116 |     notes: ""
+L0117 |   }, "2026-06-03T10:00:00.000Z");
+L0118 | 
+L0119 |   assert.equal(record.source, "ctgoodjobs");
+L0120 | });
+L0121 | 
+L0122 | test("portal references retain plain text and reject executable URL protocols", () => {
+L0123 |   const draft = { company: "示例公司", role: "分析师", portalLink: "微信内推", source: "referral", appliedDate: "2026-10-13", status: "applied" };
+L0124 |   assert.deepEqual(validateRecordForSave(draft), {});
+L0125 |   assert.equal(createRecord(draft).portalLink, "微信内推");
+L0126 |   assert.equal(getPortalUrl("微信内推"), "");
+L0127 |   assert.equal(getPortalUrl("https://example.com/apply"), "https://example.com/apply");
+L0128 |   for (const link of ["javascript:alert(1)", "data:text/html,example", "file:///tmp/example", "https://"]) {
+L0129 |     assert.match(validateRecordForSave({ ...draft, portalLink: link }).portalLink, /http/);
+L0130 |     assert.throws(() => createRecord({ ...draft, portalLink: link }), /http/);
+L0131 |     assert.equal(getPortalUrl(link), "");
+L0132 |   }
+L0133 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/mokaJobExtractor.test.js
 SHA256: 20d7d786987dcf007df91759f56c3777529fcd1d930fe848b9f96605e6221c35
-LINES: 70
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { extractJobInfo } from "../src/jobInfo/extractJobInfo.js";
@@ -218,14 +425,10 @@ L0066 |     role: "",
 L0067 |     base: ""
 L0068 |   });
 L0069 | });
-L0070 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/optionMatch.test.js
 SHA256: 4bd41e432b933c828b760f1e358fba5ed2a260ed46ea02f16a209e1f2a9b9083
-LINES: 32
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { optionMatch } from "../src/assistant/optionMatch.js";
@@ -257,14 +460,47 @@ L0028 |   assert.equal(inlineSource.replace(/\s+/g, ""), optionMatch.toString().
 L0029 |   const inline = Function(`return (${inlineSource})`)();
 L0030 |   for (const fixture of OPTION_MATCH_CASES) assert.equal(inline(fixture.options, fixture.value, fixture.context), fixture.expectedIndex < 0 ? null : fixture.options[fixture.expectedIndex], fixture.name);
 L0031 | });
-L0032 | 
+
+========================================================================
+FILE: application-tracker-extension/test/panelView.test.js
+SHA256: 4bc70060222df4f953313be99e1b5dfa4a9a54e5713a6a5eb9c519d1b60ce6ec
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { groupOf, buildPanelView, detectPageLanguage } from "../src/assistant/panelView.js";
+L0004 | const item = (extra = {}) => ({ fieldId: "f", supported: true, value: "", answer: "", entityId: "self", kind: "text", type: "text", labelSource: "label", status: "missing", constraints: {}, ...extra });
+L0005 | test("panel grouping preserves existing website contents before other rules", () => assert.equal(groupOf(item({ value: "saved", supported: false })), "filled"));
+L0006 | test("panel grouping directs unsupported controls to the website", () => assert.equal(groupOf(item({ supported: false })), "web"));
+L0007 | test("panel grouping brings an unsuccessful operation to attention until undone", () => {
+L0008 |   assert.equal(groupOf(item(), { status: "failed" }), "attention");
+L0009 |   assert.equal(groupOf(item(), { status: "failed", undone: true }), "optional");
+L0010 | });
+L0011 | test("panel grouping brings reviews, uncertain labels, invalid answers and unknown subjects to attention", () => {
+L0012 |   for (const extra of [{ status: "review" }, { labelSource: "none" }, { entityId: "education.unknown" }, { type: "email" }]) assert.equal(groupOf(item({ answer: "test", status: "ready", ...extra })), "attention");
+L0013 | });
+L0014 | test("panel grouping collapses reliable fillable answers", () => assert.equal(groupOf(item({ answer: "answer", status: "ready" })), "ready"));
+L0015 | test("panel grouping surfaces required gaps and ambiguous experience matches", () => {
+L0016 |   assert.equal(groupOf(item({ constraints: { required: true } })), "attention");
+L0017 |   assert.equal(groupOf(item({ entityId: "education.unknown" }), null, [{ entityId: "education.master" }]), "attention");
+L0018 |   assert.equal(groupOf(item({ entityId: "education.unknown" }), null, [{ entityId: "experience.internship" }]), "optional");
+L0019 | });
+L0020 | test("panel grouping keeps unrequired unanswered fields optional", () => assert.equal(groupOf(item()), "optional"));
+L0021 | test("panel counters and section summaries preserve page order and latest operation", () => {
+L0022 |   const plan = [item({ fieldId: "1", answer: "a", status: "ready", section: "教育", selected: true }), item({ fieldId: "2", answer: "b", status: "ready", section: "基本", selected: false }), item({ fieldId: "3", answer: "c", status: "ready", section: "教育", selected: true }), item({ fieldId: "4" }), item({ fieldId: "5", supported: false }), item({ fieldId: "6", value: "saved" }), item({ fieldId: "7", constraints: { required: true } })];
+L0023 |   const view = buildPanelView(plan, [{ fieldId: "2", status: "failed" }, { fieldId: "2", status: "verified" }]);
+L0024 |   assert.deepEqual(view.counts, { fill: 2, attention: 1, skip: 3 });
+L0025 |   assert.deepEqual(view.readySections, [{ name: "教育", count: 2 }, { name: "基本", count: 1 }]);
+L0026 | });
+L0027 | test("panel language detection uses labels and page title with a Chinese default", () => {
+L0028 |   assert.equal(detectPageLanguage({ title: "申请表", fields: [{ label: "姓名" }] }), "zh");
+L0029 |   assert.equal(detectPageLanguage({ title: "Apply", fields: [{ label: "Name" }] }), "en");
+L0030 |   assert.equal(detectPageLanguage({ title: "中文ABC" }), "zh");
+L0031 |   assert.equal(detectPageLanguage({ title: "中ABCDEFG" }), "en");
+L0032 |   assert.equal(detectPageLanguage(), "zh");
+L0033 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/presentation.test.js
 SHA256: 10477b3e01f53b1fa0f4ea2a305c3e5be226d1dbb058200938ab54ca8a7eb5f3
-LINES: 42
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import {
@@ -306,14 +542,10 @@ L0038 |   assert.equal(getCompanyInitial("OpenAI"), "O");
 L0039 |   assert.equal(getCompanyInitial(" 字节跳动 "), "字");
 L0040 |   assert.equal(getCompanyInitial(""), "?");
 L0041 | });
-L0042 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/preview.test.js
 SHA256: c9c10630faa5e9efcf98bf73b52a256351dd04fd746c2c5dd53a89e04afb76c7
-LINES: 112
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { isFillable, finalizePreview, previewStats } from "../src/assistant/preview.js";
@@ -425,14 +657,10 @@ L0108 |   ];
 L0109 |   assert.deepEqual(previewStats(plan), { eligible: 3, selected: 2, review: 1, missing: 1, filled: 1 });
 L0110 |   assert.deepEqual(previewStats([]), { eligible: 0, selected: 0, review: 0, missing: 0, filled: 0 });
 L0111 | });
-L0112 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/profile.test.js
 SHA256: 41196108770e1344ada02cdb70bd9cd7ea6fab58d50b2824e762eee6445732c6
-LINES: 159
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import {
@@ -591,14 +819,10 @@ L0155 | test("profileHasUsableFields detects whether autofill has anything to wr
 L0156 |   assert.equal(profileHasUsableFields(emptyProfile()), false);
 L0157 |   assert.equal(profileHasUsableFields({ ...emptyProfile(), email: "kai@example.com" }), true);
 L0158 | });
-L0159 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/questionMemory.test.js
 SHA256: 4b96424a5e9698ae44bbfd52390edb8ad6d23968ff497011badebbe17557fd06
-LINES: 114
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import {
@@ -712,14 +936,92 @@ L0110 |     "家庭关系 > 父亲 > 职位*",
 L0111 |     "家庭关系 > 母亲 > 职位*"
 L0112 |   ]);
 L0113 | });
-L0114 | 
+
+========================================================================
+FILE: application-tracker-extension/test/recentJobs.test.js
+SHA256: d660cc8b06497f3090445aba6414abcd1315bcf403ad9c8c8364a7bf3faf870a
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { RECENT_JOBS_KEY, rememberJob, loadRecentJobs } from "../src/jobInfo/recentJobs.js";
+L0004 | 
+L0005 | function sessionStorage(initial = {}) {
+L0006 |   const values = structuredClone(initial), writes = [];
+L0007 |   return {
+L0008 |     values, writes,
+L0009 |     async get(key) { return { [key]: structuredClone(values[key]) }; },
+L0010 |     async set(update) { writes.push(structuredClone(update)); Object.assign(values, structuredClone(update)); }
+L0011 |   };
+L0012 | }
+L0013 | 
+L0014 | const jobInfo = (company = "示例公司", role = "分析师") => ({
+L0015 |   company, role, base: "香港", confidence: { company: "high", role: "medium", base: "high" },
+L0016 |   source: { company: "结构化数据", role: "网页标题", base: "页面标签" }
+L0017 | });
+L0018 | 
+L0019 | test("recent jobs remember trusted fields only and use only the provided session storage", async () => {
+L0020 |   const storage = sessionStorage();
+L0021 |   const info = jobInfo();
+L0022 |   info.confidence.company = "low";
+L0023 |   info.confidence.base = "low";
+L0024 |   await rememberJob(storage, "https://careers.example/jobs/1", info);
+L0025 |   const [job] = await loadRecentJobs(storage);
+L0026 |   assert.deepEqual([job.company, job.role, job.base], ["", "分析师", ""]);
+L0027 |   assert.equal(job.host, "careers.example");
+L0028 |   assert.equal(typeof job.capturedAt, "number");
+L0029 |   assert.deepEqual(job.source, info.source);
+L0030 |   assert.deepEqual(Object.keys(storage.values), [RECENT_JOBS_KEY]);
+L0031 |   assert.equal(storage.writes.length, 1);
+L0032 | });
+L0033 | 
+L0034 | test("low confidence, location-only, absent info and unsafe URLs do not enter recent jobs", async () => {
+L0035 |   const storage = sessionStorage();
+L0036 |   const low = jobInfo();
+L0037 |   low.confidence = { company: "low", role: "low", base: "high" };
+L0038 |   await rememberJob(storage, "https://careers.example/jobs/1", low);
+L0039 |   await rememberJob(storage, "https://careers.example/jobs/1", jobInfo("", ""));
+L0040 |   await rememberJob(storage, "https://careers.example/jobs/1", null);
+L0041 |   for (const url of ["", "not a URL", "javascript:alert(1)", "file:///C:/private.txt"]) {
+L0042 |     await rememberJob(storage, url, jobInfo());
+L0043 |   }
+L0044 |   assert.deepEqual(await loadRecentJobs(storage), []);
+L0045 |   assert.equal(storage.writes.length, 0);
+L0046 | });
+L0047 | 
+L0048 | test("recent jobs strip query, fragment and URL credentials before storage and deduplication", async () => {
+L0049 |   const storage = sessionStorage();
+L0050 |   await rememberJob(storage, "https://person:private@careers.example/jobs/1?token=secret#apply", jobInfo());
+L0051 |   await rememberJob(storage, "https://careers.example/jobs/2?tracking=1", jobInfo("另一公司", "助理"));
+L0052 |   await rememberJob(storage, "https://careers.example/jobs/1?token=other", jobInfo("新公司", "新岗位"));
+L0053 |   const jobs = await loadRecentJobs(storage);
+L0054 |   assert.equal(jobs.length, 2);
+L0055 |   assert.equal(jobs[0].url, "https://careers.example/jobs/1");
+L0056 |   assert.equal(jobs[0].company, "新公司");
+L0057 |   assert.equal(jobs[1].url, "https://careers.example/jobs/2");
+L0058 |   assert.doesNotMatch(JSON.stringify(storage.values), /token|private|person|secret|tracking/);
+L0059 | });
+L0060 | 
+L0061 | test("recent jobs retain the latest twenty URL identities", async () => {
+L0062 |   const storage = sessionStorage();
+L0063 |   for (let index = 0; index < 25; index++) {
+L0064 |     await rememberJob(storage, `https://careers.example/jobs/${index}`, jobInfo("示例公司", `岗位 ${index}`));
+L0065 |   }
+L0066 |   const jobs = await loadRecentJobs(storage);
+L0067 |   assert.equal(jobs.length, 20);
+L0068 |   assert.equal(jobs[0].role, "岗位 24");
+L0069 |   assert.equal(jobs.at(-1).role, "岗位 5");
+L0070 | });
+L0071 | 
+L0072 | test("recent jobs load absent or malformed lists as empty and do not write while reading", async () => {
+L0073 |   for (const initial of [{}, { [RECENT_JOBS_KEY]: {} }, { [RECENT_JOBS_KEY]: "invalid" }]) {
+L0074 |     const storage = sessionStorage(initial);
+L0075 |     assert.deepEqual(await loadRecentJobs(storage), []);
+L0076 |     assert.equal(storage.writes.length, 0);
+L0077 |   }
+L0078 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/reconcile.test.js
 SHA256: 24ef38f20c07b2530b42efad5cd547cbd9fa221749870f14595da87e65a0c06e
-LINES: 23
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { reconcilePlan } from "../src/assistant/reconcile.js";
@@ -742,14 +1044,442 @@ L0019 |   const items = reconcilePlan([field], [{ ...field, value: "网页手填
 L0020 |   assert.equal(items[0].value, "网页手填");
 L0021 |   assert.ok(items.every((item) => !item.selected));
 L0022 | });
-L0023 | 
+
+========================================================================
+FILE: application-tracker-extension/test/recordCard.test.js
+SHA256: 150673d4ae460192e866b3ab74a8a9d769043ed8e2f64339cd467e174c03d55f
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { setImmediate } from "node:timers/promises";
+L0004 | import { createRecordCard } from "../src/sidepanel/recordCard.js";
+L0005 | import { buildRecordDraft } from "../src/assistant/recordDraft.js";
+L0006 | import { createMutationQueue, MUTATION_MESSAGE } from "../src/storageMutations.js";
+L0007 | import { STORAGE_KEY } from "../src/constants.js";
+L0008 | 
+L0009 | const settings = { enabled: true, apiKey: "fixture-only-key", model: "fixture-model" };
+L0010 | const signals = { jobPostings: [{ company: "示例公司", title: "分析师", base: "香港" }], hostname: "careers.example", pathname: "/jobs/1" };
+L0011 | const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; };
+L0012 | async function eventually(condition) { for (let index = 0; index < 100; index++) { if (condition()) return; await setImmediate(); } assert.ok(condition(), "asynchronous card operation did not finish"); }
+L0013 | 
+L0014 | function harness(t, { collect = async () => signals, records = [] } = {}) {
+L0015 |   const previous = globalThis.chrome, values = { [STORAGE_KEY]: structuredClone(records) }, temporary = {}, messages = [], notices = [];
+L0016 |   let busy = false, persisted = 0, targetUrl = "https://careers.example/jobs/1?token=temporary", targetDocument = "doc0", persistFailure = false;
+L0017 |   const listeners = new Map();
+L0018 |   const container = {
+L0019 |     hidden: true, innerHTML: "", origin: { textContent: "" },
+L0020 |     addEventListener(name, handler) { listeners.set(name, handler); },
+L0021 |     querySelector(selector) { return selector === "[data-record-origin]" ? this.origin : null; },
+L0022 |     querySelectorAll() { return []; },
+L0023 |     input(id, value) { listeners.get("input")({ target: { id, value } }); },
+L0024 |     change(id, value) { listeners.get("change")({ target: { id, value } }); },
+L0025 |     click(id) { listeners.get("click")({ target: { closest: () => ({ id }) } }); }
+L0026 |   };
+L0027 |   const area = (data) => ({
+L0028 |     async get(keys) { return structuredClone(Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter((key) => Object.hasOwn(data, key)).map((key) => [key, data[key]]))); },
+L0029 |     async set(update) { Object.assign(data, structuredClone(update)); }
+L0030 |   });
+L0031 |   const local = area(values), sessionArea = area(temporary);
+L0032 |   const mutate = createMutationQueue(local);
+L0033 |   globalThis.chrome = {
+L0034 |     storage: { local, session: sessionArea },
+L0035 |     tabs: { async get() { return { url: targetUrl }; } },
+L0036 |     scripting: { async executeScript(request) {
+L0037 |       if (request.func.name === "pageBridge") {
+L0038 |         assert.equal(request.args[0].action, "ping");
+L0039 |         if (request.target.documentIds[0] !== targetDocument) throw new Error("Original document missing");
+L0040 |         return [{ documentId: targetDocument, result: { token: "token0", scanId: "scan0" } }];
+L0041 |       }
+L0042 |       assert.deepEqual(request.target.frameIds, [0]); assert.equal(request.func.name, "collectJobSignals");
+L0043 |       const result = await collect();
+L0044 |       return [{ documentId: targetDocument, result }];
+L0045 |     } },
+L0046 |     runtime: { async sendMessage(message) { messages.push(structuredClone(message)); assert.equal(message.type, MUTATION_MESSAGE); return { ok: true, value: await mutate(message.mutation) }; } }
+L0047 |   };
+L0048 |   t.after(() => { if (previous === undefined) delete globalThis.chrome; else globalThis.chrome = previous; });
+L0049 |   let session = { tabId: 1, snapshot: { tabId: 1, url: targetUrl, title: "申请信息", frames: [{ frameId: 0, documentId: "doc0", token: "token0", scanId: "scan0" }] }, results: [{ status: "verified" }], stale: false };
+L0050 |   const card = createRecordCard({ container, getSession: () => session, persist: async () => { persisted++; if (persistFailure) throw new Error("Synthetic session quota"); }, isBusy: () => busy,
+L0051 |     setBusy: (value) => { busy = value; }, tell: (message) => notices.push(message) });
+L0052 |   return { card, container, values, temporary, messages, notices, get session() { return session; }, set session(value) { session = value; }, get busy() { return busy; }, get persisted() { return persisted; }, set targetUrl(value) { targetUrl = value; }, set targetDocument(value) { targetDocument = value; }, set persistFailure(value) { persistFailure = value; } };
+L0053 | }
+L0054 | 
+L0055 | test("record card prepares page information in session only and never saves automatically", async (t) => {
+L0056 |   const h = harness(t);
+L0057 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0058 |   await h.card.render();
+L0059 |   assert.deepEqual([h.session.recordDraft.company, h.session.recordDraft.role], ["示例公司", "分析师"]);
+L0060 |   assert.equal(h.session.recordDraft.portalLink, h.session.snapshot.url);
+L0061 |   assert.equal(h.session.recentJobs[0].url, "https://careers.example/jobs/1");
+L0062 |   assert.equal(h.container.hidden, false);
+L0063 |   assert.match(h.container.innerHTML, /提交后记一笔|结构化数据|id="saveRecord"/);
+L0064 |   assert.equal(h.messages.length, 0);
+L0065 |   assert.deepEqual(h.values[STORAGE_KEY], []);
+L0066 |   h.session.results = [];
+L0067 |   await h.card.render();
+L0068 |   assert.equal(h.container.hidden, true);
+L0069 | });
+L0070 | 
+L0071 | test("a stale page or replaced session discards delayed extraction and keeps the current draft", async (t) => {
+L0072 |   const gate = deferred(), h = harness(t, { collect: () => gate.promise });
+L0073 |   const first = h.session, pending = h.card.prepare(first.snapshot, { enabled: false });
+L0074 |   await eventually(() => !!first.recordDraft);
+L0075 |   first.stale = true;
+L0076 |   h.session = { tabId: 2, snapshot: { url: "https://careers.example/jobs/2", title: "新岗位" }, results: [], recordDraft: { company: "保留" } };
+L0077 |   gate.resolve(signals); await pending;
+L0078 |   assert.equal(first.recordDraft.company, "");
+L0079 |   assert.equal(h.session.recordDraft.company, "保留");
+L0080 |   assert.deepEqual(h.temporary, {});
+L0081 | });
+L0082 | 
+L0083 | test("a different document collected at the same URL is rejected before navigation events arrive", async (t) => {
+L0084 |   const gate = deferred(), h = harness(t, { collect: () => gate.promise });
+L0085 |   const pending = h.card.prepare(h.session.snapshot, { enabled: false });
+L0086 |   await eventually(() => !!h.session.recordDraft);
+L0087 |   await setImmediate();
+L0088 |   h.targetDocument = "doc-after-reload";
+L0089 |   gate.resolve(signals); await pending;
+L0090 |   assert.equal(h.session.stale, false);
+L0091 |   assert.equal(h.session.recordDraft.company, "");
+L0092 |   assert.equal(h.session.recordDraft.role, "");
+L0093 |   assert.deepEqual(h.temporary, {});
+L0094 | });
+L0095 | 
+L0096 | test("manual edits and deliberate clearing prevent late AI supplementation", async (t) => {
+L0097 |   const gate = deferred(); let requested = false;
+L0098 |   const h = harness(t, { collect: async () => ({ documentTitle: "申请信息", hostname: "careers.example", pathname: "/jobs/1" }) });
+L0099 |   t.mock.method(globalThis, "fetch", async (_url, init) => {
+L0100 |     requested = true;
+L0101 |     assert.doesNotMatch(init.body, /fixture-only-key|recordDraft|profile/);
+L0102 |     return { ok: true, json: async () => { await gate.promise; return { status: "completed", output_text: JSON.stringify({ company: "AI 公司", role: "AI 岗位", base: "香港", confidence: "medium" }) }; } };
+L0103 |   });
+L0104 |   const pending = h.card.prepare(h.session.snapshot, settings);
+L0105 |   await eventually(() => requested);
+L0106 |   h.container.input("recordCompany", "手动公司");
+L0107 |   h.container.input("recordRole", "");
+L0108 |   gate.resolve(); await pending;
+L0109 |   assert.equal(h.session.recordDraft.company, "手动公司");
+L0110 |   assert.equal(h.session.recordDraft.role, "");
+L0111 |   assert.equal(h.session.recordDraft.base, "香港");
+L0112 |   assert.equal(h.session.recordDraft.origin.company, "手动填写");
+L0113 |   assert.equal(h.messages.length, 0);
+L0114 | });
+L0115 | 
+L0116 | test("low AI confidence cannot fill draft fields and extraction failure remains manual", async (t) => {
+L0117 |   const h = harness(t, { collect: async () => ({}) });
+L0118 |   t.mock.method(globalThis, "fetch", async () => ({ ok: true, json: async () => ({ status: "completed", output_text: JSON.stringify({ company: "弱公司", role: "弱岗位", base: "香港", confidence: "low" }) }) }));
+L0119 |   await h.card.prepare(h.session.snapshot, settings);
+L0120 |   assert.equal(h.session.recordDraft.company, "");
+L0121 |   assert.equal(h.session.recordDraft.role, "");
+L0122 |   assert.equal(h.session.recordDraft.base, "");
+L0123 |   globalThis.chrome.scripting.executeScript = async () => { throw new Error("not permitted"); };
+L0124 |   await h.card.prepare(h.session.snapshot, settings);
+L0125 |   h.container.input("recordCompany", "手动公司");
+L0126 |   h.container.input("recordRole", "手动岗位");
+L0127 |   assert.deepEqual([h.session.recordDraft.company, h.session.recordDraft.role], ["手动公司", "手动岗位"]);
+L0128 | });
+L0129 | 
+L0130 | test("weak page guesses cannot silently populate a record draft", async (t) => {
+L0131 |   const h = harness(t, { collect: async () => ({ classCandidates: { company: ["猜测公司"], role: ["分析师"], base: ["香港"] } }) });
+L0132 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0133 |   assert.equal(h.session.recordInfo.confidence.role, "low");
+L0134 |   assert.equal(h.session.recordDraft.company, "");
+L0135 |   assert.equal(h.session.recordDraft.role, "");
+L0136 |   assert.equal(h.session.recordDraft.base, "");
+L0137 | });
+L0138 | 
+L0139 | test("a late AI reply cannot update a target that navigated before the session became stale", async (t) => {
+L0140 |   const gate = deferred(); let requested = false;
+L0141 |   const h = harness(t, { collect: async () => ({}) });
+L0142 |   t.mock.method(globalThis, "fetch", async () => {
+L0143 |     requested = true;
+L0144 |     return { ok: true, json: async () => { await gate.promise; return { status: "completed", output_text: JSON.stringify({ company: "AI 公司", role: "AI 岗位", base: "香港", confidence: "medium" }) }; } };
+L0145 |   });
+L0146 |   const pending = h.card.prepare(h.session.snapshot, settings);
+L0147 |   await eventually(() => requested);
+L0148 |   h.targetUrl = "https://careers.example/jobs/2";
+L0149 |   gate.resolve(); await pending;
+L0150 |   assert.equal(h.session.stale, false);
+L0151 |   assert.equal(h.session.recordDraft.company, "");
+L0152 |   assert.equal(h.session.recordDraft.role, "");
+L0153 | });
+L0154 | 
+L0155 | test("cancel aborts metadata requests and a late transport response cannot supplement the draft", async (t) => {
+L0156 |   const gate = deferred(); let requestSignal;
+L0157 |   const h = harness(t, { collect: async () => ({}) });
+L0158 |   t.mock.method(globalThis, "fetch", async (_url, init) => {
+L0159 |     requestSignal = init.signal;
+L0160 |     return { ok: true, json: async () => { await gate.promise; return { status: "completed", output_text: JSON.stringify({ company: "晚到公司", role: "晚到岗位", base: "香港", confidence: "high" }) }; } };
+L0161 |   });
+L0162 |   const pending = h.card.prepare(h.session.snapshot, settings);
+L0163 |   await eventually(() => !!requestSignal);
+L0164 |   h.card.cancel();
+L0165 |   assert.equal(requestSignal.aborted, true);
+L0166 |   gate.resolve(); await pending;
+L0167 |   assert.equal(h.session.recordDraft.company, "");
+L0168 |   assert.equal(h.session.recordDraft.role, "");
+L0169 |   assert.equal(h.messages.length, 0);
+L0170 | });
+L0171 | 
+L0172 | test("cancelling metadata never cancels an already authorized durable record save", async (t) => {
+L0173 |   const h = harness(t);
+L0174 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0175 |   const original = globalThis.chrome.runtime.sendMessage, gate = deferred();
+L0176 |   globalThis.chrome.runtime.sendMessage = async (message) => { await gate.promise; return original(message); };
+L0177 |   h.container.click("saveRecord");
+L0178 |   await eventually(() => h.busy);
+L0179 |   h.card.cancel();
+L0180 |   gate.resolve();
+L0181 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0182 |   assert.equal(h.values[STORAGE_KEY].length, 1);
+L0183 | });
+L0184 | 
+L0185 | test("recent candidates require explicit selection and never overwrite an existing company", async (t) => {
+L0186 |   const h = harness(t, { collect: async () => ({}) });
+L0187 |   h.temporary["applicationTracker.recentJobs"] = [{ company: "过去公司", role: "过去岗位", base: "香港", url: "https://careers.example/jobs/old", host: "careers.example", capturedAt: 100 }];
+L0188 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0189 |   await h.card.render();
+L0190 |   assert.equal(h.session.recordDraft.role, "");
+L0191 |   assert.match(h.container.innerHTML, /id="recordRecent"/);
+L0192 |   h.container.input("recordCompany", "手动公司");
+L0193 |   h.container.change("recordRecent", "0");
+L0194 |   assert.equal(h.session.recordDraft.company, "手动公司");
+L0195 |   assert.equal(h.session.recordDraft.role, "过去岗位");
+L0196 |   assert.equal(h.session.recordDraft.origin.role, "最近岗位");
+L0197 | });
+L0198 | 
+L0199 | test("record card safely renders hostile page text", async (t) => {
+L0200 |   const h = harness(t, { collect: async () => ({ jobPostings: [{ company: '<img src=x onerror="bad()">公司', title: '<script>bad()</script>分析师' }] }) });
+L0201 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0202 |   await h.card.render();
+L0203 |   assert.doesNotMatch(h.container.innerHTML, /<img src=x|<script>bad/);
+L0204 |   assert.match(h.container.innerHTML, /&lt;img|&lt;script/);
+L0205 | });
+L0206 | 
+L0207 | test("record save validates inline, freezes input and routes one explicit save through the mutation queue", async (t) => {
+L0208 |   const h = harness(t, { collect: async () => ({}) });
+L0209 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0210 |   h.container.click("saveRecord");
+L0211 |   await eventually(() => !!h.session.recordError);
+L0212 |   assert.match(h.session.recordError, /请填写公司|请填写岗位/);
+L0213 |   assert.equal(h.messages.length, 0);
+L0214 |   h.container.input("recordCompany", " 手动公司 ");
+L0215 |   h.container.input("recordRole", " 手动岗位 ");
+L0216 |   const original = globalThis.chrome.runtime.sendMessage, gate = deferred();
+L0217 |   globalThis.chrome.runtime.sendMessage = async (message) => { await gate.promise; return original(message); };
+L0218 |   h.container.click("saveRecord");
+L0219 |   h.container.click("saveRecord");
+L0220 |   h.container.input("recordRole", "意外改动");
+L0221 |   assert.equal(h.busy, true);
+L0222 |   gate.resolve();
+L0223 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0224 |   await h.card.render();
+L0225 |   assert.equal(h.messages.length, 1);
+L0226 |   assert.equal(h.messages[0].mutation.operation, "record.create");
+L0227 |   assert.equal(h.values[STORAGE_KEY].length, 1);
+L0228 |   assert.deepEqual([h.values[STORAGE_KEY][0].company, h.values[STORAGE_KEY][0].role], ["手动公司", "手动岗位"]);
+L0229 |   assert.equal(h.session.recordSaved.id, h.values[STORAGE_KEY][0].id);
+L0230 |   assert.match(h.container.innerHTML, /已记录 ✓/);
+L0231 |   assert.doesNotMatch(h.container.innerHTML, /id="saveRecord/);
+L0232 | });
+L0233 | 
+L0234 | test("fresh duplicate detection requires a separate explicit still-record click", async (t) => {
+L0235 |   const h = harness(t);
+L0236 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0237 |   const existing = { ...buildRecordDraft({ url: h.session.snapshot.url, jobInfo: { company: "示例公司", role: "分析师" } }), id: "already-saved", status: "offer" };
+L0238 |   h.values[STORAGE_KEY].push(existing);
+L0239 |   h.container.click("saveRecord");
+L0240 |   await eventually(() => !!h.session.recordError && !h.busy);
+L0241 |   assert.equal(h.messages.length, 0);
+L0242 |   await h.card.render();
+L0243 |   assert.match(h.container.innerHTML, /已记录过|id="saveRecordAnyway"/);
+L0244 |   h.container.click("saveRecordAnyway");
+L0245 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0246 |   assert.equal(h.values[STORAGE_KEY].length, 2);
+L0247 |   assert.equal(h.messages.length, 1);
+L0248 | });
+L0249 | 
+L0250 | test("editing the company invalidates a previous still-record confirmation for both name and URL duplicates", async (t) => {
+L0251 |   const h = harness(t);
+L0252 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0253 |   const draft = h.session.recordDraft;
+L0254 |   h.values[STORAGE_KEY].push(
+L0255 |     { ...buildRecordDraft({ url: "https://careers.example/jobs/a", jobInfo: { company: "甲公司", role: "分析师" } }), id: "company-a" },
+L0256 |     { ...buildRecordDraft({ url: "https://careers.example/jobs/b", jobInfo: { company: "乙公司", role: "分析师" } }), id: "company-b" }
+L0257 |   );
+L0258 |   draft.company = "甲公司";
+L0259 |   await h.card.render();
+L0260 |   assert.match(h.container.innerHTML, /已记录过：甲公司/);
+L0261 |   h.container.input("recordCompany", "乙公司");
+L0262 |   h.container.click("saveRecordAnyway"); // A queued click from the old notice.
+L0263 |   await eventually(() => !!h.session.recordError && !h.busy);
+L0264 |   assert.equal(h.messages.length, 0);
+L0265 |   await h.card.render();
+L0266 |   assert.match(h.container.innerHTML, /已记录过：乙公司/);
+L0267 |   h.container.click("saveRecordAnyway");
+L0268 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0269 |   assert.equal(h.messages.length, 1);
+L0270 |   assert.equal(h.values[STORAGE_KEY].at(-1).company, "乙公司");
+L0271 | 
+L0272 |   // The duplicate ID may stay the same for a URL match; changed draft text
+L0273 |   // must still require a new confirmation rather than reuse that ID alone.
+L0274 |   delete h.session.recordSaved;
+L0275 |   delete h.session.recordError;
+L0276 |   draft.company = "甲公司";
+L0277 |   await h.card.render();
+L0278 |   h.container.input("recordCompany", "丙公司");
+L0279 |   h.container.click("saveRecordAnyway");
+L0280 |   await eventually(() => !!h.session.recordError && !h.busy);
+L0281 |   assert.equal(h.messages.length, 1);
+L0282 |   await h.card.render();
+L0283 |   h.container.click("saveRecordAnyway");
+L0284 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0285 |   assert.equal(h.messages.length, 2);
+L0286 |   assert.equal(h.values[STORAGE_KEY].at(-1).company, "丙公司");
+L0287 | });
+L0288 | 
+L0289 | test("navigation during duplicate lookup stops saving and reports the stale page", async (t) => {
+L0290 |   const h = harness(t);
+L0291 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0292 |   const gate = deferred(), get = globalThis.chrome.storage.local.get;
+L0293 |   globalThis.chrome.storage.local.get = async (keys) => { await gate.promise; return get(keys); };
+L0294 |   h.container.click("saveRecord");
+L0295 |   h.session.stale = true;
+L0296 |   gate.resolve();
+L0297 |   await eventually(() => !h.busy);
+L0298 |   assert.equal(h.messages.length, 0);
+L0299 |   assert.match(h.session.recordError, /页面已变化/);
+L0300 | });
+L0301 | 
+L0302 | test("saving checks the actual tab URL even if the stale event has not arrived", async (t) => {
+L0303 |   const h = harness(t);
+L0304 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0305 |   h.targetUrl = "https://careers.example/jobs/another";
+L0306 |   h.container.click("saveRecord");
+L0307 |   await eventually(() => !!h.session.recordError && !h.busy);
+L0308 |   assert.equal(h.messages.length, 0);
+L0309 |   assert.match(h.session.recordError, /跳转|重新识别/);
+L0310 | });
+L0311 | 
+L0312 | test("a committed record remains marked saved when the page becomes stale before its response returns", async (t) => {
+L0313 |   const h = harness(t);
+L0314 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0315 |   const original = globalThis.chrome.runtime.sendMessage;
+L0316 |   globalThis.chrome.runtime.sendMessage = async (message) => {
+L0317 |     const response = await original(message);
+L0318 |     h.session.stale = true;
+L0319 |     return response;
+L0320 |   };
+L0321 |   h.container.click("saveRecord");
+L0322 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0323 |   await h.card.render();
+L0324 |   assert.equal(h.values[STORAGE_KEY].length, 1);
+L0325 |   assert.equal(h.session.recordSaved.id, h.values[STORAGE_KEY][0].id);
+L0326 |   assert.match(h.session.recordError, /已记录.*页面已变化/);
+L0327 |   assert.ok(h.notices.some((notice) => /投递已记录.*页面已变化/.test(notice)));
+L0328 |   assert.match(h.container.innerHTML, /已记录 ✓/);
+L0329 |   assert.doesNotMatch(h.container.innerHTML, /id="saveRecord/);
+L0330 |   h.container.click("saveRecord");
+L0331 |   await setImmediate();
+L0332 |   assert.equal(h.messages.length, 1);
+L0333 | });
+L0334 | 
+L0335 | test("successful save survives a failed session write and never invites a second persistent save", async (t) => {
+L0336 |   const h = harness(t);
+L0337 |   await h.card.prepare(h.session.snapshot, { enabled: false });
+L0338 |   h.persistFailure = true;
+L0339 |   h.container.click("saveRecord");
+L0340 |   await eventually(() => !!h.session.recordSaved && !h.busy);
+L0341 |   await h.card.render();
+L0342 |   assert.equal(h.messages.length, 1);
+L0343 |   assert.equal(h.values[STORAGE_KEY].length, 1);
+L0344 |   assert.equal(h.session.recordError, "已记录，恢复状态暂存失败");
+L0345 |   assert.ok(h.notices.includes("已记录，恢复状态暂存失败"));
+L0346 |   assert.match(h.container.innerHTML, /已记录 ✓|恢复状态暂存失败/);
+L0347 |   h.container.click("saveRecord");
+L0348 |   await setImmediate();
+L0349 |   assert.equal(h.messages.length, 1);
+L0350 | });
+
+========================================================================
+FILE: application-tracker-extension/test/recordDraft.test.js
+SHA256: 0c51a2c694d0b42d096145e5a65c7021f43a11facf54b434e9718cc232443232
+L0001 | import test from "node:test";
+L0002 | import assert from "node:assert/strict";
+L0003 | import { toDateInputValue } from "../src/dateUtils.js";
+L0004 | import { extractJobInfo } from "../src/jobInfo/extractJobInfo.js";
+L0005 | import { buildRecordDraft, recentJobChoices, recordStatus } from "../src/assistant/recordDraft.js";
+L0006 | 
+L0007 | function completeDraft(overrides = {}) {
+L0008 |   return {
+L0009 |     ...buildRecordDraft({ url: "https://careers.example/jobs/1?application=xyz", title: "分析师申请", today: "2026-10-13",
+L0010 |       jobInfo: extractJobInfo({ jobPostings: [{ company: "示例公司", title: "分析师", base: "香港" }] }) }),
+L0011 |     ...overrides
+L0012 |   };
+L0013 | }
+L0014 | 
+L0015 | test("structured job information makes a current-page draft with per-field origins and empty optional fields", () => {
+L0016 |   assert.deepEqual(completeDraft(), {
+L0017 |     company: "示例公司", role: "分析师", base: "香港", portalLink: "https://careers.example/jobs/1?application=xyz",
+L0018 |     pageTitle: "分析师申请", source: "company_portal", appliedDate: "2026-10-13", status: "applied",
+L0019 |     nextActionDate: "", jdText: "", notes: "", origin: { company: "结构化数据", role: "结构化数据" }
+L0020 |   });
+L0021 | });
+L0022 | 
+L0023 | test("draft source follows the current page and defaults to today's local date and applied status", () => {
+L0024 |   const draft = buildRecordDraft({ url: "https://hk.jobsdb.com/job/123", title: "岗位详情" });
+L0025 |   assert.equal(draft.source, "jobsdb");
+L0026 |   assert.equal(draft.appliedDate, toDateInputValue());
+L0027 |   assert.equal(draft.status, "applied");
+L0028 | });
+L0029 | 
+L0030 | test("recent choices are explicit, same-host first, newest first and limited to five roles", () => {
+L0031 |   const recentJobs = [
+L0032 |     { company: "别页公司", role: "别页岗位", host: "other.example", capturedAt: 900 },
+L0033 |     { company: "本页公司", role: "分析师", host: "careers.example", capturedAt: 100 },
+L0034 |     { company: "新公司", role: "助理", url: "https://careers.example/jobs/2", capturedAt: 200 },
+L0035 |     { company: "无岗位", role: "", host: "careers.example", capturedAt: 1000 },
+L0036 |     ...Array.from({ length: 5 }, (_, index) => ({ company: `其他 ${index}`, role: `岗位 ${index}`, host: "other.example", capturedAt: index }))
+L0037 |   ];
+L0038 |   const original = structuredClone(recentJobs);
+L0039 |   const draft = buildRecordDraft({ url: "https://careers.example/apply", title: "填写简历", jobInfo: {}, recentJobs });
+L0040 |   assert.equal(draft.role, "");
+L0041 |   assert.equal(draft.company, "");
+L0042 |   assert.deepEqual(draft.origin, { company: "", role: "" });
+L0043 |   const choices = recentJobChoices(recentJobs, "careers.example");
+L0044 |   assert.equal(choices.length, 5);
+L0045 |   assert.deepEqual(choices.slice(0, 3).map((job) => job.company), ["新公司", "本页公司", "别页公司"]);
+L0046 |   assert.deepEqual(recentJobs, original);
+L0047 | });
+L0048 | 
+L0049 | test("draft validation requires the company and role and rejects an unsafe reference", () => {
+L0050 |   assert.deepEqual(recordStatus(completeDraft(), []).errors, {});
+L0051 |   const status = recordStatus(completeDraft({ company: " ", role: "", portalLink: "javascript:alert(1)" }), []);
+L0052 |   assert.equal(status.errors.company, "请填写公司");
+L0053 |   assert.equal(status.errors.role, "请填写岗位");
+L0054 |   assert.match(status.errors.portalLink, /http/);
+L0055 |   assert.equal(status.duplicate, null);
+L0056 | });
+L0057 | 
+L0058 | test("draft duplicate detection checks page link and company plus role", () => {
+L0059 |   const existing = { ...completeDraft(), id: "saved-record", status: "interview" };
+L0060 |   const byLink = recordStatus(completeDraft({ company: "另一公司", role: "另一岗位" }), [existing]);
+L0061 |   assert.equal(byLink.duplicate.reason, "portalLink");
+L0062 |   assert.equal(byLink.duplicate.record, existing);
+L0063 |   const byNames = recordStatus(completeDraft({ portalLink: "https://other.example/apply", company: " 示例公司 ", role: "分析师 " }), [existing]);
+L0064 |   assert.equal(byNames.duplicate.reason, "companyRole");
+L0065 |   assert.equal(recordStatus(completeDraft({ portalLink: "https://other.example/apply", role: "不同岗位" }), [existing]).duplicate, null);
+L0066 | });
+L0067 | 
+L0068 | test("draft text is trimmed and AI extraction origins stay visible for review", () => {
+L0069 |   const draft = buildRecordDraft({ url: " https://careers.example/apply ", title: " 申请 ", today: "2026-10-13",
+L0070 |     jobInfo: { company: " 示例公司 ", role: " 分析师 ", base: " 香港 ", source: { company: "AI 识别，请核对", role: "AI 识别，请核对" } } });
+L0071 |   assert.deepEqual([draft.company, draft.role, draft.base, draft.pageTitle], ["示例公司", "分析师", "香港", "申请"]);
+L0072 |   assert.deepEqual(draft.origin, { company: "AI 识别，请核对", role: "AI 识别，请核对" });
+L0073 |   assert.deepEqual(recentJobChoices(undefined, "careers.example"), []);
+L0074 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/session.test.js
 SHA256: 527ab62b68e9c034603792c195e519c3f7907d5d8f05f7930aac9845c4aa4859
-LINES: 47
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { scanPage } from "../src/assistant/session.js";
@@ -796,14 +1526,10 @@ L0043 | test("main frame access failure still requires returning to the target w
 L0044 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }], rejected: [0] });
 L0045 |   await assert.rejects(scanPage(7), /无法读取目标页面/);
 L0046 | });
-L0047 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/sourceDetection.test.js
 SHA256: 6dc1410f9ac3b2092a73194b24afa4b2529d0d26bf3ec2f5ef9ba350cf595d8e
-LINES: 35
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { detectSourceFromUrl, isMokaUrl } from "../src/sourceDetection.js";
@@ -838,14 +1564,10 @@ L0031 |   assert.equal(isMokaUrl("https://job.swsmu.com/campus_apply/example/123
 L0032 |   assert.equal(isMokaUrl("https://careers.example.com/job/123"), false);
 L0033 |   assert.equal(isMokaUrl("not a url"), false);
 L0034 | });
-L0035 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/storageMutations.test.js
-SHA256: 79ac78bb72be57b842090ad885c5e08cabe3fcc31167d003223071ba4160e71d
-LINES: 115
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
+SHA256: f798747f1c1ec8931d11912cb961a3e36c50cf0a45e58e0aada1c6ceeeb5af03
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { createMutationQueue } from "../src/storageMutations.js";
@@ -961,13 +1683,56 @@ L0112 |   await assert.rejects(fixture.mutate({ operation: "backup.import", back
 L0113 |   assert.deepEqual(fixture.snapshot(), before);
 L0114 | });
 L0115 | 
+L0116 | test("text referral records allow export, restore preview and recovery creation", async () => {
+L0117 |   const record = createRecord({ ...draft(), portalLink: "微信内推", source: "referral" }, now);
+L0118 |   const fixture = storageFixture({ [STORAGE_KEY]: [record], [MEMORY_KEY]: [] });
+L0119 |   const backup = await fixture.mutate({ operation: "backup.export" });
+L0120 |   assert.equal(backup.data.records[0].portalLink, "微信内推");
+L0121 |   const incoming = createBackup({ records: [], profile: {}, memories: [], legacyMemories: [], legacyMemoryBackup: [] }, now);
+L0122 |   const preview = await fixture.mutate({ operation: "backup.preview", backup: incoming, mode: "replace" });
+L0123 |   await fixture.mutate({ operation: "backup.import", backup: incoming, mode: "replace", currentVersion: preview.currentVersion });
+L0124 |   assert.equal(fixture.snapshot()[RECOVERY_KEY].data.records[0].portalLink, "微信内推");
+L0125 | });
+L0126 | 
+L0127 | test("Excel replacement commits a full recovery point atomically and can be restored", async () => {
+L0128 |   const record = createRecord({ ...draft(), portalLink: "微信内推", source: "referral" }, now);
+L0129 |   const fixture = storageFixture({ [STORAGE_KEY]: [record], [PROFILE_STORAGE_KEY]: { fullNameZh: "原资料" }, [MEMORY_KEY]: [], [AI_SETTINGS_STORAGE_KEY]: { apiKey: "PRIVATE_KEY" } });
+L0130 |   const replacement = createRecord(draft(2), now);
+L0131 |   await fixture.mutate({ operation: "records.replace", records: [replacement], expectedRecords: [record] });
+L0132 |   const after = fixture.snapshot();
+L0133 |   assert.equal(after[RECOVERY_KEY].data.records[0].id, record.id);
+L0134 |   assert.equal(after[RECOVERY_KEY].data.profile.fullNameZh, "原资料");
+L0135 |   assert.equal(JSON.stringify(after[RECOVERY_KEY]).includes("PRIVATE_KEY"), false);
+L0136 |   assert.equal(after[AI_SETTINGS_STORAGE_KEY].apiKey, "PRIVATE_KEY");
+L0137 |   const preview = await fixture.mutate({ operation: "backup.preview", backup: after[RECOVERY_KEY], mode: "replace" });
+L0138 |   await fixture.mutate({ operation: "backup.import", backup: after[RECOVERY_KEY], mode: "replace", currentVersion: preview.currentVersion });
+L0139 |   assert.equal(fixture.snapshot()[STORAGE_KEY][0].id, record.id);
+L0140 | });
+L0141 | 
+L0142 | test("Excel quota failure and stale record snapshots preserve data and previous recovery", async () => {
+L0143 |   const record = createRecord(draft(), now);
+L0144 |   const oldRecovery = createBackup({ records: [], profile: {}, memories: [], legacyMemories: [], legacyMemoryBackup: [] }, now);
+L0145 |   const fixture = storageFixture({ [STORAGE_KEY]: [record], [RECOVERY_KEY]: oldRecovery });
+L0146 |   await fixture.mutate({ operation: "record.patch", id: record.id, changes: { notes: "另一页修改" } });
+L0147 |   const before = fixture.snapshot();
+L0148 |   await assert.rejects(fixture.mutate({ operation: "records.replace", records: [], expectedRecords: [record] }), /重新导入/);
+L0149 |   assert.deepEqual(fixture.snapshot(), before);
+L0150 |   fixture.failNextWrites(true);
+L0151 |   await assert.rejects(fixture.mutate({ operation: "records.replace", records: [], expectedRecords: before[STORAGE_KEY] }), /QUOTA/);
+L0152 |   assert.deepEqual(fixture.snapshot(), before);
+L0153 | });
+L0154 | 
+L0155 | test("invalid Excel replacement cannot write a recovery point or change current data", async () => {
+L0156 |   const record = createRecord(draft(), now);
+L0157 |   const fixture = storageFixture({ [STORAGE_KEY]: [record] });
+L0158 |   const before = fixture.snapshot();
+L0159 |   await assert.rejects(fixture.mutate({ operation: "records.replace", records: [{ ...record, appliedDate: "2026-02-30" }], expectedRecords: [record] }), /日期/);
+L0160 |   assert.deepEqual(fixture.snapshot(), before);
+L0161 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/vision.test.js
 SHA256: 4b0c913ca4025fd3ab53aa21cbba0779eb5ebfe1a199a76e533fa20b1b653072
-LINES: 258
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { needsVisualRecognition, visionCandidates, buildVisionPayload, requestVisualRecognition, applyVisualObservations, restoreVisualContext } from "../src/assistant/vision.js";
@@ -1225,152 +1990,13 @@ L0254 |     assert.equal(restoreVisualContext(snapshot, previous, preparePlan(sn
 L0255 |     assert.deepEqual(snapshot.fields[0], before);
 L0256 |   }
 L0257 | });
-L0258 | 
 
 ========================================================================
 FILE: application-tracker-extension/test/visualCapture.test.js
 SHA256: 5cedc11a498d74fce6c78182ed2f043911972dbec0f18d188c8dd804c788f277
-LINES: 141
-说明：L 后面的数字是原始文件行号；行号前缀不是源码。
-------------------------------------------------------------------------
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { captureVisualContext, renderVisualCapture } from "../src/assistant/visualCapture.js";
 L0004 | 
 L0005 | const rawImage = "data:image/png;base64,UkFXX0lNQUdFX1NFQ1JFVA==";
 L0006 | const layout = () => ({ viewport: { width: 1000, height: 500, scrollX: 0, scrollY: 20, devicePixelRatio: 2, visualScale: 1, visualOffsetX: 0, visualOffsetY: 0 }, fields: [{ localFieldId: "f1", rect: { x: 40, y: 60, width: 200, height: 30 } }], redactions: [{ x: 40, y: 60, width: 200, height: 30 }, { x: 350, y: 50, width: 300, height: 100 }] });
-L0007 | const snapshot = () => ({ tabId: 12, url: "https://example.com/apply", frames: [{ frameId: 0, documentId: "doc-main", token: "token", scanId: "scan", url: "https://example.com/apply" }], fields: [{ frameId: 0, documentId: "doc-main", localFieldId: "f1", fieldId: "doc-main:f1", supported: true, value: "" }] });
-L0008 | const event = () => { const listeners = new Set(); return { addListener: (fn) => listeners.add(fn), removeListener: (fn) => listeners.delete(fn), emit: (...args) => listeners.forEach((fn) => fn(...args)), count: () => listeners.size }; };
-L0009 | 
-L0010 | async function harness(run) {
-L0011 |   const previous = Object.fromEntries(["chrome", "fetch", "OffscreenCanvas", "createImageBitmap"].map((key) => [key, globalThis[key]]));
-L0012 |   const state = { tab: { id: 12, windowId: 3, url: "https://example.com/apply", active: true }, activeId: 12, token: "token", layout: layout(), captured: 0, canvases: [], actions: [], bitmapClosed: false };
-L0013 |   const activated = event(), updated = event(), focused = event();
-L0014 |   const context = (canvas) => ({
-L0015 |     drawImage(...args) { canvas.calls.push(["draw", ...args.map((value) => typeof value === "object" ? "bitmap" : value)]); },
-L0016 |     fillRect(...args) { canvas.calls.push(["fill", this.fillStyle, ...args]); },
-L0017 |     strokeRect(...args) { canvas.calls.push(["stroke", ...args]); },
-L0018 |     fillText(...args) { canvas.calls.push(["text", ...args]); },
-L0019 |     measureText(text) { return { width: text.length * 7 }; }
-L0020 |   });
-L0021 |   class Canvas {
-L0022 |     constructor(width, height) { this.width = width; this.height = height; this.originalSize = [width, height]; this.calls = []; this.context = context(this); state.canvases.push(this); }
-L0023 |     getContext() { return this.context; }
-L0024 |     async convertToBlob() { return new Blob([JSON.stringify({ redacted: true, width: this.width, height: this.height })], { type: "image/png" }); }
-L0025 |   }
-L0026 |   globalThis.OffscreenCanvas = Canvas;
-L0027 |   globalThis.fetch = async (url) => { assert.equal(url, rawImage); return { blob: async () => new Blob(["private pixels"]) }; };
-L0028 |   globalThis.createImageBitmap = async () => { await state.onDecode?.(); return { width: 2000, height: 1000, close() { state.bitmapClosed = true; } }; };
-L0029 |   globalThis.chrome = {
-L0030 |     tabs: {
-L0031 |       get: async () => ({ ...state.tab }),
-L0032 |       query: async (query) => { assert.deepEqual(query, { active: true, lastFocusedWindow: true }); return [{ ...state.tab, id: state.activeId }]; },
-L0033 |       captureVisibleTab: async (windowId, options) => { assert.equal(windowId, 3); assert.deepEqual(options, { format: "png" }); state.captured++; await state.onCapture?.(); if (state.captureError) throw state.captureError; return rawImage; },
-L0034 |       onActivated: activated, onUpdated: updated
-L0035 |     },
-L0036 |     windows: { onFocusChanged: focused },
-L0037 |     scripting: { executeScript: async ({ target, args }) => {
-L0038 |       assert.deepEqual(target, { tabId: 12, documentIds: ["doc-main"] });
-L0039 |       const request = args[0]; state.actions.push(request.releaseWatch ? "visual-release" : request.action);
-L0040 |       return [{ documentId: "doc-main", result: request.action === "ping" ? { token: state.token, scanId: "scan" } : structuredClone(state.layout) }];
-L0041 |     } },
-L0042 |     storage: new Proxy({}, { get() { throw new Error("Screenshot capture must never access storage"); } })
-L0043 |   };
-L0044 |   try { await run(state, { activated, updated, focused }); }
-L0045 |   finally {
-L0046 |     assert.equal(activated.count(), 0, "activation listener leaked");
-L0047 |     assert.equal(updated.count(), 0, "navigation listener leaked");
-L0048 |     assert.equal(focused.count(), 0, "focus listener leaked");
-L0049 |     for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete globalThis[key]; else globalThis[key] = value; }
-L0050 |   }
-L0051 | }
-L0052 | 
-L0053 | test("visual capture masks before resizing, numbers main-frame fields and never stores raw images", async () => harness(async (state) => {
-L0054 |   const input = snapshot();
-L0055 |   input.fields.push({ frameId: 4, documentId: "child", localFieldId: "f2", fieldId: "child:f2", supported: true, value: "" });
-L0056 |   const result = await captureVisualContext(input);
-L0057 |   assert.equal(state.captured, 1);
-L0058 |   assert.deepEqual(result.fields, [{ fieldId: "doc-main:f1", marker: "V1", rect: { x: 40, y: 60, width: 200, height: 30 } }]);
-L0059 |   assert.deepEqual(result.viewport, { width: 1000, height: 500, scrollX: 0, scrollY: 20, scale: 1.6 });
-L0060 |   assert.equal(result.maskedCount, 2);
-L0061 |   assert.notEqual(result.imageUrl, rawImage);
-L0062 |   assert.deepEqual(state.canvases.map((canvas) => canvas.originalSize), [[2000, 1000], [1600, 800]]);
-L0063 |   assert.deepEqual(state.canvases[0].calls[1], ["fill", "#e8ece9", 72, 112, 416, 76]);
-L0064 |   assert.ok(state.canvases[1].calls.some((call) => call[0] === "text" && call[1] === "V1"));
-L0065 |   assert.equal(state.bitmapClosed, true);
-L0066 |   assert.ok(state.canvases.every((canvas) => canvas.width === 1 && canvas.height === 1));
-L0067 |   assert.equal(state.actions.filter((action) => action === "visual-layout").length, 3);
-L0068 |   assert.equal(state.actions.filter((action) => action === "visual-release").length, 1);
-L0069 | }));
-L0070 | 
-L0071 | test("inactive and non-web targets fail before any screenshot", async () => harness(async (state) => {
-L0072 |   state.activeId = 99;
-L0073 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_INACTIVE" });
-L0074 |   await assert.rejects(captureVisualContext({ ...snapshot(), url: "chrome://settings" }), { code: "VISUAL_TARGET" });
-L0075 |   assert.equal(state.captured, 0);
-L0076 | }));
-L0077 | 
-L0078 | test("switching away and back during capture permanently discards that screenshot", async () => harness(async (state, events) => {
-L0079 |   state.onCapture = () => { events.activated.emit({ tabId: 99, windowId: 3 }); events.activated.emit({ tabId: 12, windowId: 3 }); };
-L0080 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
-L0081 |   assert.equal(state.canvases.length, 0);
-L0082 | }));
-L0083 | 
-L0084 | test("navigation events and changed document identity discard captures", async () => harness(async (state, events) => {
-L0085 |   state.onCapture = () => events.updated.emit(12, { status: "loading" });
-L0086 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
-L0087 |   state.onCapture = () => { state.token = "different-document"; };
-L0088 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
-L0089 | }));
-L0090 | 
-L0091 | test("losing browser focus and returning during capture discards the image", async () => harness(async (state, events) => {
-L0092 |   state.onCapture = () => { events.focused.emit(-1); events.focused.emit(3); };
-L0093 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_STALE" });
-L0094 |   assert.equal(state.canvases.length, 0);
-L0095 | }));
-L0096 | 
-L0097 | test("a transient layout mutation remains invalid even after geometry is restored", async () => harness(async (state) => {
-L0098 |   state.onCapture = () => { state.layout.changed = true; };
-L0099 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_LAYOUT_CHANGED" });
-L0100 |   assert.equal(state.canvases.length, 0);
-L0101 |   assert.equal(state.actions.filter((action) => action === "visual-release").length, 1);
-L0102 | }));
-L0103 | 
-L0104 | test("scroll or geometry changes and late rendering changes invalidate the image", async () => harness(async (state) => {
-L0105 |   state.onCapture = () => { state.layout.viewport.scrollY++; };
-L0106 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_LAYOUT_CHANGED" });
-L0107 |   state.onCapture = undefined; state.layout = layout();
-L0108 |   state.onDecode = () => { state.layout.fields[0].rect.x++; };
-L0109 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_LAYOUT_CHANGED" });
-L0110 |   assert.equal(state.bitmapClosed, true);
-L0111 | }));
-L0112 | 
-L0113 | test("cancellation before and during capture returns no image and removes listeners", async () => harness(async (state) => {
-L0114 |   const before = new AbortController(); before.abort();
-L0115 |   await assert.rejects(captureVisualContext(snapshot(), { signal: before.signal }), { code: "VISUAL_CANCELLED" });
-L0116 |   assert.equal(state.captured, 0);
-L0117 |   const during = new AbortController(); state.onCapture = () => during.abort();
-L0118 |   await assert.rejects(captureVisualContext(snapshot(), { signal: during.signal }), { code: "VISUAL_CANCELLED" });
-L0119 |   assert.equal(state.canvases.length, 0);
-L0120 | }));
-L0121 | 
-L0122 | test("missing activeTab permission has an actionable DOM fallback message", async () => harness(async (state) => {
-L0123 |   state.captureError = new Error("Either <all_urls> or activeTab permission is required");
-L0124 |   await assert.rejects(captureVisualContext(snapshot()), (error) => error.code === "VISUAL_PERMISSION" && /重新点击扩展图标/.test(error.message) && /文字识别/.test(error.message));
-L0125 |   assert.equal(state.canvases.length, 0);
-L0126 | }));
-L0127 | 
-L0128 | test("empty candidate sets and pinch-zoom refuse unsafe captures", async () => harness(async (state) => {
-L0129 |   state.layout.fields = [];
-L0130 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_EMPTY" });
-L0131 |   state.layout = layout(); state.layout.viewport.visualScale = 1.5;
-L0132 |   await assert.rejects(captureVisualContext(snapshot()), { code: "VISUAL_ZOOM" });
-L0133 |   assert.equal(state.captured, 0);
-L0134 | }));
-L0135 | 
-L0136 | test("canvas rendering rejects remote image URLs and mismatched image dimensions", async () => harness(async () => {
-L0137 |   await assert.rejects(renderVisualCapture("https://example.com/private.png", layout(), []), { code: "VISUAL_IMAGE" });
-L0138 |   const wrong = layout(); wrong.viewport.height = 800;
-L0139 |   await assert.rejects(renderVisualCapture(rawImage, wrong, []), { code: "VISUAL_SIZE" });
-L0140 | }));
-L0141 | 

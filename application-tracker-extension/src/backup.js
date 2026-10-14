@@ -20,16 +20,16 @@ function array(value, name) { if (!Array.isArray(value) || value.length > 50000)
 function uniqueIds(items, name) { const seen = new Set(); for (const item of items) { if (seen.has(item.id)) fail(`${name}中存在重复 ID`); seen.add(item.id); } }
 function validDate(value) { if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false; const date = new Date(`${value}T12:00:00Z`); return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value; }
 
-function validateRecords(records) {
+export function validateRecords(records) {
   array(records, "投递记录");
   const output = records.map((record) => {
     expectObject(record, "投递记录"); knownKeys(record, recordFields, "投递记录");
     string(record.id, "记录 ID", true);
     optionalStrings(record, recordFields.filter((key) => key !== "statusHistory"), "投递记录");
-    if (Object.keys(validateRecordForSave(record)).length) fail("投递记录缺少公司、岗位、链接、来源、投递日期或状态");
+    const errors = validateRecordForSave(record);
+    if (errors.portalLink) fail(errors.portalLink);
+    if (Object.keys(errors).length) fail("投递记录缺少公司、岗位、链接、来源、投递日期或状态");
     if (!validDate(record.appliedDate) || record.nextActionDate && !validDate(record.nextActionDate)) fail("投递日期格式不正确");
-    let url; try { url = new URL(record.portalLink); } catch { fail("投递链接格式不正确"); }
-    if (!/^https?:$/.test(url.protocol)) fail("投递链接必须使用 http 或 https");
     array(record.statusHistory, "进度时间线");
     for (const entry of record.statusHistory) {
       expectObject(entry, "时间线条目"); knownKeys(entry, ["status", "date"], "时间线条目");

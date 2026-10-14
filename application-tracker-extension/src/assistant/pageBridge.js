@@ -35,6 +35,12 @@ export async function pageBridge(request) {
   const hasControl = (node) => !!(node.matches?.(CONTROL_SEL) || node.querySelector?.(CONTROL_SEL));
   const GENERIC_HINT = /^(请输入|请选择|请填写|请选择日期|选择日期|请输入内容|选择|输入|please (enter|select|choose)\b.*|select|choose|enter|checkbox-group|radio-group)$/i;
   const cleanQ = (t) => clean(t).replace(/^[*＊\s]+/, "").replace(/\s*[*＊]\s*$/, "").replace(/\s*[:：]\s*$/, "").replace(/\s*[*＊]\s*$/, "").trim();
+  function labelText(node) {
+    if (!node) return "";
+    const label = node.cloneNode(true);
+    for (const control of label.querySelectorAll('select, option, optgroup, textarea, input, button, [role="listbox"], [role="option"]')) control.remove();
+    return clean(label.textContent);
+  }
   const labelLike = (node) => {
     if (!node || node.nodeType !== 1 || !visible(node) || hasControl(node)) return "";
     const t = cleanQ(node.textContent);
@@ -45,12 +51,13 @@ export async function pageBridge(request) {
     const aria = cleanQ((el.getAttribute?.("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => root.getElementById?.(id)?.textContent).filter(Boolean).join(" ") || el.getAttribute?.("aria-label") || "");
     if (aria && !GENERIC_HINT.test(aria)) return { text: aria, source: "aria" };
     if (!skipOwnLabel && el.labels?.length) {
-      const own = cleanQ([...el.labels].map((n) => n.textContent).join(" "));
+      const own = cleanQ([...el.labels].map(labelText).join(" "));
       if (own && !GENERIC_HINT.test(own)) return { text: own, source: "label" };
     }
     const box = el.closest('.ant-form-item, .el-form-item, .ivu-form-item, .arco-form-item, .t-form__item, .layui-form-item, .form-item--phoenix, .form-group');
     const known = box?.querySelector('.ant-form-item-label, .el-form-item__label, .ivu-form-item-label, .arco-form-label-item, .t-form__label, .layui-form-label, .form-item__text, label.control-label');
-    if (known && cleanQ(known.textContent)) return { text: cleanQ(known.textContent), source: "container" };
+    const knownText = cleanQ(labelText(known));
+    if (knownText) return { text: knownText, source: "container" };
     const cell = el.closest("td, th");
     if (cell) for (let prev = cell.previousElementSibling; prev; prev = prev.previousElementSibling) {
       const t = labelLike(prev); if (t) return { text: t, source: "table" };
@@ -58,6 +65,7 @@ export async function pageBridge(request) {
     }
     let node = el;
     for (let depth = 0; node && node !== document.body && depth < 6; depth++, node = node.parentElement) {
+      if (node.matches("fieldset")) break;
       let steps = 0;
       for (let prev = node.previousElementSibling; prev && steps < 3; prev = prev.previousElementSibling, steps++) {
         // A real heading marks a section boundary, never the question of the next control.
@@ -68,6 +76,31 @@ export async function pageBridge(request) {
     const ph = cleanQ(el.getAttribute?.("placeholder") || el.querySelector?.("[placeholder]")?.getAttribute("placeholder") || "");
     if (ph && !GENERIC_HINT.test(ph)) return { text: ph, source: "placeholder" };
     return { text: "", source: "none" };
+  }
+  // <fieldset><legend>Q</legend><div role="radiogroup">…</div></fieldset> is a common pattern.
+  function groupQuestion(entry) {
+    const group = entry.el.closest("[role='radiogroup'], [role='group']");
+    const fieldset = entry.el.closest("fieldset");
+    for (const node of [group, fieldset]) {
+      if (!node) continue;
+      if (node === fieldset) {
+        const others = [...node.querySelectorAll(CONTROL_SEL + ', [role="radio"], [role="checkbox"]')].filter((c) => !entry.members.some((m) => m === c || m.contains(c) || c.contains(m)));
+        if (others.length) continue;
+      }
+      const root = node.getRootNode();
+      const aria = cleanQ((node.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => root.getElementById?.(id)?.textContent).filter(Boolean).join(" ") || node.getAttribute("aria-label") || "");
+      if (aria && !GENERIC_HINT.test(aria)) return aria;
+      if (node === fieldset) {
+        // Only a fieldset that holds no other question may lend its legend to this group.
+        const others = [...node.querySelectorAll(CONTROL_SEL + ', [role="radio"], [role="checkbox"]')].filter((c) => !entry.members.some((m) => m === c || m.contains(c) || c.contains(m)));
+        const named = cleanQ((node.querySelector(":scope > legend") || node.querySelector("[data-question], .form-item__text"))?.textContent);
+        if (named && !others.length) return named;
+      } else {
+        const named = cleanQ(node.querySelector("legend, [data-question], .form-item__text")?.textContent);
+        if (named) return named;
+      }
+    }
+    return "";
   }
   const TITLE_CLASS = /(^|[-_\s])(module-title|form-tit|settitle|section-title|block-title|group-title|title|tit|heading|caption)($|[-_\s])/i;
   const classOf = (n) => typeof n.className === "string" ? n.className : n.className?.baseVal || "";
@@ -89,26 +122,29 @@ export async function pageBridge(request) {
   }
   const signatureOf = (n) => n.tagName + "." + [...n.classList].filter((c) => !/active|open|hover|focus|error|checked|selected|first|last|^on$/i.test(c)).sort().join(".");
   function blockFor(el) {
+    const questionsFor = (node) => [...new Set([...node.querySelectorAll(CONTROL_SEL)].slice(0, 40).map((c) => questionFor(["radio", "checkbox"].includes(c.type) ? c.closest('.ant-radio-group,.ant-checkbox-group,.el-radio-group,.el-checkbox-group,[role="radiogroup"],[role="group"]') || containerFor(c) : c, ["radio", "checkbox"].includes(c.type)).text).filter(Boolean))].sort();
     for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
       const parent = node.parentElement; if (!parent) break;
       const peers = [...parent.children].filter((c) => signatureOf(c) === signatureOf(node) && c.querySelector(CONTROL_SEL));
       if (peers.length < 2) continue;
-      const questions = new Set([...node.querySelectorAll(CONTROL_SEL)].slice(0, 12).map((c) => questionFor(["radio", "checkbox"].includes(c.type) ? c.closest('.ant-radio-group,.ant-checkbox-group,.el-radio-group,.el-checkbox-group,[role="radiogroup"],[role="group"]') || containerFor(c) : c, ["radio", "checkbox"].includes(c.type)).text).filter(Boolean));
-      if (questions.size >= 2) return { index: peers.indexOf(node) + 1, key: idFor(parent) };
+      const questions = questionsFor(node);
+      const repeating = peers.filter((peer) => JSON.stringify(questionsFor(peer)) === JSON.stringify(questions));
+      if (questions.length >= 2 && repeating.length >= 2) return { index: repeating.indexOf(node) + 1, key: idFor(parent) };
     }
     return { index: 1, key: "" };
   }
   function labelFor(el) {
     const root = el.getRootNode();
     const labelled = (el.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean).map((id) => root.getElementById?.(id)?.textContent).filter(Boolean).join(" ");
-    const own = labelled || el.getAttribute("aria-label") || [...(el.labels || [])].map((n) => n.textContent).join(" ");
+    const own = labelled || el.getAttribute("aria-label") || [...(el.labels || [])].map(labelText).join(" ");
     if (clean(own)) return clean(own);
     const box = containerFor(el);
-    return clean(box?.querySelector('.form-item__text, .ant-form-item-label, .el-form-item__label, [class*="field-label"], label, legend')?.textContent || el.getAttribute("placeholder") || el.name || "未命名问题");
+    return clean(labelText(box?.querySelector('.form-item__text, .ant-form-item-label, .el-form-item__label, [class*="field-label"], label, legend')) || el.getAttribute("placeholder") || el.name || "未命名问题");
   }
   function context(el) {
     const group = el.closest('fieldset, [data-experience], [data-education], [class*="experience-item"], [class*="education-item"], [class*="relation-item"]');
     const section = el.closest('section, [role="group"], [class*="form-section"], [class*="complete-form"], form');
+    const sectionTitle = sectionFor(group || el) || sectionFor(el) || clean(section?.querySelector("h1, h2, h3, legend, [data-section-label]")?.textContent);
     const nearestHeading = (() => {
       for (let node = el; node && node !== document.body; node = node.parentElement) {
         for (let previous = node.previousElementSibling; previous; previous = previous.previousElementSibling) {
@@ -120,7 +156,7 @@ export async function pageBridge(request) {
     const evidence = [
       { source: "label", text: labelFor(el) },
       { source: "group", text: clean(group?.querySelector("legend, h2, h3, h4, [data-group-label]")?.textContent) },
-      { source: "section", text: clean(section?.querySelector("h1, h2, h3, legend, [data-section-label]")?.textContent) },
+      { source: "section", text: sectionTitle },
       { source: "nearby-heading", text: nearestHeading }
     ].filter((item) => item.text).map((item) => ({ ...item, text: item.text.slice(0, 240) }));
     const entity = (text) => /父亲|母亲|父母|家庭|亲属|紧急联系人|family|father|mother|emergency contact/i.test(text) ? "family" : /教育|学校|大学|学位|学历|education|university|degree/i.test(text) ? "education" : /工作|实习|雇主|employment|work experience|internship/i.test(text) ? "employment" : "";
@@ -128,7 +164,6 @@ export async function pageBridge(request) {
     const groupEntities = evidence.filter((item) => item.source !== "label").map((item) => entity(item.text)).filter(Boolean);
     const conflicts = ownEntity === "family" && groupEntities.some((item) => item !== "family") || groupEntities.includes("family") && groupEntities.some((item) => item !== "family");
     const block = blockFor(el);
-    const sectionTitle = clean(section?.querySelector("h1, h2, h3, legend, [data-section-label]")?.textContent) || sectionFor(el);
     return {
       groupIndex: block.index, blockKey: block.key,
       groupId: block.key ? `${block.key}:${block.index}` : group ? idFor(group) : section ? idFor(section) : "page",
@@ -161,29 +196,59 @@ export async function pageBridge(request) {
   function choiceSelected(el) {
     return el.getAttribute("aria-checked") === "true" || [...el.classList].some((name) => /^(?:is-checked|active|selected|checked|on)$|(?:^|[-_])(?:active|selected|checked)$/.test(name));
   }
+  // Identical self-contained helpers: Chrome serializes only pageBridge.
+function normalizeDateFormat(text) {
+  const token = String(text || "").match(/(?<![a-z])(?:y{4}\s*[-/.]\s*m{1,2}(?:\s*[-/.]\s*d{1,2})?|y{4}年m{1,2}月(?:d{1,2}日?)?|d{1,2}\s*[-/.]\s*m{1,2}\s*[-/.]\s*y{4})(?![a-z])/i)?.[0] || "";
+  return token.replace(/y{4}/gi, "YYYY").replace(/m{1,2}/gi, (part) => part.toUpperCase()).replace(/d{1,2}/gi, (part) => part.toUpperCase());
+}
+function parseDateValue(value, format = "") {
+  if (typeof value !== "string") return null;
+  const text = value.normalize("NFKC").trim();
+  let parts;
+  if (/^D/.test(normalizeDateFormat(format))) {
+    const match = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/.exec(text);
+    if (match) parts = [Number(match[3]), Number(match[2]), Number(match[1])];
+  }
+  if (!parts) {
+    const match = /^(\d{4})\s*[-/.年]\s*(\d{1,2})(?:\s*[-/.月]\s*(\d{1,2})\s*日?)?\s*月?$/.exec(text);
+    if (!match) return null;
+    parts = [Number(match[1]), Number(match[2]), match[3] ? Number(match[3]) : null];
+  }
+  const [year, month, day] = parts;
+  if (year < 1 || month < 1 || month > 12) return null;
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (day !== null && (day < 1 || day > days)) return null;
+  return { year, month, day };
+}
+function formatDateValue(value, format = "", { allowDefaultDay = false } = {}) {
+  const parsed = parseDateValue(value, format);
+  if (!parsed) return "";
+  const output = normalizeDateFormat(format) || (parsed.day === null ? "YYYY-MM" : "YYYY-MM-DD");
+  if (/[dD]/.test(output) && parsed.day === null && !allowDefaultDay) return "";
+  return output.replace(/YYYY|yyyy|MM|DD|dd|M|D|d/g, (part) => {
+    if (/y/i.test(part)) return String(parsed.year).padStart(4, "0");
+    const number = part.includes("M") ? parsed.month : parsed.day ?? 1;
+    return part.length === 2 ? String(number).padStart(2, "0") : String(number);
+  });
+}
   function dateInputs(entry) {
     return entry.el.matches("input") ? [entry.el] : [...entry.el.querySelectorAll('input:not([type="hidden"])')];
   }
   function dateFormat(entry) {
-    if (entry.adapter === "my97-date") return /dateFmt\s*:\s*['"]([^'"]+)['"]/.exec(entry.el.getAttribute("onclick") || "")?.[1] || "yyyy-MM-dd";
+    if (entry.adapter === "my97-date") return normalizeDateFormat(/dateFmt\s*:\s*['"]([^'"]+)['"]/.exec(entry.el.getAttribute("onclick") || "")?.[1]) || "YYYY-MM-DD";
     const input = dateInputs(entry)[0];
-    const format = entry.el.getAttribute("data-date-format") || input?.getAttribute("data-date-format") || input?.placeholder || "";
-    if (/y{4}.*m{1,2}/i.test(format)) return format;
-    if (input?.type === "month" || /month|月份|选择月|年月/i.test(`${classOf(entry.el)} ${format}`)) return "YYYY-MM";
+    const format = normalizeDateFormat(entry.el.getAttribute("data-date-format") || input?.getAttribute("data-date-format") || input?.placeholder || "");
+    if (format) return format;
+    if (input?.type === "month" || /month|月份|选择月|年月/i.test(`${classOf(entry.el)} ${input?.placeholder || ""}`)) return "YYYY-MM";
     return "YYYY-MM-DD";
   }
-  function dateParts(value) {
-    const match = clean(value).match(/^(\d{4})[-/年](\d{1,2})(?:[-/月](\d{1,2}))?[月日]?$/);
-    if (!match) return null;
-    const year = Number(match[1]), month = Number(match[2]), day = match[3] ? Number(match[3]) : null;
-    if (year < 1 || month < 1 || month > 12 || (day !== null && (day < 1 || day > new Date(Date.UTC(year, month, 0)).getUTCDate()))) return null;
-    return { year, month, day };
-  }
+  function dateParts(value, format = "") { return parseDateValue(value, format); }
   function formatDate(value, format) {
-    const parts = dateParts(value);
+    const parts = parseDateValue(value, format);
     if (!parts) throw problem("DATE_INVALID", "日期不存在或格式不正确");
-    if (/d/i.test(format) && parts.day === null) throw problem("DATE_INCOMPLETE", "此日期需要具体到日，请核对资料");
-    return format.replace(/yyyy|YYYY/g, String(parts.year)).replace(/MM/g, String(parts.month).padStart(2, "0")).replace(/dd|DD/g, String(parts.day).padStart(2, "0"));
+    if (/D/.test(normalizeDateFormat(format)) && parts.day === null) throw problem("DATE_INCOMPLETE", "此日期需要具体到日，请核对资料");
+    return formatDateValue(value, format);
   }
   function parseValues(value) {
     if (value === "") return [];
@@ -198,7 +263,7 @@ export async function pageBridge(request) {
     const left = parseValues(actual), right = parseValues(expected);
     if (left.length !== right.length) return false;
     return left.every((value, index) => {
-      const a = dateParts(value), b = dateParts(right[index]);
+      const a = dateParts(value, dateFormat(entry)), b = dateParts(right[index], dateFormat(entry));
       return a && b && a.year === b.year && a.month === b.month && (!/d/i.test(dateFormat(entry)) || (a.day ?? 1) === (b.day ?? 1));
     });
   }
@@ -241,7 +306,7 @@ export async function pageBridge(request) {
     const el = entry.el;
     const ctx = context(el);
     const groupBox = entry.members?.length > 1 ? entry.members.reduce((box, m) => { let b = box; while (b && !b.contains(m)) b = b.parentElement; return b; }, entry.members[0].parentElement) : null;
-    const legend = entry.members?.length > 1 ? cleanQ(el.closest("fieldset, [role='radiogroup'], [role='group']")?.querySelector("legend, [data-question], .form-item__text")?.textContent) : "";
+    const legend = entry.members?.length > 1 ? groupQuestion(entry) : "";
     const asked = legend ? { text: legend, source: "legend" } : groupBox ? questionFor(groupBox, true) : questionFor(el);
     const label = asked.text || (entry.members?.length > 1 ? "" : labelFor(el)) || "未命名问题";
     const input = el.matches("input, textarea, select") ? el : el.querySelector("input, textarea, select");
@@ -249,9 +314,14 @@ export async function pageBridge(request) {
     const partHint = clean(input?.placeholder || el.querySelector('[class*="placeholder"], [class*="placeHolder"]')?.textContent || el.getAttribute("data-date-part"));
     const datePart = entry.datePart || (/^(year|年|年份)$/i.test(partHint) ? "year" : /^(month|月|月份)$/i.test(partHint) ? "month" : /^(day|日|日期中的日)$/i.test(partHint) ? "day" : "");
     const unsafe = ["password", "file", "hidden", "submit", "button", "reset"].includes(type) || /验证码|密码|captcha|verification code|one.time.password/i.test(label);
-    const consent = /同意|承诺|声明|签名|隐私|consent|agree|declaration|signature|terms and conditions/i.test(label);
+    const memberText = (m) => clean(m.matches("input") ? labelFor(m) : m.textContent);
+    const legal = /隐私|条款|声明|承诺|授权|签名|使用协议|用户协议|consent|privacy|terms|declaration|signature|authori[sz]ation/i;
+    const texts = [label, ...(entry.members || []).map(memberText)];
+    const businessAgreement = !texts.some((text) => legal.test(text)) && /(?:是否|能否).*(?:同意|接受).*(?:调剂|出差|加班|调动)|(?:agree|accept).*(?:relocat|business travel)/i.test(label);
+    const consent = texts.some((text) => legal.test(text)) || (!businessAgreement && texts.some((text) => /同意|consent|agree|^(?:本人|我)?(?:已阅读并)?接受|^i (?:have read and )?accept/i.test(text)));
     const widget = ["date", "cascader", "custom-select"].includes(entry.kind);
     const disabled = Boolean(input?.disabled || (input?.readOnly && !widget) || el.matches('[aria-disabled="true"]'));
+    const unknownDropdown = input?.readOnly && !widget && !!el.closest('.layui-form-select,.ivu-select,.arco-select,.t-select,[aria-haspopup="listbox"]');
     const shown = visible(el) || (["radio", "checkboxes"].includes(entry.kind) && visible(el.closest("label")));
     const supported = !unsafe && !consent && !["unsupported", "chooser"].includes(entry.kind) && !disabled && shown;
     return {
@@ -259,7 +329,7 @@ export async function pageBridge(request) {
       identity: { id: el.id || "", name: input?.name || "", autocomplete: input?.getAttribute("autocomplete") || "" },
       question: label, contextPath: [ctx.section, ctx.group, label].filter(Boolean).join(" > "),
       value: unsafe ? "" : read(entry), supported,
-      reason: unsafe || consent ? "请在网站中手动处理" : entry.kind === "chooser" ? "需要在网页弹窗中选择，请手动处理" : disabled ? "字段只读或不可编辑" : !shown ? "字段已隐藏" : entry.kind === "unsupported" ? "此控件暂不支持自动填写" : "",
+      reason: unsafe || consent ? "请在网站中手动处理" : entry.kind === "chooser" ? "需要在网页弹窗中选择，请手动处理" : unknownDropdown ? "此下拉暂不支持，请在网页手动选择" : disabled ? "字段只读或不可编辑" : !shown ? "字段已隐藏" : entry.kind === "unsupported" ? "此控件暂不支持自动填写" : "",
       labelSource: asked.source, order: entry.order ?? 0,
       nearbyText: ["placeholder", "none"].includes(asked.source) ? nearbyText(el) : "",
       dateFormat: entry.kind === "date" ? dateFormat(entry) : "", dateRange: entry.kind === "date" && dateInputs(entry).length > 1,
@@ -358,7 +428,7 @@ export async function pageBridge(request) {
   function transaction(entry, baseline) {
     const scope = { menu: null, userEdited: false, queryInput: null, queryValue: null, expected: baseline };
     const onEdit = (event) => {
-      if (event.isTrusted && !scope.ownMutation && (entry.el === event.target || entry.el.contains(event.target) || entry.members?.some((member) => member === event.target || member.closest("label")?.contains(event.target)) || scope.menu?.contains(event.target) || (scope.opening && event.target.closest?.(menuSelectorFor(entry))))) scope.userEdited = true;
+      if (event.isTrusted && !scope.ownMutation && (entry.el === event.target || entry.el.contains(event.target) || entry.members?.some((member) => member.contains(event.target) || member.closest("label")?.contains(event.target)) || scope.menu?.contains(event.target) || (scope.opening && event.target.closest?.(menuSelectorFor(entry))))) scope.userEdited = true;
     };
     document.addEventListener("input", onEdit, true);
     document.addEventListener("change", onEdit, true);
@@ -378,6 +448,7 @@ export async function pageBridge(request) {
     scope.release = () => {
       for (const event of ["input", "change", "keydown", "pointerdown"]) document.removeEventListener(event, onEdit, true);
       delete entry.activeSearch;
+      if (entry.menuScope === scope) delete entry.menuScope;
     };
     return scope;
   }
@@ -403,11 +474,14 @@ function optionMatch(options, value, { location = false } = {}) {
   if (matches.length) return unique(matches);
   matches = available.filter((option) => normalize(text(option)) === expected);
   if (matches.length) return unique(matches);
-  const groups = [
-    ["男", "Male", "M", "先生"], ["女", "Female", "F", "女士"],
+  const educationLevels = [
     ["本科", "大学本科", "学士", "Bachelor", "Undergraduate"],
     ["硕士", "硕士研究生", "研究生", "Master", "Postgraduate"],
-    ["博士", "博士研究生", "PhD", "Doctor"], ["大专", "专科", "Associate"],
+    ["博士", "博士研究生", "PhD", "Doctor"], ["大专", "专科", "Associate"]
+  ].map((group) => group.map(normalize));
+  const groups = [
+    ["男", "Male", "M", "先生"], ["女", "Female", "F", "女士"],
+    ...educationLevels,
     ["学士学位", "学士", "Bachelor's degree"], ["硕士学位", "硕士", "Master's degree"],
     ["中共党员", "党员", "中国共产党党员"], ["中共预备党员", "预备党员"],
     ["共青团员", "团员"], ["未婚", "单身", "Single"], ["已婚", "Married"],
@@ -419,6 +493,15 @@ function optionMatch(options, value, { location = false } = {}) {
   ].map((group) => group.map(normalize));
   const related = groups.filter((group) => group.includes(expected));
   matches = available.filter((option) => related.some((group) => group.includes(normalize(text(option)))));
+  if (matches.length) return unique(matches);
+  // A fact at this exact education level satisfies "this level or above".
+  // Keep the whole base label: stripping prefixes could invent full-time or
+  // admission-type facts. Different thresholds are not inferred here.
+  const levels = educationLevels.filter((group) => group.includes(expected));
+  matches = available.filter((option) => {
+    const candidate = normalize(text(option));
+    return candidate.endsWith("及以上") && levels.some((group) => group.includes(candidate.slice(0, -3)));
+  });
   if (matches.length) return unique(matches);
   // A substring cannot turn a categorical answer into a different category or
   // erase negation. Single letters and single Chinese characters are too weak.
@@ -452,7 +535,7 @@ function optionMatch(options, value, { location = false } = {}) {
       if (matches.length > 1) throw problem("MENU_AMBIGUOUS", "字段关联了多个菜单，请手动核对");
       if (matches[0]) return matches[0];
     }
-    const menus = all(menuSelectorFor(entry)).filter(visible);
+    const menus = all(menuSelectorFor(entry)).filter((menu) => visible(menu) && !entry.menuScope?.ignoredMenus?.has(menu));
     const roots = menus.filter((candidate) => !menus.some((other) => other !== candidate && other.contains(candidate)));
     if (roots.length > 1) throw problem("MENU_AMBIGUOUS", "存在多个菜单，无法确定目标");
     return roots[0] || null;
@@ -475,10 +558,14 @@ function optionMatch(options, value, { location = false } = {}) {
   }
   async function openMenu(entry, scope) {
     scope.opening = true;
-    let menu = currentMenu(entry);
-    // An unlinked popup already on screen cannot safely be attributed to this field.
     const linked = entry.el.hasAttribute("aria-controls") || entry.el.querySelector("[aria-controls]");
-    if (menu && !linked && entry.el.getAttribute("aria-expanded") !== "true") throw problem("MENU_AMBIGUOUS", "已有未关联的菜单打开，请先关闭后重试");
+    // Permanent lists belong to other widgets. An unlinked, closed target may
+    // only claim a uniquely new popup opened by this operation.
+    if (!linked && entry.el.getAttribute("aria-expanded") !== "true" && !scope.ignoredMenus) {
+      scope.ignoredMenus = new Set(all(menuSelectorFor(entry)).filter(visible));
+    }
+    entry.menuScope = scope;
+    let menu = currentMenu(entry);
     const wasOpen = Boolean(menu);
     for (let attempt = 0; !menu && attempt < 2; attempt++) {
       scope.guard();
@@ -534,17 +621,17 @@ function optionMatch(options, value, { location = false } = {}) {
     // Only use standard dismissal gestures: never select an option or alter page attributes.
     const target = scope.queryInput?.isConnected ? scope.queryInput : entry.el.querySelector("input") || entry.el;
     target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, composed: true }));
-    if (await until(() => !visible(scope.menu), { timeout: 240 })) return true;
+    if (await until(() => !visible(scope.menu), { timeout: 600 })) return true;
     const expanded = entry.el.getAttribute("aria-expanded") || entry.el.querySelector("[aria-expanded]")?.getAttribute("aria-expanded");
     if (expanded === "true") {
       entry.el.click();
-      if (await until(() => !visible(scope.menu), { timeout: 400 })) return true;
+      if (await until(() => !visible(scope.menu), { timeout: 600 })) return true;
     }
     if (typeof target.blur === "function") target.blur();
     // Framework popup components close on an outside mousedown. The document
     // body cannot submit a form or select another control.
     scope.act(() => document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 })));
-    return Boolean(await until(() => !visible(scope.menu), { timeout: 240 }));
+    return Boolean(await until(() => !visible(scope.menu), { timeout: 600 }));
   }
   function activate(el) {
     el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 }));
@@ -565,7 +652,9 @@ function optionMatch(options, value, { location = false } = {}) {
     scope.act(action);
     await wait(60);
     scope.guardStructure();
-    scope.expected = read(entry);
+    const after = read(entry);
+    if (after !== scope.expected) scope.wroteValue = true;
+    scope.expected = after;
   }
   async function clearWidget(entry, scope) {
     scope.guard();
@@ -616,8 +705,12 @@ function optionMatch(options, value, { location = false } = {}) {
       months = [...panel().querySelectorAll(monthSelector)].filter(visible);
     }
     if (months.length !== 12) throw problem("DATE_UNSUPPORTED", "日期面板的月份无法唯一识别");
+    const monthCell = months[parts.month - 1].closest("td") || months[parts.month - 1];
+    if (monthCell.matches('.ant-calendar-month-panel-cell-disabled,.ant-picker-cell-disabled,.disabled,.is-disabled')) throw problem("DATE_UNSUPPORTED", "日期面板中的目标月份不可选，请手动选择");
     await press(months[parts.month - 1]);
     if (!/d/i.test(dateFormat(entry))) return;
+    // A day can only be chosen after the panel has really switched to the target month.
+    if (!await until(() => ![...panel().querySelectorAll(monthSelector)].some(visible), { timeout: 600, guard: scope.guard })) throw problem("DATE_UNSUPPORTED", "日期面板没有切换到目标月份，请手动选择");
     const menu = panel();
     const cells = [...menu.querySelectorAll('.ant-calendar-date,.ant-picker-date-panel .ant-picker-cell-inner,.el-date-table td.available span')].filter(visible);
     const candidates = cells.filter((node) => {
@@ -631,7 +724,62 @@ function optionMatch(options, value, { location = false } = {}) {
       const parsed = dateParts(title);
       return parsed && parsed.year === parts.year && parsed.month === parts.month && parsed.day === parts.day;
     });
-    await press(titled[0] || candidates[0]);
+    const pick = titled.length === 1 ? titled[0] : !titled.length && candidates.length === 1 ? candidates[0] : null;
+    if (!pick) throw problem("DATE_UNSUPPORTED", "日期面板中无法唯一确定目标日期，请手动选择");
+    await press(pick);
+  }
+  async function writeAntRange(entry, formatted, scope) {
+    const start = dateParts(formatted[0], dateFormat(entry));
+    const end = dateParts(formatted[1], dateFormat(entry));
+    if (!start?.day || !end?.day) throw problem("DATE_INCOMPLETE", "日期范围需要具体到日");
+    const first = scope.menu.querySelector('.ant-calendar-range-left .ant-calendar-input');
+    if (!first || first.readOnly || first.disabled) throw problem("DATE_UNSUPPORTED", "日期范围没有可用的开始输入框");
+    await mutate(entry, scope, () => { first.focus(); setInputText(first, formatted[0]); });
+    const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+    const partsForTitle = (title) => {
+      const numeric = dateParts(title);
+      if (numeric) return numeric;
+      const english = /^(\w+)\s+(\d{1,2}),?\s+(\d{4})$/.exec(clean(title));
+      const month = english && months.findIndex((name) => name === english[1].toLowerCase() || name.slice(0, 3) === english[1].toLowerCase());
+      return english && month >= 0 ? { year: Number(english[3]), month: month + 1, day: Number(english[2]) } : null;
+    };
+    const rightPanel = () => (currentMenu(entry) || scope.menu).querySelector('.ant-calendar-range-right');
+    const currentMonth = () => {
+      const panel = rightPanel();
+      if (!panel || !visible(panel)) return null;
+      const year = Number(clean(panel.querySelector('.ant-calendar-year-select')?.textContent).replace(/[^\d]/g, ''));
+      const monthText = clean(panel.querySelector('.ant-calendar-month-select')?.textContent).toLowerCase();
+      const numeric = /^(\d{1,2})\s*月?$/.exec(monthText);
+      const month = numeric ? Number(numeric[1]) : months.findIndex((name) => name === monthText || name.slice(0, 3) === monthText) + 1;
+      if (year && month >= 1 && month <= 12) return year * 12 + month - 1;
+      const cell = [...panel.querySelectorAll('td[title]')].find((node) => !node.matches('.ant-calendar-last-month-cell,.ant-calendar-next-month-btn-day'));
+      const parts = partsForTitle(cell?.getAttribute('title') || '');
+      return parts ? parts.year * 12 + parts.month - 1 : null;
+    };
+    const wanted = end.year * 12 + end.month - 1;
+    for (let attempts = 0; attempts < 120; attempts++) {
+      const before = currentMonth();
+      if (before === wanted) break;
+      if (before === null || attempts === 119) throw problem("DATE_UNSUPPORTED", "无法核对结束日期面板的年月，请手动选择");
+      const delta = wanted - before;
+      const panel = rightPanel();
+      const yearButton = panel.querySelector(delta > 0 ? '.ant-calendar-next-year-btn' : '.ant-calendar-prev-year-btn');
+      const useYear = Math.abs(delta) >= 12 && yearButton && visible(yearButton);
+      const button = useYear ? yearButton : panel.querySelector(delta > 0 ? '.ant-calendar-next-month-btn' : '.ant-calendar-prev-month-btn');
+      if (!button || !visible(button) || button.matches('[disabled],[aria-disabled="true"],.disabled,.is-disabled')) throw problem("DATE_UNSUPPORTED", "结束日期面板不能切换到目标月份");
+      await mutate(entry, scope, () => button.click());
+      const expected = before + Math.sign(delta) * (useYear ? 12 : 1);
+      if (!await until(() => currentMonth() === expected, { timeout: 800, guard: scope.guard })) throw problem("DATE_UNSUPPORTED", "结束日期面板没有切换到预期年月");
+    }
+    if (currentMonth() !== wanted) throw problem("DATE_UNSUPPORTED", "结束日期面板年月不一致");
+    const cells = [...rightPanel().querySelectorAll('td')].filter((cell) => visible(cell) && !cell.matches('.ant-calendar-last-month-cell,.ant-calendar-next-month-btn-day,.ant-calendar-disabled-cell'));
+    const exact = cells.filter((cell) => {
+      const value = partsForTitle(cell.getAttribute('title') || '');
+      return value && value.year === end.year && value.month === end.month && value.day === end.day;
+    });
+    const matches = exact.length ? exact : cells.filter((cell) => Number(clean(cell.querySelector('.ant-calendar-date')?.textContent)) === end.day);
+    if (matches.length !== 1) throw problem("DATE_UNSUPPORTED", "无法唯一核对结束日期");
+    await mutate(entry, scope, () => matches[0].querySelector('.ant-calendar-date')?.click());
   }
   async function writeDate(entry, value, undo, scope) {
     const inputs = dateInputs(entry);
@@ -658,7 +806,11 @@ function optionMatch(options, value, { location = false } = {}) {
     }
     await openMenu(entry, scope);
     const panelInputs = [...scope.menu.querySelectorAll('.ant-calendar-input,input.el-input__inner')].filter((input) => visible(input) && !input.readOnly && !input.disabled);
-    if (formatted.length === 1 && panelInputs.length && /d/i.test(dateFormat(entry))) {
+    if (formatted.length === 2 && panelInputs.length === 2 && scope.menu.querySelector('.ant-calendar-range-left')) {
+      // The left input prepares the start date; the right calendar's public
+      // date click commits the range. Never select an unverified day-number.
+      await writeAntRange(entry, formatted, scope);
+    } else if (formatted.length === 1 && panelInputs.length && /d/i.test(dateFormat(entry))) {
       for (let index = 0; index < formatted.length; index++) {
         await mutate(entry, scope, () => { panelInputs[index].focus(); setValue(panelInputs[index], formatted[index]); enter(panelInputs[index]); });
       }
@@ -719,6 +871,7 @@ function optionMatch(options, value, { location = false } = {}) {
       scope.guard();
       if (!selected.el.isConnected || !visible(selected.el)) throw problem("OPTIONS_CHANGED", "选项刚刚发生变化，请重新核对");
       scope.act(() => selected.el.click());
+      scope.wroteValue = true;
       scope.committed = true;
       delete entry.activeSearch;
       const confirm = [...scope.menu.querySelectorAll("button")].find((b) => visible(b) && !b.disabled && /^(确定|确认|OK|Confirm)$/i.test(clean(b.textContent)));
@@ -728,8 +881,9 @@ function optionMatch(options, value, { location = false } = {}) {
     scope.guard();
     const options = optionsFor(entry);
     if (entry.kind === "select" && !entry.el.multiple) {
-      if (undo && !value) setValue(entry.el, "");
-      else setValue(entry.el, exactOption(options, value).value);
+      scope.act(() => setValue(entry.el, undo && !value ? "" : exactOption(options, value).value));
+      scope.wroteValue = read(entry) !== scope.expected;
+      scope.expected = read(entry);
     } else if (["checkboxes", "radio"].includes(entry.kind) || entry.el.multiple) {
       if (undo && !value && entry.kind === "radio" && entry.el.closest('.ant-radio-group,.el-radio-group')) throw problem("UNDO_UNSUPPORTED", "网页单选组没有取消入口，请手动修改");
       const values = entry.kind === "radio" ? (value ? [value] : []) : value ? JSON.parse(value) : [];
@@ -747,7 +901,11 @@ function optionMatch(options, value, { location = false } = {}) {
         });
       }
       if (entry.el.multiple) entry.el.dispatchEvent(new Event("change", { bubbles: true }));
-    } else setValue(entry.el, value);
+    } else {
+      scope.act(() => setValue(entry.el, value));
+      scope.wroteValue = read(entry) !== scope.expected;
+      scope.expected = read(entry);
+    }
   }
   async function verify(entry, expected, undo = false, scope) {
     let observed = false;
@@ -905,6 +1063,7 @@ function optionMatch(options, value, { location = false } = {}) {
     let scope;
     let result;
     let restored = false;
+    let inspectedOptions;
     const focused = document.activeElement;
     try {
       entry = resolve();
@@ -914,8 +1073,10 @@ function optionMatch(options, value, { location = false } = {}) {
       if (request.query !== undefined && (typeof request.query !== "string" || request.query.length > 200 || /密码|验证码|password|captcha/i.test(entry.snapshot.label))) throw problem("UNSAFE_QUERY", "无法安全使用此搜索词");
       await searchMenu(entry, scope, request.query || "");
       const options = (await stableOptions(entry, scope)).map(({ el, ...option }) => option);
+      inspectedOptions = options;
       scope.guard();
       restored = await restoreMenu(entry, scope);
+      if (!restored) restored = await restoreMenu(entry, scope);
       if (!restored) throw problem("MENU_RESTORE_FAILED", "已读取候选，但菜单无法安全恢复，请在网页关闭菜单后重新识别");
       scope.guard();
       entry.inspectedOptions = options;
@@ -929,6 +1090,17 @@ function optionMatch(options, value, { location = false } = {}) {
     } finally {
       if (scope) {
         if (!restored) restored = await restoreMenu(entry, scope);
+        if (restored && result?.code === "MENU_RESTORE_FAILED" && inspectedOptions && !scope.userEdited) {
+          try {
+            scope.guard();
+            entry.inspectedOptions = inspectedOptions;
+            entry.optionsQuery = request.query || "";
+            const field = descriptor(entry);
+            entry.snapshot = field;
+            entry.signature = signature(field);
+            result = { status: "inspected", code: "OPTIONS_INSPECTED", retryable: false, field, options: inspectedOptions, query: entry.optionsQuery, restored: true, rebound: !!entry.rebound };
+          } catch (error) { result = fail(error.message, error.code === "USER_EDITED" ? "skipped" : "failed", error.code, !!error.retryable); }
+        }
         scope.release();
         if (!scope.userEdited && focused?.isConnected && focused !== document.body) focused.focus({ preventScroll: true });
       }
@@ -945,6 +1117,7 @@ function optionMatch(options, value, { location = false } = {}) {
     let entry;
     let before;
     let scope;
+    let beforeCleanupAfter;
     try {
       entry = resolve(true, request.action === "undo" ? request.expected : undefined);
       before = read(entry);
@@ -961,8 +1134,30 @@ function optionMatch(options, value, { location = false } = {}) {
     } catch (error) {
       result = { ...fail(error.message, error.code === "USER_EDITED" ? "skipped" : "failed", error.code, !!error.retryable), ...(entry ? { before, after: descriptor(entry).value, rebound: !!entry.rebound } : {}) };
     } finally {
+      beforeCleanupAfter = result?.after;
       if (scope) { await restoreMenu(entry, scope); scope.release(); }
       state.busy = false;
+    }
+    if (scope && entry && result) {
+      try {
+        const after = read(entry);
+        if (scope.userEdited) result = { ...fail("关闭控件期间检测到手动修改，已保留网页内容", "skipped", "USER_EDITED"), before, after };
+        else if (result.status === "verified") {
+          resolve(true, after);
+          if (after !== beforeCleanupAfter) result = { ...fail("关闭控件后网页值发生变化，请核对", "failed", "VALUE_NOT_RETAINED"), before, after, undoable: false };
+        }
+      } catch (error) { result = { ...fail(error.message, "failed", error.code || "FIELD_CHANGED"), before, after: result.after, undoable: false }; }
+    }
+    if (result?.status === "failed") {
+      result.undoable = false;
+      if (request.action === "fill" && entry && scope?.wroteValue && !scope.userEdited && !["USER_EDITED", "VALUE_CHANGED", "FIELD_CHANGED", "TARGET_CHANGED"].includes(result.code)) {
+        try {
+          const after = read(entry);
+          resolve(true, after);
+          result.after = after;
+          result.undoable = typeof before === "string" && before !== after && after === beforeCleanupAfter && (result.code !== "VALUE_NOT_RETAINED" || after === scope.expected);
+        } catch { /* A stale target cannot safely be claimed for undo. */ }
+      }
     }
     state.operations.set(request.operationId, result);
     if (state.operations.size > 500) state.operations.delete(state.operations.keys().next().value);

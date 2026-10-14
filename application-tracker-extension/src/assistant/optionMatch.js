@@ -14,11 +14,14 @@ export function optionMatch(options, value, { location = false } = {}) {
   if (matches.length) return unique(matches);
   matches = available.filter((option) => normalize(text(option)) === expected);
   if (matches.length) return unique(matches);
-  const groups = [
-    ["男", "Male", "M", "先生"], ["女", "Female", "F", "女士"],
+  const educationLevels = [
     ["本科", "大学本科", "学士", "Bachelor", "Undergraduate"],
     ["硕士", "硕士研究生", "研究生", "Master", "Postgraduate"],
-    ["博士", "博士研究生", "PhD", "Doctor"], ["大专", "专科", "Associate"],
+    ["博士", "博士研究生", "PhD", "Doctor"], ["大专", "专科", "Associate"]
+  ].map((group) => group.map(normalize));
+  const groups = [
+    ["男", "Male", "M", "先生"], ["女", "Female", "F", "女士"],
+    ...educationLevels,
     ["学士学位", "学士", "Bachelor's degree"], ["硕士学位", "硕士", "Master's degree"],
     ["中共党员", "党员", "中国共产党党员"], ["中共预备党员", "预备党员"],
     ["共青团员", "团员"], ["未婚", "单身", "Single"], ["已婚", "Married"],
@@ -30,6 +33,15 @@ export function optionMatch(options, value, { location = false } = {}) {
   ].map((group) => group.map(normalize));
   const related = groups.filter((group) => group.includes(expected));
   matches = available.filter((option) => related.some((group) => group.includes(normalize(text(option)))));
+  if (matches.length) return unique(matches);
+  // A fact at this exact education level satisfies "this level or above".
+  // Keep the whole base label: stripping prefixes could invent full-time or
+  // admission-type facts. Different thresholds are not inferred here.
+  const levels = educationLevels.filter((group) => group.includes(expected));
+  matches = available.filter((option) => {
+    const candidate = normalize(text(option));
+    return candidate.endsWith("及以上") && levels.some((group) => group.includes(candidate.slice(0, -3)));
+  });
   if (matches.length) return unique(matches);
   // A substring cannot turn a categorical answer into a different category or
   // erase negation. Single letters and single Chinese characters are too weak.
