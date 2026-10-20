@@ -1,5 +1,24 @@
 import { pageBridge } from "./pageBridge.js";
 
+function mainScanError(reason, tab, tabId) {
+  // Chrome injection failures can contain complete URLs. Keep only a stable
+  // category and the site's origin; never surface raw errors or route tokens.
+  const message = String(reason?.message || "");
+  let code = reason?.code || "PAGE_SCAN_FAILED";
+  if (/cannot access (?:contents|this frame|page)|manifest must request permission|missing host permission|not allowed to access/i.test(message)) code = "PAGE_ACCESS_REQUIRED";
+  else if (/no (?:tab|frame) with id|frame .*removed|tab (?:was |is )?closed|document .*unloaded/i.test(message)) code = "PAGE_CHANGED";
+  if (!["PAGE_ACCESS_REQUIRED", "PAGE_CHANGED", "PAGE_DOCUMENT_UNAVAILABLE"].includes(code)) code = "PAGE_SCAN_FAILED";
+  const descriptions = {
+    PAGE_ACCESS_REQUIRED: "尚未获得此站点的读取权限。请点击下方“允许读取此站点”，或回到该页面点击浏览器工具栏里的插件图标后重试。",
+    PAGE_CHANGED: "读取时页面或标签页已变化，请等待页面加载完成后重新识别。",
+    PAGE_DOCUMENT_UNAVAILABLE: "Chrome 未返回页面文档标识，请更新浏览器并重新加载扩展后重试。",
+    PAGE_SCAN_FAILED: "页面扫描未能完成，请重新识别；若仍失败，请反馈错误码 PAGE_SCAN_FAILED。"
+  };
+  const error = new Error(descriptions[code]);
+  Object.assign(error, { code, tabId, pageUrl: tab.url, origin: new URL(tab.url).origin, title: tab.title || "当前申请页面" });
+  return error;
+}
+
 export async function scanPage(tabId) {
   const tab = await chrome.tabs.get(tabId);
   if (!/^https?:\/\//.test(tab.url || "")) throw new Error("请先打开普通网站的申请页面");
@@ -9,12 +28,13 @@ export async function scanPage(tabId) {
   frames = frames?.length ? frames : [{ frameId: 0, url: tab.url }];
   const results = await Promise.allSettled(frames.map(async (frame) => {
     const [result] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frame.frameId] }, func: pageBridge, args: [{ action: "scan" }] });
-    if (!result?.result || !result.documentId) throw new Error("未取得文档标识，请更新 Chrome");
+    if (!result?.documentId) throw Object.assign(new Error("Missing document identity"), { code: "PAGE_DOCUMENT_UNAVAILABLE" });
+    if (!result.result || !Array.isArray(result.result.fields)) throw new Error("Invalid scan result");
     return { ...result.result, frameId: frame.frameId, documentId: result.documentId };
   }));
   const scanned = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
   const main = scanned.find((r) => r.frameId === 0);
-  if (!main) throw new Error("无法读取目标页面，请在该页面重新点击插件后重试");
+  if (!main) throw mainScanError(results[frames.findIndex((frame) => frame.frameId === 0)]?.reason, tab, tabId);
   const failedFrames = frames.flatMap((frame, index) => {
     if (results[index].status !== "rejected") return [];
     let origin = "";

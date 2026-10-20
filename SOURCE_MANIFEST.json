@@ -1,19 +1,21 @@
 {
-  "date": "2026-10-14",
-  "sourceBaseline": "2026-10-14 reviewed and verified local runtime source",
-  "previousPublicCommit": "c1a57b3dc95764d59ec990fa00465bc9020c20a6",
+  "date": "2026-10-20",
+  "sourceBaseline": "2026-10-20 main-page access recovery, verified local runtime source",
+  "previousPublicCommit": "eb56c0540257d0291da620e07b3af7b4570d8233",
   "validation": {
-    "logic": 344,
-    "browser": 129,
-    "assistantUI": 45,
-    "dataUI": 12,
-    "extension": 14,
-    "vision": 7,
-    "regularTotal": 551,
-    "scanScaling": 2,
-    "slowCPUDate": 9,
-    "unitTimezones": 6,
-    "offlinePageSamples": 3
+    "date": "2026-10-20",
+    "logic": 348,
+    "assistantUI": 48,
+    "extension": 15,
+    "applicableTotal": 411,
+    "historicalValidation": {
+      "date": "2026-10-14",
+      "regularTotal": 551,
+      "scanScaling": 2,
+      "slowCPUDate": 9,
+      "unitTimezones": 6,
+      "offlinePageSamples": 3
+    }
   },
   "omitted": [
     "actual credentials and browser data",
@@ -35,8 +37,8 @@
     },
     {
       "file": "README.md",
-      "bytes": 2550,
-      "sha256": "513391a52197f369aaa05c96cc09746f5f2edf637a470193ebfe45a173188302"
+      "bytes": 2693,
+      "sha256": "219acccee1e3de1d232df4ff796c73f530e8ccce3bc63e5b560682e34d2fd2c9"
     },
     {
       "file": "application-tracker-extension/.gitignore",
@@ -45,13 +47,13 @@
     },
     {
       "file": "application-tracker-extension/CHANGELOG.md",
-      "bytes": 13552,
-      "sha256": "23e61fe9013b2411d8f5b756a1466f54c250bfbfb22697c278e05177cbb9559a"
+      "bytes": 14430,
+      "sha256": "3f026ec39900c784ab2060e58498fd6c2b405b5570c162b5ac627334bc73bfe3"
     },
     {
       "file": "application-tracker-extension/README.md",
-      "bytes": 16133,
-      "sha256": "7fcb2470fddc527d45b1717c66035fbc471ad194cb8ac4347f87cbb8239baf25"
+      "bytes": 16683,
+      "sha256": "9f06657eba9df09e037a30eda2a2b38cbab9b6f7165e8407db833ab8df6d2825"
     },
     {
       "file": "application-tracker-extension/RELEASE_CHECKLIST.md",
@@ -82,6 +84,11 @@
       "file": "application-tracker-extension/docs/2026-10-14-review-execution.md",
       "bytes": 5276,
       "sha256": "19776a8c2b79fbd01085ffd4307d3228b10bfd6da3a37c53b582a8019597ea56"
+    },
+    {
+      "file": "application-tracker-extension/docs/2026-10-20-main-page-access.md",
+      "bytes": 2982,
+      "sha256": "5038926768a2ebea5348ca4669fafc0c7d60cb243b301ee04f7e33c9e3fbb961"
     },
     {
       "file": "application-tracker-extension/docs/autofill-profile.md",
@@ -130,8 +137,8 @@
     },
     {
       "file": "application-tracker-extension/scripts/extension-tests.mjs",
-      "bytes": 26881,
-      "sha256": "1ac7265383b43b79240e6ff709f437b6b98d30bcbb3c320a12f9071a55cd0445"
+      "bytes": 28701,
+      "sha256": "40e62468bd9caad9326b416c750f70e17479af5f75bd2a5a854ab7b7761bbee9"
     },
     {
       "file": "application-tracker-extension/scripts/job-info-browser-tests.mjs",
@@ -170,8 +177,8 @@
     },
     {
       "file": "application-tracker-extension/scripts/ui-tests.mjs",
-      "bytes": 74237,
-      "sha256": "7f357a191aad34a4940bca8b1fcdb21f85722f9f77cf0a19169aff7bec23f2a4"
+      "bytes": 79326,
+      "sha256": "4b93378e31f79b36a1cfa5636abd331f4bc221c459bad1836b1b2d91f2139bac"
     },
     {
       "file": "application-tracker-extension/scripts/vision-browser-tests.mjs",
@@ -275,8 +282,8 @@
     },
     {
       "file": "application-tracker-extension/src/assistant/session.js",
-      "bytes": 4940,
-      "sha256": "29aa8c42082285f9ee0bb95ea32055e930b474e02b42c4d00c1335f3be0f70fc"
+      "bytes": 6576,
+      "sha256": "d058e0bf89f8253ef63768ad583aa010b8ab1b2af73576f38f21da37b3d3a487"
     },
     {
       "file": "application-tracker-extension/src/assistant/store.js",
@@ -450,13 +457,13 @@
     },
     {
       "file": "application-tracker-extension/src/sidepanel/assistant.html",
-      "bytes": 2840,
-      "sha256": "c7feece64ca34bdb7dd2418a8a11df2cc87b284255a0ce155b4b8330644e6b24"
+      "bytes": 2907,
+      "sha256": "d59fb8f18da45c1288ec717361f017afc5058ab76f8fa45d8cae134bcd5c9a6d"
     },
     {
       "file": "application-tracker-extension/src/sidepanel/assistant.js",
-      "bytes": 53856,
-      "sha256": "dc638015dd0112a31a19a457d8c56cab91a50e0ef6c34e11068a6631898d335f"
+      "bytes": 56598,
+      "sha256": "d4642631c05cb27192137676c4ce374a18e7257d78e87c52351938cb48acc940"
     },
     {
       "file": "application-tracker-extension/src/sidepanel/recordCard.js",
@@ -705,8 +712,8 @@
     },
     {
       "file": "application-tracker-extension/test/session.test.js",
-      "bytes": 2835,
-      "sha256": "527ab62b68e9c034603792c195e519c3f7907d5d8f05f7930aac9845c4aa4859"
+      "bytes": 4683,
+      "sha256": "023b45708cbe9611b73088532256362ae92268176ab00018d6232657081629c7"
     },
     {
       "file": "application-tracker-extension/test/sourceDetection.test.js",
@@ -760,13 +767,13 @@
     },
     {
       "file": "docs/PROJECT_MEMORY.md",
-      "bytes": 13388,
-      "sha256": "76c8ebe12a1f0fc633b9e19bfb4a78182e0fe363d27e2177b40ad9df01aecfb3"
+      "bytes": 15306,
+      "sha256": "bccdffaf9b22829547e7df35600e63cf4fa1c485752d7a19ba12fd3d03254ed0"
     },
     {
       "file": "review/00_START_HERE.txt",
-      "bytes": 1614,
-      "sha256": "23511cba6e46d0f8ac847f26b1385b9e2948871c120fcac0ea90ff02357aed52"
+      "bytes": 1755,
+      "sha256": "62d2b078628064388ef03068293a59a443854701789f9fa32b125a44c6a15fe8"
     },
     {
       "file": "review/01_PAGE_BRIDGE_1.txt",
@@ -775,13 +782,13 @@
     },
     {
       "file": "review/02_ASSISTANT_FLOW_1.txt",
-      "bytes": 126994,
-      "sha256": "1fd4f48eda9b66e4f47b144afbb70834c2d522ae557b2eee11ed9a1205e6d473"
+      "bytes": 127348,
+      "sha256": "ea8a33754b4b8ab4bb5bb179bc8ba743e562440087d69e0293f1eee2a4ae9478"
     },
     {
       "file": "review/03_ASSISTANT_FLOW_2.txt",
-      "bytes": 22861,
-      "sha256": "bfc3a0200bac4f8f8dc5c34acd3afcc20b44ac5049263e27696373df03ba6b58"
+      "bytes": 27512,
+      "sha256": "e0798173f5b1710cde4600dd14fd067bb507304b9771e6cb314734c78101cc5a"
     },
     {
       "file": "review/04_PROFILE_AI_VISION_1.txt",
@@ -810,48 +817,48 @@
     },
     {
       "file": "review/09_UNIT_TESTS_2.txt",
-      "bytes": 124023,
-      "sha256": "f72bc021ec1f025c27848fe4a1ce98dbcf546150191ab6b6a023fd1c52561738"
+      "bytes": 123935,
+      "sha256": "a58c8b3d59ab074a245ee4723e2bed400794432ad1f04765d4bacf5ec2bd861d"
     },
     {
       "file": "review/10_UNIT_TESTS_3.txt",
-      "bytes": 19516,
-      "sha256": "707da338aa75d6cc236c531a2632659b5d2f0839dcf478a1fc04eebadca6c058"
+      "bytes": 21660,
+      "sha256": "9a2382221c2e77ca6d67b5352329568015282295f1ce15100c7f8ca47d372c03"
     },
     {
       "file": "review/11_BROWSER_TESTS_FIXTURES_1.txt",
-      "bytes": 122398,
-      "sha256": "aadd37f119e1533f3768af4ebadabf3417d67c022c0068a1b9746e0d04271ad9"
+      "bytes": 122348,
+      "sha256": "5aa6324cb761d554192c3d5185830411778f11c9b46999a9eaadd438b1e5d065"
     },
     {
       "file": "review/12_BROWSER_TESTS_FIXTURES_2.txt",
-      "bytes": 122772,
-      "sha256": "182e0ef61065e2bb7475b87c8cc13ffc95b6f0c800419e119d095ae2a6240895"
+      "bytes": 122792,
+      "sha256": "fe4fceffc63b1c1c2464217a332982cc0d362c2272532bb00bc481c7017690d0"
     },
     {
       "file": "review/13_BROWSER_TESTS_FIXTURES_3.txt",
-      "bytes": 74133,
-      "sha256": "f76fd8b60432331e10c69012021fa2b3228adabcc57585cea0c764dd50fe7686"
+      "bytes": 81811,
+      "sha256": "dce2461c8f220e871a5e0c2616e195744cccb0b93c314298880b819685364a10"
     },
     {
       "file": "review/14_PROJECT_DOCUMENTS_1.txt",
-      "bytes": 176755,
-      "sha256": "f90df551822efa8cb64e85ef27054d511a1d31648f88f4eebe00be4fa53e7c03"
+      "bytes": 179269,
+      "sha256": "a3520c871afdd11bf7b04c42043759124c6d548d6a3c6f31e3ef8742bd167cc3"
     },
     {
       "file": "review/15_PROJECT_DOCUMENTS_2.txt",
-      "bytes": 133558,
-      "sha256": "6a068421a8769b26c81599589b65ae9a20cdc215918c64236b6a4c7d4e24952a"
+      "bytes": 131411,
+      "sha256": "8d40cc622dcc990227cb0f5320e36432a75c0b0a9c7780b60fec4d29303647c6"
     },
     {
       "file": "review/16_PROJECT_DOCUMENTS_3.txt",
-      "bytes": 59126,
-      "sha256": "6b8b24259211b42fc9c929b3242308140d12e080c87bd9fc16d244284f64dc9b"
+      "bytes": 65785,
+      "sha256": "4f42ead109587dbc885801fe073b77ca4b5735864609eb20e85c4533aa140e1b"
     },
     {
       "file": "review/PROMPT_FOR_CLAUDE.txt",
-      "bytes": 1048,
-      "sha256": "760bfe39200bae8695e132d92d880a956a24cff64ba6c0c82fda062eefc66aaf"
+      "bytes": 1157,
+      "sha256": "c155443ba295e4bc2f7860d0c0444169c4b416405f5b1db86391cb5f3ccdac16"
     }
   ]
 }

@@ -1,134 +1,196 @@
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/assistant.js (continued)
-SHA256: dc638015dd0112a31a19a457d8c56cab91a50e0ef6c34e11068a6631898d335f
-L0620 |     if (!session?.snapshot || session.stale) return;
-L0621 |     const item = session.plan.find((candidate) => candidate.fieldId === draftButton.closest("[data-id]")?.dataset.id);
-L0622 |     if (!item) return;
-L0623 |     if (draftButton.hasAttribute("data-draft-cancel")) { clearDraftConfirmation(); render(); return; }
-L0624 |     if (draftButton.hasAttribute("data-draft-send")) await sendDraft(item);
-L0625 |     else await confirmDraft(item);
-L0626 |     return;
-L0627 |   }
-L0628 |   const toggle = event.target.closest("[data-group-toggle]");
-L0629 |   if (toggle && session) {
-L0630 |     const id = toggle.dataset.groupToggle;
-L0631 |     const opened = new Set(session.openGroups || ["attention"]);
-L0632 |     if (opened.has(id)) opened.delete(id); else opened.add(id);
-L0633 |     session.openGroups = [...opened]; session.showAll = false;
-L0634 |     render(); await persist(); return;
-L0635 |   }
-L0636 |   if (event.target.closest("[data-more-toggle]") && session) {
-L0637 |     session.attentionMore = !session.attentionMore;
-L0638 |     if (!session.attentionMore) session.showAll = false;
-L0639 |     render(); await persist(); return;
-L0640 |   }
-L0641 |   const source = event.target.closest("[data-source-toggle]");
-L0642 |   if (source && session) {
-L0643 |     const card = source.closest("[data-id]");
-L0644 |     const opened = new Set(session.sourceOpen || []);
-L0645 |     if (opened.has(card.dataset.id)) opened.delete(card.dataset.id); else opened.add(card.dataset.id);
-L0646 |     session.sourceOpen = [...opened]; card.classList.toggle("source-open", opened.has(card.dataset.id));
-L0647 |     await persist(); return;
-L0648 |   }
-L0649 |   if (!event.target.matches("[data-locate]")) return;
-L0650 |   const item = session.plan.find((p) => p.fieldId === event.target.closest("[data-id]").dataset.id);
-L0651 |   await chrome.tabs.update(targetId, { active: true });
-L0652 |   await fieldAction(session.snapshot, item, "locate");
-L0653 | }));
-L0654 | $("questions").addEventListener("keydown", (event) => {
-L0655 |   if (event.target.matches("[data-source-toggle]") && ["Enter", " "].includes(event.key)) { event.preventDefault(); event.target.click(); }
-L0656 | });
-L0657 | $("resultList").addEventListener("click", run(async (event) => {
-L0658 |   const button = event.target.closest("[data-result-locate]");
-L0659 |   if (!button || busy || !session?.snapshot) return;
-L0660 |   const item = session.plan.find((p) => p.fieldId === button.dataset.resultLocate);
-L0661 |   if (!item) return;
-L0662 |   await chrome.tabs.update(targetId, { active: true });
-L0663 |   await fieldAction(session.snapshot, item, "locate");
-L0664 | }));
-L0665 | $("saveResults").addEventListener("click", () => {
-L0666 |   if (busy || !session) return;
-L0667 |   const latest = new Map();
-L0668 |   for (const result of session.results) if (result.status === "verified" && !result.undone) latest.set(result.fieldId, result);
-L0669 |   showLearning([...latest.values()].map((result) => ({ ...session.plan.find((item) => item.fieldId === result.fieldId), ...result })));
-L0670 |   $("learnPreview").scrollIntoView({ behavior: "smooth" });
-L0671 | });
-L0672 | chrome.tabs.onActivated.addListener(run(tabNotice));
-L0673 | chrome.tabs.onUpdated.addListener((id, change) => {
-L0674 |   if (id === targetId && (change.url || change.status === "loading") && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("目标页面已变化，请重新识别当前步骤。"); }
-L0675 | });
-L0676 | chrome.storage.onChanged.addListener((changes, area) => {
-L0677 |   if (area === "local" && changes[AI_SETTINGS_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("AI 设置已更新，请重新识别以使用新设置。"); }
-L0678 |   if (area === "local" && changes[PROFILE_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("个人信息已更新，请重新识别以使用最新资料。"); }
-L0679 |   if (area === "local" && changes[MEMORY_KEY] && session?.memoryVersion) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("问答记忆已更新，请更新问题以使用最新答案。"); }
-L0680 |   if (area === "local" && changes[STORAGE_KEY]) void recordCard.render();
-L0681 | });
-L0682 | run(async () => {
-L0683 |   windowId = (await chrome.windows.getCurrent()).id;
-L0684 |   const data = await chrome.storage.session.get(targetKey());
-L0685 |   targetId = data[targetKey()];
-L0686 |   session = await loadSession(windowId);
-L0687 |   if (session?.tabId !== targetId) session = null;
-L0688 |   facts = factsFromProfile(await getProfile(), session?.language || "zh");
-L0689 |   if (session?.snapshot) {
-L0690 |     try { await checkTarget(session.snapshot); } catch { session.stale = true; }
-L0691 |     if (session.schemaVersion !== SESSION_VERSION || versionOf(await getMemories()) !== session.memoryVersion) session.stale = true;
-L0692 |     if (versionOf(await getProfile()) !== session.profileVersion) session.stale = true;
-L0693 |     const settings = await getAiSettings();
-L0694 |     if (versionOf(settings) !== session.settingsVersion) session.stale = true;
-L0695 |     session.aiEnabled = settings.enabled && !!settings.apiKey;
-L0696 |     if (!session.stale && !session.recordDraft) void recordCard.prepare(session.snapshot, settings);
-L0697 |     if (session.pending && !session.stale) {
-L0698 |       const pending = session.pending;
-L0699 |       const item = session.plan.find((p) => p.fieldId === pending.fieldId);
-L0700 |       try {
-L0701 |         const result = await fieldAction(session.snapshot, item, "operation-result", { operationId: pending.operationId });
-L0702 |         if (!pending.undo && (result.status === "verified" || canUndo(result))) {
-L0703 |           if (!session.results.some((entry) => entry.operationId === pending.operationId)) session.results.push({ ...result, ...pending });
-L0704 |           item.value = result.after; item.status = "filled"; item.selected = false;
-L0705 |         } else if (pending.undo && pending.undoOf && result.status === "verified") {
-L0706 |           const entry = session.results.find((entry) => entry.operationId === pending.undoOf);
-L0707 |           if (entry) { entry.undone = true; entry.undoReason = result.reason; item.value = entry.before || ""; item.status = item.value ? "filled" : "review"; }
-L0708 |           else session.stale = true;
-L0709 |         } else session.stale = true;
-L0710 |       } catch { session.stale = true; }
-L0711 |       session.pending = null;
-L0712 |       await persist();
-L0713 |       tell("已恢复上次结果，请核对后继续；未确认的操作不会自动重试。");
-L0714 |     }
-L0715 |   }
-L0716 |   if (!targetId) await bindCurrent();
-L0717 |   else { render(); setBusy(false); await tabNotice(); }
-L0718 | })();
-L0719 | 
-L0720 | let checkingChanges = false;
-L0721 | setInterval(async () => {
-L0722 |   if (busy || checkingChanges || !session?.snapshot || session.stale || document.hidden) return;
-L0723 |   checkingChanges = true;
-L0724 |   const checkedSession = session;
-L0725 |   const checkedSnapshot = session.snapshot;
-L0726 |   try {
-L0727 |     const changes = await pageChanges(checkedSnapshot);
-L0728 |     if (busy || session !== checkedSession || session.snapshot !== checkedSnapshot) return;
-L0729 |     const changeSignature = JSON.stringify(changes);
-L0730 |     if ((changes.added || changes.changed.length) && session.changeSignature !== changeSignature) {
-L0731 |       clearDraftConfirmation();
-L0732 |       session.changeSignature = changeSignature;
-L0733 |       for (const item of session.plan) if (changes.changed.includes(item.fieldId) && item.status !== "filled") {
-L0734 |         item.selected = false; item.supported = false; item.status = "unsupported"; item.reason = "字段已变化，请重新识别";
-L0735 |       }
-L0736 |       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点“更新”查看后再统一确认。`);
-L0737 |       render();
-L0738 |     }
-L0739 |   } catch {
-L0740 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
-L0741 |       clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell("目标页面已变化，请重新识别。");
-L0742 |     }
-L0743 |   }
-L0744 |   finally { checkingChanges = false; }
-L0745 | }, 2500);
-L0746 | window.addEventListener("pagehide", () => { clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel(); });
+SHA256: d4642631c05cb27192137676c4ce374a18e7257d78e87c52351938cb48acc940
+L0607 |   session.showAll = !session.showAll;
+L0608 |   session.openGroups = session.showAll ? [...panelGroups] : ["attention"];
+L0609 |   session.attentionMore = session.showAll;
+L0610 |   render(); await persist();
+L0611 | }));
+L0612 | $("learn").addEventListener("click", run(() => prepare(true)));
+L0613 | $("fill").addEventListener("click", run(() => fillSelected()));
+L0614 | $("undo").addEventListener("click", run(() => fillSelected(true)));
+L0615 | $("saveLearned").addEventListener("click", run(saveLearned));
+L0616 | $("cancel").addEventListener("click", () => { cancelled = true; clearDraftConfirmation(); aborter?.abort(); recordCard.cancel(); $("cancel").disabled = true; tell("已请求停止，当前控件完成核验后停止后续操作。"); });
+L0617 | $("menuButton").addEventListener("click", () => {
+L0618 |   $("menu").hidden = !$("menu").hidden;
+L0619 |   $("menuButton").setAttribute("aria-expanded", String(!$("menu").hidden));
+L0620 | });
+L0621 | document.addEventListener("click", (event) => {
+L0622 |   if (event.target.closest("#menuButton") || event.target.closest("#menu") && !event.target.closest("a, button")) return;
+L0623 |   $("menu").hidden = true;
+L0624 |   $("menuButton").setAttribute("aria-expanded", "false");
+L0625 | });
+L0626 | $("language").addEventListener("change", run(async () => { if (session) { clearDraftConfirmation(); recordCard.cancel(); session.languageChoice = $("language").value; session.languageExplicit = true; session.stale = true; refreshSummary(); void recordCard.render(); await persist(); tell("语言已切换，请重新识别。"); } }));
+L0627 | $("questions").addEventListener("input", run(async (event) => {
+L0628 |   if (event.target.matches("[data-binding]")) return;
+L0629 |   const node = event.target.closest("[data-id]");
+L0630 |   const item = session?.plan.find((p) => p.fieldId === node?.dataset.id);
+L0631 |   if (!item || busy) return;
+L0632 |   if (event.target.matches("[data-answer]")) {
+L0633 |     clearDraftConfirmation();
+L0634 |     document.querySelectorAll("[data-draft-confirmation]").forEach((confirmation) => confirmation.remove());
+L0635 |     item.answer = event.target.multiple ? JSON.stringify([...event.target.selectedOptions].map((op) => op.value).filter(Boolean)) : event.target.value;
+L0636 |     item.edited = true; item.source = "本次手动编辑"; item.factIds = []; item.status = "review";
+L0637 |     item.selectionExplicit = false;
+L0638 |     item.selected = isFillable(item);
+L0639 |     const checkbox = node.querySelector("[data-selected]");
+L0640 |     checkbox.checked = item.selected; checkbox.disabled = !item.selected; checkbox.dataset.unavailable = String(!item.selected);
+L0641 |     const status = node.querySelector(".status");
+L0642 |     status.className = "status review"; status.textContent = labels.review; status.hidden = false;
+L0643 |     node.classList.add("needs-review");
+L0644 |     node.querySelector(".source").textContent = item.source;
+L0645 |     node.querySelector("[data-error]").textContent = validateValue(item, item.answer);
+L0646 |   }
+L0647 |   if (event.target.matches("[data-selected]")) { item.selected = event.target.checked && isFillable(item); item.selectionExplicit = true; }
+L0648 |   refreshSummary(); await persist();
+L0649 | }));
+L0650 | $("questions").addEventListener("change", run(async (event) => {
+L0651 |   if (!event.target.matches("[data-binding]") || busy) return;
+L0652 |   clearDraftConfirmation();
+L0653 |   session.bindings[event.target.dataset.binding] = event.target.value;
+L0654 |   const newPlan = preparePlan(session.snapshot, facts, await getMemories(), session.language, session.bindings);
+L0655 |   session.plan = newPlan.map((p) => p.groupId === event.target.dataset.binding ? finalizePreview([p])[0] : session.plan.find((old) => old.fieldId === p.fieldId) || p);
+L0656 |   render(); await persist();
+L0657 | }));
+L0658 | $("questions").addEventListener("click", run(async (event) => {
+L0659 |   if (busy) return;
+L0660 |   const draftButton = event.target.closest("[data-draft], [data-draft-send], [data-draft-cancel]");
+L0661 |   if (draftButton) {
+L0662 |     if (!session?.snapshot || session.stale) return;
+L0663 |     const item = session.plan.find((candidate) => candidate.fieldId === draftButton.closest("[data-id]")?.dataset.id);
+L0664 |     if (!item) return;
+L0665 |     if (draftButton.hasAttribute("data-draft-cancel")) { clearDraftConfirmation(); render(); return; }
+L0666 |     if (draftButton.hasAttribute("data-draft-send")) await sendDraft(item);
+L0667 |     else await confirmDraft(item);
+L0668 |     return;
+L0669 |   }
+L0670 |   const toggle = event.target.closest("[data-group-toggle]");
+L0671 |   if (toggle && session) {
+L0672 |     const id = toggle.dataset.groupToggle;
+L0673 |     const opened = new Set(session.openGroups || ["attention"]);
+L0674 |     if (opened.has(id)) opened.delete(id); else opened.add(id);
+L0675 |     session.openGroups = [...opened]; session.showAll = false;
+L0676 |     render(); await persist(); return;
+L0677 |   }
+L0678 |   if (event.target.closest("[data-more-toggle]") && session) {
+L0679 |     session.attentionMore = !session.attentionMore;
+L0680 |     if (!session.attentionMore) session.showAll = false;
+L0681 |     render(); await persist(); return;
+L0682 |   }
+L0683 |   const source = event.target.closest("[data-source-toggle]");
+L0684 |   if (source && session) {
+L0685 |     const card = source.closest("[data-id]");
+L0686 |     const opened = new Set(session.sourceOpen || []);
+L0687 |     if (opened.has(card.dataset.id)) opened.delete(card.dataset.id); else opened.add(card.dataset.id);
+L0688 |     session.sourceOpen = [...opened]; card.classList.toggle("source-open", opened.has(card.dataset.id));
+L0689 |     await persist(); return;
+L0690 |   }
+L0691 |   if (!event.target.matches("[data-locate]")) return;
+L0692 |   const item = session.plan.find((p) => p.fieldId === event.target.closest("[data-id]").dataset.id);
+L0693 |   await chrome.tabs.update(targetId, { active: true });
+L0694 |   await fieldAction(session.snapshot, item, "locate");
+L0695 | }));
+L0696 | $("questions").addEventListener("keydown", (event) => {
+L0697 |   if (event.target.matches("[data-source-toggle]") && ["Enter", " "].includes(event.key)) { event.preventDefault(); event.target.click(); }
+L0698 | });
+L0699 | $("resultList").addEventListener("click", run(async (event) => {
+L0700 |   const button = event.target.closest("[data-result-locate]");
+L0701 |   if (!button || busy || !session?.snapshot) return;
+L0702 |   const item = session.plan.find((p) => p.fieldId === button.dataset.resultLocate);
+L0703 |   if (!item) return;
+L0704 |   await chrome.tabs.update(targetId, { active: true });
+L0705 |   await fieldAction(session.snapshot, item, "locate");
+L0706 | }));
+L0707 | $("saveResults").addEventListener("click", () => {
+L0708 |   if (busy || !session) return;
+L0709 |   const latest = new Map();
+L0710 |   for (const result of session.results) if (result.status === "verified" && !result.undone) latest.set(result.fieldId, result);
+L0711 |   showLearning([...latest.values()].map((result) => ({ ...session.plan.find((item) => item.fieldId === result.fieldId), ...result })));
+L0712 |   $("learnPreview").scrollIntoView({ behavior: "smooth" });
+L0713 | });
+L0714 | chrome.tabs.onActivated.addListener(run(tabNotice));
+L0715 | chrome.tabs.onUpdated.addListener((id, change) => {
+L0716 |   if (id === targetId && (change.url || change.status === "loading")) clearPageAccessRecovery();
+L0717 |   if (id === targetId && (change.url || change.status === "loading") && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("目标页面已变化，请重新识别当前步骤。"); }
+L0718 | });
+L0719 | chrome.tabs.onRemoved.addListener((id) => {
+L0720 |   if (id !== targetId) return;
+L0721 |   clearPageAccessRecovery(); clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel();
+L0722 |   if (session?.snapshot) session.stale = true;
+L0723 |   render(); tell("原申请标签页已关闭，请在申请页重新打开助手，或在菜单中改为当前页面。");
+L0724 | });
+L0725 | chrome.storage.onChanged.addListener((changes, area) => {
+L0726 |   if (area === "local" && changes[AI_SETTINGS_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("AI 设置已更新，请重新识别以使用新设置。"); }
+L0727 |   if (area === "local" && changes[PROFILE_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("个人信息已更新，请重新识别以使用最新资料。"); }
+L0728 |   if (area === "local" && changes[MEMORY_KEY] && session?.memoryVersion) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("问答记忆已更新，请更新问题以使用最新答案。"); }
+L0729 |   if (area === "local" && changes[STORAGE_KEY]) void recordCard.render();
+L0730 | });
+L0731 | run(async () => {
+L0732 |   windowId = (await chrome.windows.getCurrent()).id;
+L0733 |   const data = await chrome.storage.session.get(targetKey());
+L0734 |   targetId = data[targetKey()];
+L0735 |   session = await loadSession(windowId);
+L0736 |   if (session?.tabId !== targetId) session = null;
+L0737 |   facts = factsFromProfile(await getProfile(), session?.language || "zh");
+L0738 |   if (session?.snapshot) {
+L0739 |     try { await checkTarget(session.snapshot); } catch { session.stale = true; }
+L0740 |     if (session.schemaVersion !== SESSION_VERSION || versionOf(await getMemories()) !== session.memoryVersion) session.stale = true;
+L0741 |     if (versionOf(await getProfile()) !== session.profileVersion) session.stale = true;
+L0742 |     const settings = await getAiSettings();
+L0743 |     if (versionOf(settings) !== session.settingsVersion) session.stale = true;
+L0744 |     session.aiEnabled = settings.enabled && !!settings.apiKey;
+L0745 |     if (!session.stale && !session.recordDraft) void recordCard.prepare(session.snapshot, settings);
+L0746 |     if (session.pending && !session.stale) {
+L0747 |       const pending = session.pending;
+L0748 |       const item = session.plan.find((p) => p.fieldId === pending.fieldId);
+L0749 |       try {
+L0750 |         const result = await fieldAction(session.snapshot, item, "operation-result", { operationId: pending.operationId });
+L0751 |         if (!pending.undo && (result.status === "verified" || canUndo(result))) {
+L0752 |           if (!session.results.some((entry) => entry.operationId === pending.operationId)) session.results.push({ ...result, ...pending });
+L0753 |           item.value = result.after; item.status = "filled"; item.selected = false;
+L0754 |         } else if (pending.undo && pending.undoOf && result.status === "verified") {
+L0755 |           const entry = session.results.find((entry) => entry.operationId === pending.undoOf);
+L0756 |           if (entry) { entry.undone = true; entry.undoReason = result.reason; item.value = entry.before || ""; item.status = item.value ? "filled" : "review"; }
+L0757 |           else session.stale = true;
+L0758 |         } else session.stale = true;
+L0759 |       } catch { session.stale = true; }
+L0760 |       session.pending = null;
+L0761 |       await persist();
+L0762 |       tell("已恢复上次结果，请核对后继续；未确认的操作不会自动重试。");
+L0763 |     }
+L0764 |   }
+L0765 |   if (!targetId) await bindCurrent();
+L0766 |   else { render(); setBusy(false); await tabNotice(); }
+L0767 | })();
+L0768 | 
+L0769 | let checkingChanges = false;
+L0770 | setInterval(async () => {
+L0771 |   if (busy || checkingChanges || !session?.snapshot || session.stale || document.hidden) return;
+L0772 |   checkingChanges = true;
+L0773 |   const checkedSession = session;
+L0774 |   const checkedSnapshot = session.snapshot;
+L0775 |   try {
+L0776 |     const changes = await pageChanges(checkedSnapshot);
+L0777 |     if (busy || session !== checkedSession || session.snapshot !== checkedSnapshot) return;
+L0778 |     const changeSignature = JSON.stringify(changes);
+L0779 |     if ((changes.added || changes.changed.length) && session.changeSignature !== changeSignature) {
+L0780 |       clearDraftConfirmation();
+L0781 |       session.changeSignature = changeSignature;
+L0782 |       for (const item of session.plan) if (changes.changed.includes(item.fieldId) && item.status !== "filled") {
+L0783 |         item.selected = false; item.supported = false; item.status = "unsupported"; item.reason = "字段已变化，请重新识别";
+L0784 |       }
+L0785 |       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点“更新”查看后再统一确认。`);
+L0786 |       render();
+L0787 |     }
+L0788 |   } catch {
+L0789 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
+L0790 |       clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell("目标页面已变化，请重新识别。");
+L0791 |     }
+L0792 |   }
+L0793 |   finally { checkingChanges = false; }
+L0794 | }, 2500);
+L0795 | window.addEventListener("pagehide", () => { clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel(); });
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/recordCard.js

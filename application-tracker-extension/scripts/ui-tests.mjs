@@ -47,6 +47,11 @@ try {
   let captureCalls = 0;
   let childPermissionDenied = false;
   let allowChildPermission = false;
+  let mainPermissionDenied = false;
+  let allowMainPermission = false;
+  let mainScriptFault = false;
+  let mainPermissionGate;
+  let mainScanCalls = 0;
   const permissionRequests = [];
   const documentIds = new Map();
   await panel.exposeBinding("testApi", async (source, method, args) => {
@@ -58,6 +63,11 @@ try {
     if (method === "frames") return target.frames().map((frame, index) => ({ frameId: index, url: childPermissionDenied && index === 1 ? "https://embedded.example/form?private=token" : frame.url() }));
     if (method === "permissions.request") {
       permissionRequests.push(args);
+      if (args.request.origins?.[0] === new URL(target.url()).origin + "/*") {
+        if (mainPermissionGate) { const gate = mainPermissionGate; mainPermissionGate = null; gate.entered(); await gate.wait; }
+        if (allowMainPermission) mainPermissionDenied = false;
+        return allowMainPermission;
+      }
       if (allowChildPermission) childPermissionDenied = false;
       return allowChildPermission;
     }
@@ -65,6 +75,11 @@ try {
       const { target: route, request, functionName } = args;
       const index = route.frameIds?.[0] ?? [...documentIds.entries()].find(([, id]) => id === route.documentIds?.[0])?.[0];
       if (index === undefined) throw new Error("Original document missing");
+      if (index === 0 && request?.action === "scan") {
+        mainScanCalls++;
+        if (mainPermissionDenied) throw new Error("Cannot access contents of url " + target.url() + ". Extension manifest must request permission to access this host.");
+        if (mainScriptFault) throw new TypeError("Scan failed at https://private.example/?token=private-token");
+      }
       if (index === 1 && childPermissionDenied) throw new Error("Cannot access this frame without host permission");
       const frame = target.frames()[index];
       if (!frame) throw new Error("Original frame missing");
@@ -934,6 +949,62 @@ try {
   assert.match(await panel.locator("#questions").textContent(), /暂无可引用资料/);
   assert.equal(broadDraftRequests, 1);
   console.log("PASS UI an arbitrary long-text question sends only its confirmed fact batch and waits for fill confirmation");
+
+  await writeStorage("local", { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false } });
+  await target.setContent('<!doctype html><title>站点访问恢复</title><label>姓名<input id="permission-name"></label>');
+  const permissionsBefore = permissionRequests.length;
+  mainPermissionDenied = true;
+  await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+  assert.match(await panel.locator("#message").textContent(), /尚未获得.*读取权限/);
+  assert.equal(await panel.locator("#targetTitle").textContent(), "站点访问恢复");
+  assert.equal(permissionRequests.length, permissionsBefore, "Scanning must never request a permission");
+  assert.equal(await panel.locator("#fill").isDisabled(), true, "An unsuccessful rescan invalidates the old preview");
+  await panel.locator("#allowPageAccess").click();
+  await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
+  assert.match(await panel.locator("#message").textContent(), /尚未允许/);
+  assert.equal(await target.locator("#permission-name").inputValue(), "");
+  assert.deepEqual(permissionRequests.at(-1).request, { origins: [origin + "/*"] });
+  assert.equal(permissionRequests.at(-1).userGesture, true);
+  allowMainPermission = true;
+  await panel.locator("#allowPageAccess").click();
+  await panel.waitForFunction(() => document.getElementById("allowPageAccess").hidden && !document.getElementById("prepare").disabled && !document.getElementById("fill").disabled);
+  assert.equal(await target.locator("#permission-name").inputValue(), "", "A grant prepares a preview without filling");
+  assert.equal(permissionRequests.length, permissionsBefore + 2);
+  console.log("PASS UI requests only the failed main site after a user click, supports denial and retry, and previews without filling");
+
+  mainScriptFault = true;
+  await completePanelAction("#prepare");
+  await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED"));
+  assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+  assert.equal(await panel.locator("#fill").isDisabled(), true);
+  assert.equal((await panel.locator("#message").textContent()).includes("private-token"), false);
+  assert.equal(permissionRequests.length, permissionsBefore + 2);
+  // A grant may succeed while the page's scan itself still fails. Report that
+  // separate failure rather than leaving the panel stuck on 'scanning'.
+  mainPermissionDenied = true;
+  await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+  await panel.locator("#allowPageAccess").click();
+  await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED") && !document.getElementById("prepare").disabled);
+  assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+  assert.equal(permissionRequests.length, permissionsBefore + 3);
+  mainScriptFault = false;
+  console.log("PASS UI keeps script failures separate from access requests and disables the old preview");
+
+  mainPermissionDenied = true;
+  await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+  let releasePermission;
+  const permissionEntered = new Promise((resolve) => { mainPermissionGate = { entered: resolve, wait: new Promise((release) => { releasePermission = release; }) }; });
+  await panel.locator("#allowPageAccess").click(); await permissionEntered;
+  const scansBeforeGrant = mainScanCalls;
+  await panel.evaluate(() => chrome.tabs.onUpdated.emit(1, { status: "loading" }));
+  assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+  releasePermission();
+  await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
+  assert.equal(mainScanCalls, scansBeforeGrant, "A grant for an obsolete recovery cannot trigger a new scan");
+  assert.equal(await target.locator("#permission-name").inputValue(), "");
+  await panel.locator("#allowPageAccess").dispatchEvent("click");
+  assert.equal(permissionRequests.length, permissionsBefore + 4);
+  console.log("PASS UI clears access recovery on navigation and ignores a late grant or stale click");
   assert.deepEqual(errors, []);
-  console.log("UI integration cases passed: 45 (Chrome API adapter and local AI stub; not live-model validation)");
+  console.log("UI integration cases passed: 48 (Chrome API adapter and local AI stub; not live-model validation)");
 } finally { await browser.close(); await new Promise((r) => server.close(r)); }

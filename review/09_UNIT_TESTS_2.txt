@@ -1613,53 +1613,79 @@ L0069 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/session.test.js
-SHA256: 527ab62b68e9c034603792c195e519c3f7907d5d8f05f7930aac9845c4aa4859
+SHA256: 023b45708cbe9611b73088532256362ae92268176ab00018d6232657081629c7
 L0001 | import test from "node:test";
 L0002 | import assert from "node:assert/strict";
 L0003 | import { scanPage } from "../src/assistant/session.js";
 L0004 | 
-L0005 | function installChrome(t, { frames, rejected = [], pageTypes = {}, enumerationFailed = false }) {
+L0005 | function installChrome(t, { frames, rejected = [], pageTypes = {}, enumerationFailed = false, scanError, scriptResult }) {
 L0006 |   const old = globalThis.chrome;
 L0007 |   globalThis.chrome = {
 L0008 |     tabs: { get: async () => ({ url: "https://main.example/apply", title: "申请表" }) },
 L0009 |     webNavigation: { getAllFrames: async () => { if (enumerationFailed) throw new Error("unavailable"); return frames; } },
 L0010 |     scripting: { executeScript: async ({ target }) => {
 L0011 |       const id = target.frameIds[0];
-L0012 |       if (rejected.includes(id)) throw new Error("Cannot access https://private.example/?token=secret");
-L0013 |       return [{ documentId: `doc-${id}`, result: { pageType: pageTypes[id] || "form", fields: [{ fieldId: "f1", groupId: "g1", label: "姓名" }] } }];
-L0014 |     } }
-L0015 |   };
-L0016 |   t.after(() => { if (old === undefined) delete globalThis.chrome; else globalThis.chrome = old; });
-L0017 | }
-L0018 | 
-L0019 | test("scan records failed child frame IDs and origins without query tokens or raw errors", async (t) => {
-L0020 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }, { frameId: 2, url: "https://embedded.example:8443/form?token=secret#value" }, { frameId: 4, url: "about:blank" }], rejected: [2, 4] });
-L0021 |   const snapshot = await scanPage(7);
-L0022 |   assert.deepEqual(snapshot.coverage, { scanned: 1, total: 3, failed: 2, unknown: false });
-L0023 |   assert.deepEqual(snapshot.failedFrames.map(({ frameId, origin }) => ({ frameId, origin })), [{ frameId: 2, origin: "https://embedded.example:8443" }, { frameId: 4, origin: "" }]);
-L0024 |   assert.ok(!JSON.stringify(snapshot).includes("secret"));
-L0025 |   assert.equal(snapshot.fields[0].fieldId, "doc-0:f1");
-L0026 | });
-L0027 | 
-L0028 | test("a successfully granted child frame joins the preview with its own document identity", async (t) => {
-L0029 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }, { frameId: 2, url: "https://embedded.example/form" }], pageTypes: { 0: "unknown", 2: "application" } });
-L0030 |   const snapshot = await scanPage(7);
-L0031 |   assert.equal(snapshot.pageType, "application");
-L0032 |   assert.deepEqual(snapshot.failedFrames, []);
-L0033 |   assert.deepEqual(snapshot.fields.map((field) => field.fieldId), ["doc-0:f1", "doc-2:f1"]);
-L0034 | });
-L0035 | 
-L0036 | test("frame enumeration failure retains main page scan and unknown coverage", async (t) => {
-L0037 |   installChrome(t, { enumerationFailed: true });
-L0038 |   const snapshot = await scanPage(7);
-L0039 |   assert.deepEqual(snapshot.coverage, { scanned: 1, total: 1, failed: 0, unknown: true });
-L0040 |   assert.deepEqual(snapshot.failedFrames, []);
-L0041 | });
-L0042 | 
-L0043 | test("main frame access failure still requires returning to the target website", async (t) => {
-L0044 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }], rejected: [0] });
-L0045 |   await assert.rejects(scanPage(7), /无法读取目标页面/);
-L0046 | });
+L0012 |       if (scanError && id === 0) throw scanError;
+L0013 |       if (rejected.includes(id)) throw new Error("Cannot access https://private.example/?token=secret");
+L0014 |       if (scriptResult) return scriptResult;
+L0015 |       return [{ documentId: `doc-${id}`, result: { pageType: pageTypes[id] || "form", fields: [{ fieldId: "f1", groupId: "g1", label: "姓名" }] } }];
+L0016 |     } }
+L0017 |   };
+L0018 |   t.after(() => { if (old === undefined) delete globalThis.chrome; else globalThis.chrome = old; });
+L0019 | }
+L0020 | 
+L0021 | test("scan records failed child frame IDs and origins without query tokens or raw errors", async (t) => {
+L0022 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }, { frameId: 2, url: "https://embedded.example:8443/form?token=secret#value" }, { frameId: 4, url: "about:blank" }], rejected: [2, 4] });
+L0023 |   const snapshot = await scanPage(7);
+L0024 |   assert.deepEqual(snapshot.coverage, { scanned: 1, total: 3, failed: 2, unknown: false });
+L0025 |   assert.deepEqual(snapshot.failedFrames.map(({ frameId, origin }) => ({ frameId, origin })), [{ frameId: 2, origin: "https://embedded.example:8443" }, { frameId: 4, origin: "" }]);
+L0026 |   assert.ok(!JSON.stringify(snapshot).includes("secret"));
+L0027 |   assert.equal(snapshot.fields[0].fieldId, "doc-0:f1");
+L0028 | });
+L0029 | 
+L0030 | test("a successfully granted child frame joins the preview with its own document identity", async (t) => {
+L0031 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }, { frameId: 2, url: "https://embedded.example/form" }], pageTypes: { 0: "unknown", 2: "application" } });
+L0032 |   const snapshot = await scanPage(7);
+L0033 |   assert.equal(snapshot.pageType, "application");
+L0034 |   assert.deepEqual(snapshot.failedFrames, []);
+L0035 |   assert.deepEqual(snapshot.fields.map((field) => field.fieldId), ["doc-0:f1", "doc-2:f1"]);
+L0036 | });
+L0037 | 
+L0038 | test("frame enumeration failure retains main page scan and unknown coverage", async (t) => {
+L0039 |   installChrome(t, { enumerationFailed: true });
+L0040 |   const snapshot = await scanPage(7);
+L0041 |   assert.deepEqual(snapshot.coverage, { scanned: 1, total: 1, failed: 0, unknown: true });
+L0042 |   assert.deepEqual(snapshot.failedFrames, []);
+L0043 | });
+L0044 | 
+L0045 | test("main frame permission failure offers only the bound site's origin without raw browser errors", async (t) => {
+L0046 |   installChrome(t, { frames: [{ frameId: 0, url: "https://main.example/apply" }], scanError: new Error("Cannot access contents of url https://private.example/?token=secret. Extension manifest must request permission to access this host.") });
+L0047 |   await assert.rejects(scanPage(7), (error) => {
+L0048 |     assert.equal(error.code, "PAGE_ACCESS_REQUIRED"); assert.equal(error.origin, "https://main.example"); assert.equal(error.tabId, 7);
+L0049 |     assert.match(error.message, /允许读取此站点/); assert.ok(!error.message.includes("secret"));
+L0050 |     return true;
+L0051 |   });
+L0052 | });
+L0053 | 
+L0054 | test("a scan script exception is not described as missing host permission", async (t) => {
+L0055 |   installChrome(t, { frames: [{ frameId: 0 }], scanError: new TypeError("Cannot read property at https://private.example/?token=secret") });
+L0056 |   await assert.rejects(scanPage(7), (error) => error.code === "PAGE_SCAN_FAILED" && !error.message.includes("secret") && !error.message.includes("允许"));
+L0057 | });
+L0058 | 
+L0059 | test("navigation during injection is reported separately from permissions", async (t) => {
+L0060 |   installChrome(t, { frames: [{ frameId: 0 }], scanError: new Error("No frame with id 0 in tab 7.") });
+L0061 |   await assert.rejects(scanPage(7), (error) => error.code === "PAGE_CHANGED" && /加载完成/.test(error.message));
+L0062 | });
+L0063 | 
+L0064 | test("missing browser document identity is distinguished from a scan failure", async (t) => {
+L0065 |   installChrome(t, { frames: [{ frameId: 0 }], scriptResult: [{ result: { fields: [] } }] });
+L0066 |   await assert.rejects(scanPage(7), (error) => error.code === "PAGE_DOCUMENT_UNAVAILABLE" && /更新浏览器/.test(error.message));
+L0067 | });
+L0068 | 
+L0069 | test("an invalid scan response cannot become an empty successful preview", async (t) => {
+L0070 |   installChrome(t, { frames: [{ frameId: 0 }], scriptResult: [{ documentId: "doc-0", result: {} }] });
+L0071 |   await assert.rejects(scanPage(7), (error) => error.code === "PAGE_SCAN_FAILED");
+L0072 | });
 
 ========================================================================
 FILE: application-tracker-extension/test/sourceDetection.test.js
@@ -1979,31 +2005,3 @@ L0109 | test("generic DOM labels can gain visible labels and education sections 
 L0110 |   const item = field({ label: "field_91", answer: "KEEP DRAFT", entityId: "education.unknown", options: [{ id: "a", text: "A", value: "a" }] });
 L0111 |   const snapshot = { fields: [structuredClone(item)] };
 L0112 |   const beforePlan = structuredClone(item);
-L0113 |   assert.deepEqual(applyVisualObservations(snapshot, [item], [observation()]), { applied: 1, evidenceOnly: 0, rejected: 0 });
-L0114 |   const next = snapshot.fields[0];
-L0115 |   assert.equal(next.label, "学校名称");
-L0116 |   assert.equal(next.section, "本科教育");
-L0117 |   assert.equal(next.domLabel, "field_91");
-L0118 |   assert.equal(next.domSection, "");
-L0119 |   assert.equal(next.contextPath, "本科教育 > 学校名称");
-L0120 |   assert.equal(next.visualEvidence, "截图V1：学校名称 / 本科教育");
-L0121 |   for (const key of ["supported", "kind", "options", "documentId", "fieldId", "groupId", "entityId", "answer"]) assert.deepEqual(next[key], item[key]);
-L0122 |   assert.deepEqual(item, beforePlan);
-L0123 | });
-L0124 | 
-L0125 | test("same meaningful label may gain a degree section while differing meaningful text remains evidence only", () => {
-L0126 |   const known = field({ label: "学校名称", section: "教育经历", intent: "education.unknown.university", entityId: "education.unknown" });
-L0127 |   const snapshot = { fields: [structuredClone(known)] };
-L0128 |   assert.deepEqual(applyVisualObservations(snapshot, [known], [observation()]), { applied: 1, evidenceOnly: 0, rejected: 0 });
-L0129 |   assert.equal(snapshot.fields[0].section, "本科教育");
-L0130 |   const meaningful = field({ label: "就读院校", section: "教育经历", entityId: "education.unknown" });
-L0131 |   const second = { fields: [structuredClone(meaningful)] };
-L0132 |   assert.deepEqual(applyVisualObservations(second, [meaningful], [observation()]), { applied: 0, evidenceOnly: 1, rejected: 0 });
-L0133 |   assert.equal(second.fields[0].label, "就读院校");
-L0134 |   assert.equal(second.fields[0].section, "教育经历");
-L0135 |   assert.match(second.fields[0].visualEvidence, /本科教育/);
-L0136 | });
-L0137 | 
-L0138 | test("application rejects stale snapshot fields, duplicate observations and executable extras", () => {
-L0139 |   const item = field();
-L0140 |   for (const change of [{ label: "新问题" }, { documentId: "replacement" }, { supported: false }, { value: "user entry" }]) {

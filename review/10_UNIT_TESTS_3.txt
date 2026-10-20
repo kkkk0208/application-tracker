@@ -2,6 +2,34 @@
 ========================================================================
 FILE: application-tracker-extension/test/vision.test.js (continued)
 SHA256: 4b0c913ca4025fd3ab53aa21cbba0779eb5ebfe1a199a76e533fa20b1b653072
+L0113 |   assert.deepEqual(applyVisualObservations(snapshot, [item], [observation()]), { applied: 1, evidenceOnly: 0, rejected: 0 });
+L0114 |   const next = snapshot.fields[0];
+L0115 |   assert.equal(next.label, "学校名称");
+L0116 |   assert.equal(next.section, "本科教育");
+L0117 |   assert.equal(next.domLabel, "field_91");
+L0118 |   assert.equal(next.domSection, "");
+L0119 |   assert.equal(next.contextPath, "本科教育 > 学校名称");
+L0120 |   assert.equal(next.visualEvidence, "截图V1：学校名称 / 本科教育");
+L0121 |   for (const key of ["supported", "kind", "options", "documentId", "fieldId", "groupId", "entityId", "answer"]) assert.deepEqual(next[key], item[key]);
+L0122 |   assert.deepEqual(item, beforePlan);
+L0123 | });
+L0124 | 
+L0125 | test("same meaningful label may gain a degree section while differing meaningful text remains evidence only", () => {
+L0126 |   const known = field({ label: "学校名称", section: "教育经历", intent: "education.unknown.university", entityId: "education.unknown" });
+L0127 |   const snapshot = { fields: [structuredClone(known)] };
+L0128 |   assert.deepEqual(applyVisualObservations(snapshot, [known], [observation()]), { applied: 1, evidenceOnly: 0, rejected: 0 });
+L0129 |   assert.equal(snapshot.fields[0].section, "本科教育");
+L0130 |   const meaningful = field({ label: "就读院校", section: "教育经历", entityId: "education.unknown" });
+L0131 |   const second = { fields: [structuredClone(meaningful)] };
+L0132 |   assert.deepEqual(applyVisualObservations(second, [meaningful], [observation()]), { applied: 0, evidenceOnly: 1, rejected: 0 });
+L0133 |   assert.equal(second.fields[0].label, "就读院校");
+L0134 |   assert.equal(second.fields[0].section, "教育经历");
+L0135 |   assert.match(second.fields[0].visualEvidence, /本科教育/);
+L0136 | });
+L0137 | 
+L0138 | test("application rejects stale snapshot fields, duplicate observations and executable extras", () => {
+L0139 |   const item = field();
+L0140 |   for (const change of [{ label: "新问题" }, { documentId: "replacement" }, { supported: false }, { value: "user entry" }]) {
 L0141 |     const snapshot = { fields: [{ ...item, ...change }] };
 L0142 |     assert.equal(applyVisualObservations(snapshot, [item], [observation()]).rejected, 1);
 L0143 |   }

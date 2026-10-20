@@ -30,6 +30,11 @@ let requestToken = 0;
 const owner = crypto.randomUUID();
 const SESSION_VERSION = 7;
 let renderedResultKey = "";
+let pageAccessRecovery = null;
+function clearPageAccessRecovery() {
+  pageAccessRecovery = null;
+  $("allowPageAccess").hidden = true;
+}
 const targetKey = () => `applicationTracker.assistant.target.${windowId}`;
 const tell = (text) => { $("message").textContent = text; };
 const recordCard = createRecordCard({
@@ -89,7 +94,7 @@ function persist() {
 function setBusy(value, phase = "review") {
   busy = value;
   if (session) session.phase = phase;
-  for (const id of ["prepare", "useCurrent", "language", "learn", "refresh", "saveLearned", "saveResults", "selectAll", "clearSelection", "showAll"]) $(id).disabled = value;
+  for (const id of ["prepare", "useCurrent", "language", "learn", "refresh", "saveLearned", "saveResults", "selectAll", "clearSelection", "showAll", "allowPageAccess"]) $(id).disabled = value;
   document.querySelectorAll("[data-answer], [data-selected], [data-binding], [data-locate], [data-result-locate], [data-group-toggle], [data-learn-check], [data-learn-answer], [data-learn-scope], [data-frame-origin]").forEach((input) => { input.disabled = value || input.dataset.unavailable === "true"; });
   document.querySelectorAll("[data-draft], [data-draft-send], [data-draft-cancel]").forEach((input) => { input.disabled = value || session?.stale || input.dataset.draftUnavailable === "true"; });
   document.querySelectorAll("#recordCompany, #recordRole, #recordRecent, #saveRecord, #saveRecordAnyway").forEach((input) => { input.disabled = value || session?.stale; });
@@ -231,6 +236,7 @@ function renderResults() {
   void recordCard.render();
 }
 async function bindCurrent() {
+  clearPageAccessRecovery();
   recordCard.cancel();
   clearDraftConfirmation();
   aborter?.abort();
@@ -249,6 +255,7 @@ async function bindCurrent() {
 }
 async function prepare(learning = false, preserve = false) {
   if (busy) return;
+  clearPageAccessRecovery();
   recordCard.cancel();
   clearDraftConfirmation();
   if (!targetId) await bindCurrent();
@@ -373,6 +380,10 @@ async function prepare(learning = false, preserve = false) {
       }
     }
     tell(session.stale ? "个人资料或目标页面已变化，请重新识别。" : cancelled ? "已停止 AI 准备，保留已得到的结果。" : errors.length ? `已有答案可预览确认；${errors.join("；")}` : "看一下“要你看”里的题，然后点“填写”。");
+  } catch (error) {
+    if (cancelled || requestToken !== prepareToken || targetId !== scannedTabId) return;
+    if (!previewReady && session === originalSession && session?.snapshot) session.stale = true;
+    throw error;
   } finally {
     if (session === preparedSession || !preparedSession && session === originalSession) {
       if (previewReady && !session.stale) session.plan = finalizePreview(session.plan.map((item) => item.visualEvidence && !item.value && item.answer ? { ...item, status: "review" } : item), previousChoices);
@@ -532,8 +543,39 @@ async function tabNotice() {
   $("tabNotice").hidden = !targetId || tab?.id === targetId;
   $("tabNotice").textContent = "当前查看的是另一标签页；助手仍绑定原申请页面。";
 }
-function handleError(error) { tell(error.message || "操作失败，请重试"); }
+function handleError(error) {
+  clearPageAccessRecovery();
+  tell(error.message || "操作失败，请重试");
+  if (error.origin && error.tabId === targetId) {
+    $("targetTitle").textContent = error.title;
+    $("targetUrl").textContent = error.origin;
+  }
+  if (error.code !== "PAGE_ACCESS_REQUIRED" || error.tabId !== targetId || !/^https?:\/\//.test(error.origin || "")) return;
+  pageAccessRecovery = { tabId: error.tabId, pageUrl: error.pageUrl, origin: error.origin };
+  $("allowPageAccess").textContent = `允许读取此站点（${new URL(error.origin).host}）`;
+  $("allowPageAccess").disabled = busy;
+  $("allowPageAccess").hidden = false;
+}
 function run(fn) { return (...args) => Promise.resolve().then(() => fn(...args)).catch(handleError); }
+$("allowPageAccess").addEventListener("click", () => {
+  const recovery = pageAccessRecovery;
+  if (!recovery || busy || recovery.tabId !== targetId) return;
+  let pending;
+  // Stay inside the user's click gesture. No permission is requested by scans.
+  try { pending = chrome.permissions.request({ origins: [recovery.origin + "/*"] }); }
+  catch { tell("未能发起站点访问请求，请回到申请页点击插件图标后重试。"); return; }
+  $("allowPageAccess").disabled = true;
+  Promise.resolve(pending).then(async (granted) => {
+    if (pageAccessRecovery !== recovery || targetId !== recovery.tabId) return;
+    if (!granted) { tell("尚未允许读取此站点。可以稍后重试，或回到申请页点击插件图标后识别。"); return; }
+    const tab = await chrome.tabs.get(recovery.tabId);
+    if (pageAccessRecovery !== recovery || targetId !== recovery.tabId) return;
+    if (tab.url !== recovery.pageUrl) { clearPageAccessRecovery(); tell("目标页面已变化，请重新识别。"); return; }
+    await prepare(false, true).catch(handleError);
+  }).catch(() => { if (pageAccessRecovery === recovery) tell("站点访问恢复未完成，请重新识别后重试。"); }).finally(() => {
+    $("allowPageAccess").disabled = busy;
+  });
+});
 $("useCurrent").addEventListener("click", run(bindCurrent));
 $("prepare").addEventListener("click", run(() => prepare(false, !!session?.stale && !!session?.snapshot)));
 $("framePermissions").addEventListener("click", (event) => {
@@ -671,7 +713,14 @@ $("saveResults").addEventListener("click", () => {
 });
 chrome.tabs.onActivated.addListener(run(tabNotice));
 chrome.tabs.onUpdated.addListener((id, change) => {
+  if (id === targetId && (change.url || change.status === "loading")) clearPageAccessRecovery();
   if (id === targetId && (change.url || change.status === "loading") && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("目标页面已变化，请重新识别当前步骤。"); }
+});
+chrome.tabs.onRemoved.addListener((id) => {
+  if (id !== targetId) return;
+  clearPageAccessRecovery(); clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel();
+  if (session?.snapshot) session.stale = true;
+  render(); tell("原申请标签页已关闭，请在申请页重新打开助手，或在菜单中改为当前页面。");
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes[AI_SETTINGS_STORAGE_KEY] && session?.snapshot) { clearDraftConfirmation(); session.stale = true; cancelled = true; aborter?.abort(); recordCard.cancel(); render(); tell("AI 设置已更新，请重新识别以使用新设置。"); }

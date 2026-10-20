@@ -308,8 +308,30 @@ try {
   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
+  await target.goto(`http://localhost:${server.address().port}/apply?token=private-test-token`);
+  await preparePage();
+  await panel.locator("#allowPageAccess").waitFor({ state: "visible" });
+  assert.match(await panel.locator("#message").textContent(), /尚未获得.*读取权限/);
+  assert.ok((await panel.locator("#allowPageAccess").textContent()).includes(`localhost:${server.address().port}`));
+  const mainDenied = await panel.evaluate(async (tabId) => {
+    const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+    try { await scanPage(tabId); return { unexpectedSuccess: true }; }
+    catch (error) { return { code: error.code, message: error.message, origin: error.origin }; }
+  }, ids.tabId);
+  assert.equal(mainDenied.code, "PAGE_ACCESS_REQUIRED");
+  assert.equal(mainDenied.origin, `http://localhost:${server.address().port}`);
+  assert.equal(await panel.evaluate((origin) => chrome.permissions.contains({ origins: [origin + "/*"] }), mainDenied.origin), false);
+  assert.ok(!mainDenied.message.includes("private-test-token"));
+  const afterDeniedPermissions = await worker.evaluate(() => chrome.permissions.getAll());
+  assert.ok(!afterDeniedPermissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)));
+  assert.equal(await target.locator("#name").inputValue(), "");
+  await target.goto(origin + "/apply"); await preparePage();
+  await panel.waitForFunction(() => !document.getElementById("prepare").disabled && !document.getElementById("fill").disabled);
+  assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+  assert.equal(await target.locator("#name").inputValue(), "");
+  console.log("PASS real main-frame access denial is classified without tokens or automatic grants, and returning to an allowed page recovers preview only");
   assert.deepEqual(errors, []);
-  console.log("Extension end-to-end cases passed: 14");
+  console.log("Extension end-to-end cases passed: 15");
 } catch (error) {
   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));

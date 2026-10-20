@@ -2,6 +2,61 @@
 ========================================================================
 FILE: application-tracker-extension/package-lock.json (continued)
 SHA256: f76ed988797974d9f4c36bb4d70e1ab9ccf9d6f0cf4f210d30ea05b50f788245
+L0876 |       "resolved": "https://registry.npmjs.org/rc-dialog/-/rc-dialog-9.6.0.tgz",
+L0877 |       "integrity": "sha512-ApoVi9Z8PaCQg6FsUzS8yvBEQy0ZL2PkuvAgrmohPkN3okps5WZ5WQWPc1RNuiOKaAYv8B97ACdsFU5LizzCqg==",
+L0878 |       "dev": true,
+L0879 |       "license": "MIT",
+L0880 |       "dependencies": {
+L0881 |         "@babel/runtime": "^7.10.1",
+L0882 |         "@rc-component/portal": "^1.0.0-8",
+L0883 |         "classnames": "^2.2.6",
+L0884 |         "rc-motion": "^2.3.0",
+L0885 |         "rc-util": "^5.21.0"
+L0886 |       },
+L0887 |       "peerDependencies": {
+L0888 |         "react": ">=16.9.0",
+L0889 |         "react-dom": ">=16.9.0"
+L0890 |       }
+L0891 |     },
+L0892 |     "node_modules/antd5/node_modules/rc-drawer": {
+L0893 |       "version": "7.3.0",
+L0894 |       "resolved": "https://registry.npmjs.org/rc-drawer/-/rc-drawer-7.3.0.tgz",
+L0895 |       "integrity": "sha512-DX6CIgiBWNpJIMGFO8BAISFkxiuKitoizooj4BDyee8/SnBn0zwO2FHrNDpqqepj0E/TFTDpmEBCyFuTgC7MOg==",
+L0896 |       "dev": true,
+L0897 |       "license": "MIT",
+L0898 |       "dependencies": {
+L0899 |         "@babel/runtime": "^7.23.9",
+L0900 |         "@rc-component/portal": "^1.1.1",
+L0901 |         "classnames": "^2.2.6",
+L0902 |         "rc-motion": "^2.6.1",
+L0903 |         "rc-util": "^5.38.1"
+L0904 |       },
+L0905 |       "peerDependencies": {
+L0906 |         "react": ">=16.9.0",
+L0907 |         "react-dom": ">=16.9.0"
+L0908 |       }
+L0909 |     },
+L0910 |     "node_modules/antd5/node_modules/rc-dropdown": {
+L0911 |       "version": "4.2.1",
+L0912 |       "resolved": "https://registry.npmjs.org/rc-dropdown/-/rc-dropdown-4.2.1.tgz",
+L0913 |       "integrity": "sha512-YDAlXsPv3I1n42dv1JpdM7wJ+gSUBfeyPK59ZpBD9jQhK9jVuxpjj3NmWQHOBceA1zEPVX84T2wbdb2SD0UjmA==",
+L0914 |       "dev": true,
+L0915 |       "license": "MIT",
+L0916 |       "dependencies": {
+L0917 |         "@babel/runtime": "^7.18.3",
+L0918 |         "@rc-component/trigger": "^2.0.0",
+L0919 |         "classnames": "^2.2.6",
+L0920 |         "rc-util": "^5.44.1"
+L0921 |       },
+L0922 |       "peerDependencies": {
+L0923 |         "react": ">=16.11.0",
+L0924 |         "react-dom": ">=16.11.0"
+L0925 |       }
+L0926 |     },
+L0927 |     "node_modules/antd5/node_modules/rc-input-number": {
+L0928 |       "version": "9.5.0",
+L0929 |       "resolved": "https://registry.npmjs.org/rc-input-number/-/rc-input-number-9.5.0.tgz",
+L0930 |       "integrity": "sha512-bKaEvB5tHebUURAEXw35LDcnRZLq3x1k7GxfAqBMzmpHkDGzjAtnUL8y4y5N15rIFIg5IJgwr211jInl3cipag==",
 L0931 |       "dev": true,
 L0932 |       "license": "MIT",
 L0933 |       "dependencies": {
@@ -2539,33 +2594,3 @@ L0120 | | 站点适配（CTgoodjobs、JobsDB、Moka） | high | 页面标签 |
 L0121 | | og 信息、h1、拆网页标题 | medium | 网页标题 |
 L0122 | | class 猜测、logo alt | low | 页面文字 |
 L0123 | 
-L0124 | 拆网页标题的规则：
-L0125 | 
-L0126 | 1. 先按分隔符拆成若干段。分隔符在代码里写成字符类，例如 `/[_|｜\-\u2013\u2014·•丨\/]+|【|】|「|」|\[|\]/`。
-L0127 | 2. 去掉平台名和泛称段：智联招聘、智联、BOSS直聘、前程无忧、51job、猎聘、猎聘网、拉勾、拉勾招聘、实习僧、牛客、牛客网、应届生求职网、脉脉、LinkedIn、领英、JobsDB、CTgoodjobs、Indeed、招聘官网、官方招聘网站、校园招聘、社会招聘、人才招聘、加入我们、Careers、Jobs。
-L0128 | 3. 拒绝这些页面名，不能当公司或岗位：填写简历、简历填写、我的简历、职位详情、岗位详情、申请职位、投递简历、个人中心、首页、登录、注册。
-L0129 | 4. “某某招聘官网”“某某校园招聘”“某某人才招聘”这类段，公司取“某某”。
-L0130 | 5. 公司段的特征：含公司、集团、银行、基金、证券、保险、科技、有限、股份、事务所、会计师、咨询、Limited、Ltd、Inc、Group、Bank、Capital、Securities、LLP；或等于 `og:site_name`。
-L0131 | 6. 岗位段的特征：含实习生、管培生、分析师、经理、专员、助理、工程师、会计、审计、顾问、主管、总监、培训生、Intern、Analyst、Associate、Manager、Engineer、Accountant、Consultant、Specialist、Trainee、Graduate；以“招聘”结尾的段先去掉“招聘”。
-L0132 | 7. 地点：某段等于常见城市名（北京、上海、广州、深圳、香港、杭州、南京、苏州、成都、武汉、西安、天津、重庆、厦门、珠海、东莞、佛山等）时作为 base。
-L0133 | 
-L0134 | `src/jobInfo/aiJobInfo.js`：`requestJobInfo(settings, signals, signal)`。只在 AI 已启用、并且公司或岗位为空或只有 low 时调用。只发送网页标题、meta、h1/h2、标签文字、面包屑、hostname 和 pathname，总长不超过 2000 字；不发送输入框的值和表单区域的文字。使用 Responses API，`store: false`，严格 JSON schema：`{ company: string|null, role: string|null, base: string|null, confidence: "high"|"medium"|"low" }`，超时 20 秒。结果的来源标签为“AI 识别，请核对”。
-L0135 | 
-L0136 | ### 3.2 `popup.js` 改动
-L0137 | 
-L0138 | 1. `init()` 里删掉三个站点分支，改成：`executeScript(collectJobSignals)` 得到 signals，调用 `extractJobInfo`，把结果预填到表单。弹窗先渲染，AI 兜底在后台进行，回来后只填仍为空的字段，不覆盖用户已输入的内容。
-L0139 | 2. 删除 `manifest.json` 里的 `content_scripts`，以及 `src/content/ctgoodjobs.js`、`src/content/jobsdb.js`；用户点插件图标时通过 activeTab 注入即可。`host_permissions` 暂不改。
-L0140 | 3. 公司、岗位、Base 输入框旁显示来源小标签（结构化数据 / 页面标签 / 网页标题 / 页面文字 / AI 识别，请核对 / 最近岗位）。用户改过的字段不再显示来源。
-L0141 | 4. 最近识别的岗位：每次抓到公司或岗位（可信度 medium 以上），存到 `chrome.storage.session` 的 `applicationTracker.recentJobs`，内容为 `{ company, role, base, url, host, capturedAt, source }`，`url` 去掉 query，按 url 去重，最多 20 条。当前页面抓不到岗位时（比如申请表页），在岗位输入框下显示“用最近识别的岗位”下拉：同一 host 的排前面，其次按时间倒序；选中后填入公司、岗位、Base，投递链接保持当前页面。原因：用户通常先看岗位详情页再点申请，申请页一般不显示岗位名。这三个真实页面都是申请页。
-L0142 | 
-L0143 | ### 3.3 测试
-L0144 | 
-L0145 | 1. 单元测试 `test/jobInfo.test.js`（虚构数据）：
-L0146 |    - JSON-LD：单个对象、数组、`@graph`、`jobLocation` 为数组。
-L0147 |    - meta 和标签文字。
-L0148 |    - 拆标题（虚构样例）：`财务实习生-某某集团-招聘官网`、`【审计助理_深圳】某某会计师事务所招聘`、`Graduate Analyst | Some Bank Careers`。真实平台的标题格式以用户以后提供的页面为准，不要凭记忆写死。
-L0149 |    - 平台名去除；页面名拒绝（`填写简历`、`简历填写` 不能成为岗位）。
-L0150 |    - `华润集团招聘官网` 得到公司“华润集团”，岗位为空。
-L0151 |    - `recentJobs` 排序：同 host 优先，其次按时间。
-L0152 | 2. 浏览器测试：在三个真实页面上运行 `collectJobSignals` 和 `extractJobInfo`：
-L0153 |    - `huarun-runjob.html`：公司“华润集团”，岗位为空。

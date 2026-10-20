@@ -980,7 +980,7 @@ L0049 | if (failures.length) process.exitCode = 1;
 
 ========================================================================
 FILE: application-tracker-extension/scripts/extension-tests.mjs
-SHA256: 1ac7265383b43b79240e6ff709f437b6b98d30bcbb3c320a12f9071a55cd0445
+SHA256: 40e62468bd9caad9326b416c750f70e17479af5f75bd2a5a854ab7b7761bbee9
 L0001 | import assert from "node:assert/strict";
 L0002 | import { createServer } from "node:http";
 L0003 | import { mkdtemp, cp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
@@ -1291,22 +1291,44 @@ L0307 |   assert.equal(crossState.fields, 5);
 L0308 |   assert.ok(!crossState.permissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)), "An optional permission must not be granted by scanning");
 L0309 |   assert.equal(await target.frameLocator("iframe").locator("#website").inputValue(), "");
 L0310 |   console.log("PASS real cross-origin iframe denial preserves main-page preview and offers only that frame origin without requesting access automatically");
-L0311 |   assert.deepEqual(errors, []);
-L0312 |   console.log("Extension end-to-end cases passed: 14");
-L0313 | } catch (error) {
-L0314 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
-L0315 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
-L0316 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
-L0317 |   }
-L0318 |   throw error;
-L0319 | } finally {
-L0320 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
-L0321 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
-L0322 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
-L0323 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
-L0324 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-L0325 |   }
-L0326 | }
+L0311 |   await target.goto(`http://localhost:${server.address().port}/apply?token=private-test-token`);
+L0312 |   await preparePage();
+L0313 |   await panel.locator("#allowPageAccess").waitFor({ state: "visible" });
+L0314 |   assert.match(await panel.locator("#message").textContent(), /尚未获得.*读取权限/);
+L0315 |   assert.ok((await panel.locator("#allowPageAccess").textContent()).includes(`localhost:${server.address().port}`));
+L0316 |   const mainDenied = await panel.evaluate(async (tabId) => {
+L0317 |     const { scanPage } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0318 |     try { await scanPage(tabId); return { unexpectedSuccess: true }; }
+L0319 |     catch (error) { return { code: error.code, message: error.message, origin: error.origin }; }
+L0320 |   }, ids.tabId);
+L0321 |   assert.equal(mainDenied.code, "PAGE_ACCESS_REQUIRED");
+L0322 |   assert.equal(mainDenied.origin, `http://localhost:${server.address().port}`);
+L0323 |   assert.equal(await panel.evaluate((origin) => chrome.permissions.contains({ origins: [origin + "/*"] }), mainDenied.origin), false);
+L0324 |   assert.ok(!mainDenied.message.includes("private-test-token"));
+L0325 |   const afterDeniedPermissions = await worker.evaluate(() => chrome.permissions.getAll());
+L0326 |   assert.ok(!afterDeniedPermissions.origins.some((pattern) => /localhost|<all_urls>/.test(pattern)));
+L0327 |   assert.equal(await target.locator("#name").inputValue(), "");
+L0328 |   await target.goto(origin + "/apply"); await preparePage();
+L0329 |   await panel.waitForFunction(() => !document.getElementById("prepare").disabled && !document.getElementById("fill").disabled);
+L0330 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L0331 |   assert.equal(await target.locator("#name").inputValue(), "");
+L0332 |   console.log("PASS real main-frame access denial is classified without tokens or automatic grants, and returning to an allowed page recovers preview only");
+L0333 |   assert.deepEqual(errors, []);
+L0334 |   console.log("Extension end-to-end cases passed: 15");
+L0335 | } catch (error) {
+L0336 |   for (const page of context?.pages() || []) if (/\/src\/(?:sidepanel\/assistant|memory\/memory)\.html$/.test(page.url())) {
+L0337 |     const diagnostic = await page.evaluate(() => Object.fromEntries(["message", "connection", "summary", "resultSummary", "resultList", "backupSummary", "restoreDescription"].map((id) => [id, document.getElementById(id)?.textContent]))).catch(() => ({}));
+L0338 |     console.error("Extension UI diagnostic:", JSON.stringify(diagnostic));
+L0339 |   }
+L0340 |   throw error;
+L0341 | } finally {
+L0342 |   if (context) await context.close().catch((error) => console.error("Browser cleanup:", error.message));
+L0343 |   if (server.listening) { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+L0344 |   // Resolve and verify the exact mkdtemp directory before recursive cleanup.
+L0345 |   if (temporary && path.dirname(path.resolve(temporary)) === path.resolve(tmpdir()) && path.basename(temporary).startsWith("application-assistant-test-")) {
+L0346 |     await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+L0347 |   }
+L0348 | }
 
 ========================================================================
 FILE: application-tracker-extension/scripts/job-info-browser-tests.mjs
@@ -1463,38 +1485,3 @@ L0149 |
 L0150 |   await check("Moka application wishes take priority over generic campus headings", async () => {
 L0151 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1>投递记录</h1><div class="jobTitle">校园</div><article><span>第 1 志愿</span><strong>2027届-财务专员（上海）</strong><p>状态：投递成功</p></article>'), "https://app.mokahr.com/candidate/fictional/applications");
 L0152 |     const info = extractJobInfo(await collect());
-L0153 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "2027届-财务专员（上海）", base: "" });
-L0154 |     assert.equal(info.confidence.role, "high");
-L0155 |   });
-L0156 | 
-L0157 |   console.log(`Job information browser cases passed: ${passed}`);
-L0158 | } finally {
-L0159 |   await browser.close();
-L0160 | }
-
-========================================================================
-FILE: application-tracker-extension/scripts/real-page-tests.mjs
-SHA256: c8b2e5f986bc3240d4560c22375c5eaf0dd094dac4849e9dc982769f8393e30f
-L0001 | // Real-page scan acceptance test. Loads sanitized copies of real application forms
-L0002 | // (test/fixtures/real-pages/*.html), runs pageBridge "scan", and scores the result
-L0003 | // against the hand-checked answers in *.expected.json.
-L0004 | //   node scripts/real-page-tests.mjs            -> fails (exit 1) below the thresholds
-L0005 | //   node scripts/real-page-tests.mjs --report   -> prints the report only
-L0006 | import { createServer } from "node:http";
-L0007 | import { readFile, readdir } from "node:fs/promises";
-L0008 | import { createRequire } from "node:module";
-L0009 | import { homedir } from "node:os";
-L0010 | import path from "node:path";
-L0011 | import { pageBridge } from "../src/assistant/pageBridge.js";
-L0012 | 
-L0013 | const require = createRequire(import.meta.url);
-L0014 | let playwright;
-L0015 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
-L0016 | 
-L0017 | const root = path.resolve(import.meta.dirname, "..");
-L0018 | const dir = path.join(root, "test/fixtures/real-pages");
-L0019 | const reportOnly = process.argv.includes("--report");
-L0020 | const THRESHOLDS = { questionText: 0.95, section: 0.9, repeats: 1, controls: 0.9 };
-L0021 | 
-L0022 | const server = createServer(async (req, res) => {
-L0023 |   const name = decodeURIComponent(new URL(req.url, "http://localhost").pathname).slice(1);

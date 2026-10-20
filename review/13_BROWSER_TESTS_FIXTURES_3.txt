@@ -1,7 +1,100 @@
 
 ========================================================================
-FILE: application-tracker-extension/scripts/vision-browser-tests.mjs (continued)
+FILE: application-tracker-extension/scripts/ui-tests.mjs (continued)
+SHA256: 4b93378e31f79b36a1cfa5636abd331f4bc221c459bad1836b1b2d91f2139bac
+L0946 |   await completePanelAction("#prepare"); await expandQuestions();
+L0947 |   assert.equal(await panel.locator("[data-draft]").count(), 1);
+L0948 |   assert.equal(await panel.locator("[data-draft]").isDisabled(), true);
+L0949 |   assert.match(await panel.locator("#questions").textContent(), /暂无可引用资料/);
+L0950 |   assert.equal(broadDraftRequests, 1);
+L0951 |   console.log("PASS UI an arbitrary long-text question sends only its confirmed fact batch and waits for fill confirmation");
+L0952 | 
+L0953 |   await writeStorage("local", { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false } });
+L0954 |   await target.setContent('<!doctype html><title>站点访问恢复</title><label>姓名<input id="permission-name"></label>');
+L0955 |   const permissionsBefore = permissionRequests.length;
+L0956 |   mainPermissionDenied = true;
+L0957 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+L0958 |   assert.match(await panel.locator("#message").textContent(), /尚未获得.*读取权限/);
+L0959 |   assert.equal(await panel.locator("#targetTitle").textContent(), "站点访问恢复");
+L0960 |   assert.equal(permissionRequests.length, permissionsBefore, "Scanning must never request a permission");
+L0961 |   assert.equal(await panel.locator("#fill").isDisabled(), true, "An unsuccessful rescan invalidates the old preview");
+L0962 |   await panel.locator("#allowPageAccess").click();
+L0963 |   await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
+L0964 |   assert.match(await panel.locator("#message").textContent(), /尚未允许/);
+L0965 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
+L0966 |   assert.deepEqual(permissionRequests.at(-1).request, { origins: [origin + "/*"] });
+L0967 |   assert.equal(permissionRequests.at(-1).userGesture, true);
+L0968 |   allowMainPermission = true;
+L0969 |   await panel.locator("#allowPageAccess").click();
+L0970 |   await panel.waitForFunction(() => document.getElementById("allowPageAccess").hidden && !document.getElementById("prepare").disabled && !document.getElementById("fill").disabled);
+L0971 |   assert.equal(await target.locator("#permission-name").inputValue(), "", "A grant prepares a preview without filling");
+L0972 |   assert.equal(permissionRequests.length, permissionsBefore + 2);
+L0973 |   console.log("PASS UI requests only the failed main site after a user click, supports denial and retry, and previews without filling");
+L0974 | 
+L0975 |   mainScriptFault = true;
+L0976 |   await completePanelAction("#prepare");
+L0977 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED"));
+L0978 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L0979 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0980 |   assert.equal((await panel.locator("#message").textContent()).includes("private-token"), false);
+L0981 |   assert.equal(permissionRequests.length, permissionsBefore + 2);
+L0982 |   // A grant may succeed while the page's scan itself still fails. Report that
+L0983 |   // separate failure rather than leaving the panel stuck on 'scanning'.
+L0984 |   mainPermissionDenied = true;
+L0985 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+L0986 |   await panel.locator("#allowPageAccess").click();
+L0987 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED") && !document.getElementById("prepare").disabled);
+L0988 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L0989 |   assert.equal(permissionRequests.length, permissionsBefore + 3);
+L0990 |   mainScriptFault = false;
+L0991 |   console.log("PASS UI keeps script failures separate from access requests and disables the old preview");
+L0992 | 
+L0993 |   mainPermissionDenied = true;
+L0994 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+L0995 |   let releasePermission;
+L0996 |   const permissionEntered = new Promise((resolve) => { mainPermissionGate = { entered: resolve, wait: new Promise((release) => { releasePermission = release; }) }; });
+L0997 |   await panel.locator("#allowPageAccess").click(); await permissionEntered;
+L0998 |   const scansBeforeGrant = mainScanCalls;
+L0999 |   await panel.evaluate(() => chrome.tabs.onUpdated.emit(1, { status: "loading" }));
+L1000 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L1001 |   releasePermission();
+L1002 |   await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
+L1003 |   assert.equal(mainScanCalls, scansBeforeGrant, "A grant for an obsolete recovery cannot trigger a new scan");
+L1004 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
+L1005 |   await panel.locator("#allowPageAccess").dispatchEvent("click");
+L1006 |   assert.equal(permissionRequests.length, permissionsBefore + 4);
+L1007 |   console.log("PASS UI clears access recovery on navigation and ignores a late grant or stale click");
+L1008 |   assert.deepEqual(errors, []);
+L1009 |   console.log("UI integration cases passed: 48 (Chrome API adapter and local AI stub; not live-model validation)");
+L1010 | } finally { await browser.close(); await new Promise((r) => server.close(r)); }
+
+========================================================================
+FILE: application-tracker-extension/scripts/vision-browser-tests.mjs
 SHA256: 148892a5f2ce7191344951036a6d3937b81f8155d443966395704130431f3433
+L0001 | import assert from "node:assert/strict";
+L0002 | import { createServer } from "node:http";
+L0003 | import { readFile } from "node:fs/promises";
+L0004 | import { createRequire } from "node:module";
+L0005 | import { homedir } from "node:os";
+L0006 | import path from "node:path";
+L0007 | import { pageBridge } from "../src/assistant/pageBridge.js";
+L0008 | 
+L0009 | // Only isolated synthetic pages are captured. Images remain in memory and no
+L0010 | // external AI service or existing user browser profile is used by this suite.
+L0011 | const require = createRequire(import.meta.url);
+L0012 | let playwright;
+L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0014 | const root = path.resolve(import.meta.dirname, "..");
+L0015 | const server = createServer(async (req, res) => {
+L0016 |   const pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+L0017 |   if (pathname === "/fixture") { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end('<!doctype html><html><head><title>Visual application fixture</title></head><body></body></html>'); return; }
+L0018 |   const file = path.resolve(root, "." + pathname);
+L0019 |   if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+L0020 |   try { res.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript" : "text/html; charset=utf-8"); res.end(await readFile(file)); } catch { res.writeHead(404).end(); }
+L0021 | });
+L0022 | await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+L0023 | const origin = `http://127.0.0.1:${server.address().port}`;
+L0024 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
 L0025 | const page = await browser.newPage({ viewport: { width: 1000, height: 700 }, deviceScaleFactor: 1 });
 L0026 | const errors = [];
 L0027 | page.on("pageerror", (error) => errors.push(error.message));
