@@ -785,9 +785,10 @@ setInterval(async () => {
       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点“更新”查看后再统一确认。`);
       render();
     }
-  } catch {
+  } catch (error) {
+    if (error.code === "BRIDGE_BUSY") return;
     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
-      clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell("目标页面已变化，请重新识别。");
+      clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell(["BRIDGE_EXCEPTION", "BRIDGE_NO_RESULT"].includes(error.code) ? error.message : "目标页面已变化，请重新识别。");
     }
   }
   finally { checkingChanges = false; }

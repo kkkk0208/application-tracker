@@ -90,10 +90,14 @@ npm.cmd run test:browser
 npm.cmd run test:ui
 npm.cmd run test:data-ui
 npm.cmd run test:extension
+npm.cmd run test:http
 npm.cmd run test:vision-browser
 ```
 
 浏览器测试使用虚构数据和隔离浏览器。`test:ui`、`data-ui-tests` 使用 Chrome API 适配器；`test:extension` 加载真实 MV3 扩展。两者验证范围不同。需要时通过 `BROWSER_EXECUTABLE` 指定测试浏览器，不使用真实用户配置文件替代测试环境。
+
+- [ ] 普通非 localhost HTTP 的真实 MV3 isolated world 中 isSecureContext 为 false，扫描、预览、填写、撤销和旧快照保护通过；localhost/HTTPS 原生 UUID 路径保留。
+- [ ] 扫描初始化、控件收集和字段描述异常只显示固定诊断，任意 error.name、message、stack、完整链接和字段值不能进入诊断。
 
 - [ ] 真实招聘网站按原生控件、Moka、Phoenix、跨域内嵌表单分别验收并记录限制。
 - [ ] README、申请资料说明、更新记录与本次发布的实际行为一致。

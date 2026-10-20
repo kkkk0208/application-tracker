@@ -1,14 +1,14 @@
 # Application Tracker
 
-Chrome 求职投递记录与网申填写助手。2026-10-20 主页面访问诊断与恢复后的当前源码，manifest/package 仍为 0.4.0。
+Chrome 求职投递记录与网申填写助手。2026-10-20 普通 HTTP 兼容修复后的当前源码，manifest/package 仍为 0.4.0。
 
 ## 当前进度
 
 完成侧栏简化、AI 资料目录配对、逐题发送确认、填写后手动记录投递。本轮修复扫描性能、慢 CPU 日期、原生选项组题名、业务同意区分、链接清理、Excel 日期和最近岗位 SPA 路由；按用户选择放宽开放长文记忆配对与长文本草稿，记忆默认不选，发送资料前确认。统一填写确认、只填空字段、条款保护、人工编辑保护、失败撤销与不自动提交保留。
 
-本轮新增主页面读取失败分类和仅当前站点的用户点击授权恢复入口；导航和晚到请求保护保留，恢复后只准备预览。348 单元、48 助手 UI、15 真实 MV3 检查通过，共 411 项。本轮没有重跑无关控件、数据界面或性能套件；2026-10-14 的 551 常规及 11 性能/慢 CPU 检查为历史验收。真实 AI 服务和银行申请现场尚未验证。
+本轮修复普通 HTTP 页面的 UUID 初始化失败，并增加不包含页面内容的扫描阶段诊断。共 569 项适用检查通过：358 单元、129 浏览器、49 助手 UI、15 原有 MV3、7 截图浏览器、11 HTTP 上下文 MV3。普通 HTTP、localhost、HTTPS 的真实注入、侧栏预览、填写、撤销和旧快照/人工修改保护均有检查。本轮未重跑数据 UI、性能和六时区套件，先前结果保留为历史；真实 AI 服务和银行申请现场尚未验证。
 
-详见 [本轮实施记录](application-tracker-extension/docs/2026-10-20-main-page-access.md)、[前轮审查修复](application-tracker-extension/docs/2026-10-14-review-execution.md)、[更新记录](application-tracker-extension/CHANGELOG.md)。历史计划及报告描述当时状态，当前源码与 SOURCE_MANIFEST.json 为准。资料 v2、整页理解和可选网页标记尚未实施。
+详见 [本轮实施记录](application-tracker-extension/docs/2026-10-20-http-uuid.md)、[访问恢复说明](application-tracker-extension/docs/2026-10-20-main-page-access.md)、[更新记录](application-tracker-extension/CHANGELOG.md)。历史计划及报告描述当时状态，当前源码与 SOURCE_MANIFEST.json 为准。资料 v2、整页理解和可选网页标记尚未实施。
 
 ## 给普通 Claude Chat 看
 

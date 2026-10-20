@@ -8,6 +8,7 @@
     "test:browser": "node scripts/browser-tests.mjs && node scripts/job-info-browser-tests.mjs && node scripts/component-browser-tests.mjs && node scripts/choice-browser-tests.mjs && node scripts/date-format-browser-tests.mjs && node scripts/scan-context-browser-tests.mjs",
     "test:components": "node scripts/component-browser-tests.mjs",
     "test:extension": "node scripts/extension-tests.mjs",
+    "test:http": "node scripts/http-context-browser-tests.mjs",
     "test:ui": "node scripts/ui-tests.mjs",
     "test:data-ui": "node scripts/data-ui-tests.mjs",
     "test:vision-browser": "node scripts/vision-browser-tests.mjs",

@@ -785,89 +785,112 @@ L0028 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/assistant/session.js
-SHA256: d058e0bf89f8253ef63768ad583aa010b8ab1b2af73576f38f21da37b3d3a487
+SHA256: d70118ded1cc8d51051ce799f130c9d46ea58c55e3cc92764a02edece49ab6d7
 L0001 | import { pageBridge } from "./pageBridge.js";
 L0002 | 
-L0003 | function mainScanError(reason, tab, tabId) {
-L0004 |   // Chrome injection failures can contain complete URLs. Keep only a stable
-L0005 |   // category and the site's origin; never surface raw errors or route tokens.
-L0006 |   const message = String(reason?.message || "");
-L0007 |   let code = reason?.code || "PAGE_SCAN_FAILED";
-L0008 |   if (/cannot access (?:contents|this frame|page)|manifest must request permission|missing host permission|not allowed to access/i.test(message)) code = "PAGE_ACCESS_REQUIRED";
-L0009 |   else if (/no (?:tab|frame) with id|frame .*removed|tab (?:was |is )?closed|document .*unloaded/i.test(message)) code = "PAGE_CHANGED";
-L0010 |   if (!["PAGE_ACCESS_REQUIRED", "PAGE_CHANGED", "PAGE_DOCUMENT_UNAVAILABLE"].includes(code)) code = "PAGE_SCAN_FAILED";
-L0011 |   const descriptions = {
-L0012 |     PAGE_ACCESS_REQUIRED: "尚未获得此站点的读取权限。请点击下方“允许读取此站点”，或回到该页面点击浏览器工具栏里的插件图标后重试。",
-L0013 |     PAGE_CHANGED: "读取时页面或标签页已变化，请等待页面加载完成后重新识别。",
-L0014 |     PAGE_DOCUMENT_UNAVAILABLE: "Chrome 未返回页面文档标识，请更新浏览器并重新加载扩展后重试。",
-L0015 |     PAGE_SCAN_FAILED: "页面扫描未能完成，请重新识别；若仍失败，请反馈错误码 PAGE_SCAN_FAILED。"
-L0016 |   };
-L0017 |   const error = new Error(descriptions[code]);
-L0018 |   Object.assign(error, { code, tabId, pageUrl: tab.url, origin: new URL(tab.url).origin, title: tab.title || "当前申请页面" });
-L0019 |   return error;
-L0020 | }
-L0021 | 
-L0022 | export async function scanPage(tabId) {
-L0023 |   const tab = await chrome.tabs.get(tabId);
-L0024 |   if (!/^https?:\/\//.test(tab.url || "")) throw new Error("请先打开普通网站的申请页面");
-L0025 |   let frames;
-L0026 |   let enumerationFailed = false;
-L0027 |   try { frames = await chrome.webNavigation.getAllFrames({ tabId }); } catch { enumerationFailed = true; }
-L0028 |   frames = frames?.length ? frames : [{ frameId: 0, url: tab.url }];
-L0029 |   const results = await Promise.allSettled(frames.map(async (frame) => {
-L0030 |     const [result] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frame.frameId] }, func: pageBridge, args: [{ action: "scan" }] });
-L0031 |     if (!result?.documentId) throw Object.assign(new Error("Missing document identity"), { code: "PAGE_DOCUMENT_UNAVAILABLE" });
-L0032 |     if (!result.result || !Array.isArray(result.result.fields)) throw new Error("Invalid scan result");
-L0033 |     return { ...result.result, frameId: frame.frameId, documentId: result.documentId };
-L0034 |   }));
-L0035 |   const scanned = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
-L0036 |   const main = scanned.find((r) => r.frameId === 0);
-L0037 |   if (!main) throw mainScanError(results[frames.findIndex((frame) => frame.frameId === 0)]?.reason, tab, tabId);
-L0038 |   const failedFrames = frames.flatMap((frame, index) => {
-L0039 |     if (results[index].status !== "rejected") return [];
-L0040 |     let origin = "";
-L0041 |     try { const url = new URL(frame.url); if (/^https?:$/.test(url.protocol)) origin = url.origin; } catch { /* Non-web frames cannot request a host permission. */ }
-L0042 |     return [{ frameId: frame.frameId, origin, reason: "此页面区域无法读取，请检查访问权限或刷新网页" }];
-L0043 |   });
-L0044 |   const snapshot = { id: crypto.randomUUID(), tabId, url: tab.url, title: tab.title || main.title, frames: scanned, failedFrames, pageType: main.pageType, jobText: scanned.map((r) => r.jobText).filter(Boolean).join("\n"), fields: [], coverage: { scanned: scanned.length, total: frames.length, failed: failedFrames.length, unknown: enumerationFailed } };
-L0045 |   snapshot.fields = scanned.flatMap((frame) => frame.fields.map((field) => ({ ...field, localFieldId: field.fieldId, fieldId: `${frame.documentId}:${field.fieldId}`, groupId: `${frame.documentId}:${field.groupId}`, frameId: frame.frameId, documentId: frame.documentId })));
-L0046 |   if (scanned.some((r) => r.pageType === "application")) snapshot.pageType = "application";
-L0047 |   else if (scanned.some((r) => r.pageType === "form") && snapshot.pageType !== "login") snapshot.pageType = "form";
-L0048 |   return snapshot;
-L0049 | }
-L0050 | export async function checkTarget(snapshot) {
-L0051 |   const tab = await chrome.tabs.get(snapshot.tabId);
-L0052 |   if (tab.url !== snapshot.url) throw new Error("目标页面已跳转，请重新识别");
-L0053 |   const main = snapshot.frames.find((f) => f.frameId === 0);
-L0054 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [main.documentId] }, func: pageBridge, args: [{ action: "ping" }] });
-L0055 |   if (result?.result?.token !== main.token || result?.result?.scanId !== main.scanId) throw new Error("页面快照已过期，请重新识别");
-L0056 |   return tab;
-L0057 | }
-L0058 | export async function fieldAction(snapshot, item, action, extra = {}) {
-L0059 |   await checkTarget(snapshot);
-L0060 |   const frame = snapshot.frames.find((f) => f.documentId === item.documentId);
-L0061 |   if (!frame) throw new Error("无法找到原字段所在页面");
-L0062 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [frame.documentId] }, func: pageBridge, args: [{ action, token: frame.token, scanId: frame.scanId, url: frame.url, fieldId: item.localFieldId, ...extra }] });
-L0063 |   if (!result?.result) throw new Error("页面没有返回操作结果");
-L0064 |   return result.result;
-L0065 | }
-L0066 | export async function inspectOptions(snapshot, item, extra = {}) {
-L0067 |   const result = await fieldAction(snapshot, item, "inspect-options", extra);
-L0068 |   if (result.status !== "inspected") return result;
-L0069 |   const field = { ...result.field, localFieldId: item.localFieldId, fieldId: item.fieldId,
-L0070 |     groupId: `${item.documentId}:${result.field.groupId}`, frameId: item.frameId, documentId: item.documentId };
-L0071 |   const index = snapshot.fields.findIndex((candidate) => candidate.fieldId === item.fieldId);
-L0072 |   if (index !== -1) snapshot.fields[index] = field;
-L0073 |   return { ...result, field };
-L0074 | }
-L0075 | export async function pageChanges(snapshot) {
-L0076 |   const results = await Promise.allSettled(snapshot.frames.map(async (frame) => {
-L0077 |     const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [frame.documentId] }, func: pageBridge, args: [{ action: "changes", token: frame.token, scanId: frame.scanId, url: frame.url }] });
-L0078 |     return { added: result.result.added, changed: result.result.changed.map((id) => `${frame.documentId}:${id}`) };
-L0079 |   }));
-L0080 |   if (results.some((r) => r.status === "rejected")) throw new Error("部分页面已变化或无法访问，请重新识别");
-L0081 |   return { added: results.reduce((n, r) => n + r.value.added, 0), changed: results.flatMap((r) => r.value.changed) };
-L0082 | }
+L0003 | const BRIDGE_FAILURES = ["BRIDGE_NO_RESULT", "BRIDGE_EXCEPTION", "BRIDGE_BUSY", "SNAPSHOT_STALE"];
+L0004 | function mainScanError(reason, tab, tabId) {
+L0005 |   // Chrome injection failures can contain complete URLs. Keep only a stable
+L0006 |   // category and the site's origin; never surface raw errors or route tokens.
+L0007 |   const message = String(reason?.message || "");
+L0008 |   let code = reason?.code || "PAGE_SCAN_FAILED";
+L0009 |   if (/cannot access (?:contents|this frame|page)|manifest must request permission|missing host permission|not allowed to access/i.test(message)) code = "PAGE_ACCESS_REQUIRED";
+L0010 |   else if (/no (?:tab|frame) with id|frame .*removed|tab (?:was |is )?closed|document .*unloaded/i.test(message)) code = "PAGE_CHANGED";
+L0011 |   if (!["PAGE_ACCESS_REQUIRED", "PAGE_CHANGED", "PAGE_DOCUMENT_UNAVAILABLE", ...BRIDGE_FAILURES].includes(code)) code = "PAGE_SCAN_FAILED";
+L0012 |   const stages = { init: "初始化", discover: "控件收集", describe: "字段描述" };
+L0013 |   const names = ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "SecurityError", "InvalidStateError", "NotSupportedError", "DataCloneError", "AbortError"];
+L0014 |   const detail = reason?.diagnostic;
+L0015 |   const stage = Object.hasOwn(stages, detail?.stage) ? detail.stage : "unknown";
+L0016 |   const errorName = names.includes(detail?.errorName) ? detail.errorName : "Error";
+L0017 |   const environment = detail?.secureContext === true ? "安全页面" : detail?.secureContext === false ? "非安全页面" : "未知环境";
+L0018 |   const descriptions = {
+L0019 |     PAGE_ACCESS_REQUIRED: "尚未获得此站点的读取权限。请点击下方“允许读取此站点”，或回到该页面点击浏览器工具栏里的插件图标后重试。",
+L0020 |     PAGE_CHANGED: "读取时页面或标签页已变化，请等待页面加载完成后重新识别。",
+L0021 |     PAGE_DOCUMENT_UNAVAILABLE: "Chrome 未返回页面文档标识，请更新浏览器并重新加载扩展后重试。",
+L0022 |     BRIDGE_NO_RESULT: "页面扫描没有返回结果，请重新识别；若仍失败，请反馈错误码 BRIDGE_NO_RESULT。",
+L0023 |     BRIDGE_EXCEPTION: `页面扫描未能完成（${stages[stage] || "未知阶段"} / ${errorName} / ${environment}），请反馈错误码 BRIDGE_EXCEPTION。`,
+L0024 |     BRIDGE_BUSY: "页面正在填写，请稍后重新识别或检查变化。",
+L0025 |     SNAPSHOT_STALE: "页面快照已过期，请重新识别。",
+L0026 |     PAGE_SCAN_FAILED: "页面扫描未能完成，请重新识别；若仍失败，请反馈错误码 PAGE_SCAN_FAILED。"
+L0027 |   };
+L0028 |   const error = new Error(descriptions[code]);
+L0029 |   Object.assign(error, { code, tabId, pageUrl: tab.url, origin: new URL(tab.url).origin, title: tab.title || "当前申请页面" });
+L0030 |   if (code === "BRIDGE_EXCEPTION") error.diagnostic = { stage, errorName, secureContext: typeof detail?.secureContext === "boolean" ? detail.secureContext : null };
+L0031 |   return error;
+L0032 | }
+L0033 | function bridgeValue(injection, tab, tabId) {
+L0034 |   const value = injection?.result;
+L0035 |   if (!value) throw mainScanError({ code: "BRIDGE_NO_RESULT" }, tab, tabId);
+L0036 |   if (["failed", "skipped"].includes(value.status) && BRIDGE_FAILURES.includes(value.code)) throw mainScanError({ code: value.code, diagnostic: value }, tab, tabId);
+L0037 |   return value;
+L0038 | }
+L0039 | 
+L0040 | export async function scanPage(tabId) {
+L0041 |   const tab = await chrome.tabs.get(tabId);
+L0042 |   if (!/^https?:\/\//.test(tab.url || "")) throw new Error("请先打开普通网站的申请页面");
+L0043 |   let frames;
+L0044 |   let enumerationFailed = false;
+L0045 |   try { frames = await chrome.webNavigation.getAllFrames({ tabId }); } catch { enumerationFailed = true; }
+L0046 |   frames = frames?.length ? frames : [{ frameId: 0, url: tab.url }];
+L0047 |   const results = await Promise.allSettled(frames.map(async (frame) => {
+L0048 |     const [result] = await chrome.scripting.executeScript({ target: { tabId, frameIds: [frame.frameId] }, func: pageBridge, args: [{ action: "scan" }] });
+L0049 |     if (!result?.documentId) throw Object.assign(new Error("Missing document identity"), { code: "PAGE_DOCUMENT_UNAVAILABLE" });
+L0050 |     const value = bridgeValue(result, tab, tabId);
+L0051 |     if (!Array.isArray(value.fields)) throw new Error("Invalid scan result");
+L0052 |     return { ...value, frameId: frame.frameId, documentId: result.documentId };
+L0053 |   }));
+L0054 |   const scanned = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+L0055 |   const main = scanned.find((r) => r.frameId === 0);
+L0056 |   if (!main) throw mainScanError(results[frames.findIndex((frame) => frame.frameId === 0)]?.reason, tab, tabId);
+L0057 |   const failedFrames = frames.flatMap((frame, index) => {
+L0058 |     if (results[index].status !== "rejected") return [];
+L0059 |     let origin = "";
+L0060 |     try { const url = new URL(frame.url); if (/^https?:$/.test(url.protocol)) origin = url.origin; } catch { /* Non-web frames cannot request a host permission. */ }
+L0061 |     return [{ frameId: frame.frameId, origin, reason: "此页面区域无法读取，请检查访问权限或刷新网页" }];
+L0062 |   });
+L0063 |   const snapshot = { id: crypto.randomUUID(), tabId, url: tab.url, title: tab.title || main.title, frames: scanned, failedFrames, pageType: main.pageType, jobText: scanned.map((r) => r.jobText).filter(Boolean).join("\n"), fields: [], coverage: { scanned: scanned.length, total: frames.length, failed: failedFrames.length, unknown: enumerationFailed } };
+L0064 |   snapshot.fields = scanned.flatMap((frame) => frame.fields.map((field) => ({ ...field, localFieldId: field.fieldId, fieldId: `${frame.documentId}:${field.fieldId}`, groupId: `${frame.documentId}:${field.groupId}`, frameId: frame.frameId, documentId: frame.documentId })));
+L0065 |   if (scanned.some((r) => r.pageType === "application")) snapshot.pageType = "application";
+L0066 |   else if (scanned.some((r) => r.pageType === "form") && snapshot.pageType !== "login") snapshot.pageType = "form";
+L0067 |   return snapshot;
+L0068 | }
+L0069 | export async function checkTarget(snapshot) {
+L0070 |   const tab = await chrome.tabs.get(snapshot.tabId);
+L0071 |   if (tab.url !== snapshot.url) throw new Error("目标页面已跳转，请重新识别");
+L0072 |   const main = snapshot.frames.find((f) => f.frameId === 0);
+L0073 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [main.documentId] }, func: pageBridge, args: [{ action: "ping" }] });
+L0074 |   const value = bridgeValue(result, tab, snapshot.tabId);
+L0075 |   if (value.token !== main.token || value.scanId !== main.scanId) throw new Error("页面快照已过期，请重新识别");
+L0076 |   return tab;
+L0077 | }
+L0078 | export async function fieldAction(snapshot, item, action, extra = {}) {
+L0079 |   await checkTarget(snapshot);
+L0080 |   const frame = snapshot.frames.find((f) => f.documentId === item.documentId);
+L0081 |   if (!frame) throw new Error("无法找到原字段所在页面");
+L0082 |   const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [frame.documentId] }, func: pageBridge, args: [{ action, token: frame.token, scanId: frame.scanId, url: frame.url, fieldId: item.localFieldId, ...extra }] });
+L0083 |   return bridgeValue(result, { url: snapshot.url, title: snapshot.title }, snapshot.tabId);
+L0084 | }
+L0085 | export async function inspectOptions(snapshot, item, extra = {}) {
+L0086 |   const result = await fieldAction(snapshot, item, "inspect-options", extra);
+L0087 |   if (result.status !== "inspected") return result;
+L0088 |   const field = { ...result.field, localFieldId: item.localFieldId, fieldId: item.fieldId,
+L0089 |     groupId: `${item.documentId}:${result.field.groupId}`, frameId: item.frameId, documentId: item.documentId };
+L0090 |   const index = snapshot.fields.findIndex((candidate) => candidate.fieldId === item.fieldId);
+L0091 |   if (index !== -1) snapshot.fields[index] = field;
+L0092 |   return { ...result, field };
+L0093 | }
+L0094 | export async function pageChanges(snapshot) {
+L0095 |   const results = await Promise.allSettled(snapshot.frames.map(async (frame) => {
+L0096 |     const [result] = await chrome.scripting.executeScript({ target: { tabId: snapshot.tabId, documentIds: [frame.documentId] }, func: pageBridge, args: [{ action: "changes", token: frame.token, scanId: frame.scanId, url: frame.url }] });
+L0097 |     const value = bridgeValue(result, { url: snapshot.url, title: snapshot.title }, snapshot.tabId);
+L0098 |     if (!Number.isInteger(value.added) || value.added < 0 || !Array.isArray(value.changed) || !value.changed.every((id) => typeof id === "string")) throw mainScanError({}, { url: snapshot.url, title: snapshot.title }, snapshot.tabId);
+L0099 |     return { added: value.added, changed: value.changed.map((id) => `${frame.documentId}:${id}`) };
+L0100 |   }));
+L0101 |   const diagnosed = results.find((result) => result.status === "rejected" && (BRIDGE_FAILURES.includes(result.reason?.code) || result.reason?.code === "PAGE_SCAN_FAILED"));
+L0102 |   if (diagnosed) throw diagnosed.reason;
+L0103 |   if (results.some((r) => r.status === "rejected")) throw new Error("部分页面已变化或无法访问，请重新识别");
+L0104 |   return { added: results.reduce((n, r) => n + r.value.added, 0), changed: results.flatMap((r) => r.value.changed) };
+L0105 | }
 
 ========================================================================
 FILE: application-tracker-extension/src/assistant/store.js
@@ -931,7 +954,7 @@ L0021 | </body></html>
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/assistant.js
-SHA256: d4642631c05cb27192137676c4ce374a18e7257d78e87c52351938cb48acc940
+SHA256: 094f486b975ef9bba39dda42ee5597921777fbc5546c1e4a412d47a422794015
 L0001 | import { getProfile, getAiSettings } from "../storage.js";
 L0002 | import { PROFILE_STORAGE_KEY, AI_SETTINGS_STORAGE_KEY, STORAGE_KEY } from "../constants.js";
 L0003 | import { factsFromProfile, preparePlan, validateValue, versionOf, scopeFor } from "../assistant/planner.js";
@@ -1504,37 +1527,3 @@ L0569 |     if (pageAccessRecovery !== recovery || targetId !== recovery.tabId) 
 L0570 |     if (!granted) { tell("尚未允许读取此站点。可以稍后重试，或回到申请页点击插件图标后识别。"); return; }
 L0571 |     const tab = await chrome.tabs.get(recovery.tabId);
 L0572 |     if (pageAccessRecovery !== recovery || targetId !== recovery.tabId) return;
-L0573 |     if (tab.url !== recovery.pageUrl) { clearPageAccessRecovery(); tell("目标页面已变化，请重新识别。"); return; }
-L0574 |     await prepare(false, true).catch(handleError);
-L0575 |   }).catch(() => { if (pageAccessRecovery === recovery) tell("站点访问恢复未完成，请重新识别后重试。"); }).finally(() => {
-L0576 |     $("allowPageAccess").disabled = busy;
-L0577 |   });
-L0578 | });
-L0579 | $("useCurrent").addEventListener("click", run(bindCurrent));
-L0580 | $("prepare").addEventListener("click", run(() => prepare(false, !!session?.stale && !!session?.snapshot)));
-L0581 | $("framePermissions").addEventListener("click", (event) => {
-L0582 |   const button = event.target.closest("[data-frame-origin]");
-L0583 |   if (!button || busy || !session?.snapshot) return;
-L0584 |   const origin = button.dataset.frameOrigin;
-L0585 |   const snapshot = session.snapshot;
-L0586 |   if (!snapshot.failedFrames?.some((frame) => frame.frameId !== 0 && frame.origin === origin) || !/^https?:\/\//.test(origin)) return;
-L0587 |   // Call request directly in the click handler so Chrome sees the user gesture.
-L0588 |   let pending;
-L0589 |   try { pending = chrome.permissions.request({ origins: [origin + "/*"] }); }
-L0590 |   catch (error) { handleError(error); return; }
-L0591 |   button.disabled = true;
-L0592 |   Promise.resolve(pending).then(async (granted) => {
-L0593 |     if (session?.snapshot !== snapshot || targetId !== snapshot.tabId) return;
-L0594 |     if (!granted) { tell("尚未允许读取该内嵌表单，已保留当前预览；可以稍后重试。"); return; }
-L0595 |     tell("已获得内嵌表单访问权限，正在重新识别。");
-L0596 |     await prepare(false, true);
-L0597 |   }).catch(handleError).finally(() => { if (button.isConnected) button.disabled = busy; });
-L0598 | });
-L0599 | $("refresh").addEventListener("click", run(() => prepare(false, true)));
-L0600 | for (const [id, selected] of [["selectAll", true], ["clearSelection", false]]) $(id).addEventListener("click", run(async () => {
-L0601 |   if (busy || !session || session.stale) return;
-L0602 |   session.plan = session.plan.map((item) => isFillable(item) ? { ...item, selected, selectionExplicit: true } : item);
-L0603 |   render(); await persist();
-L0604 | }));
-L0605 | $("showAll").addEventListener("click", run(async () => {
-L0606 |   if (busy || !session || session.stale) return;

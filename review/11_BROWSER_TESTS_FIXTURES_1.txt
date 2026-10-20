@@ -1331,157 +1331,137 @@ L0347 |   }
 L0348 | }
 
 ========================================================================
-FILE: application-tracker-extension/scripts/job-info-browser-tests.mjs
-SHA256: 847a791d9b1c388cdb5416882e7b43a15b044ce039fb76f63f668f6b197daee8
-L0001 | // Job identification acceptance tests. Every response is a sanitized local
-L0002 | // fixture or fictional HTML; no request reaches a real recruitment website.
+FILE: application-tracker-extension/scripts/http-context-browser-tests.mjs
+SHA256: 9aaedabda030a8df2957a1b70fa2e423af5a3288e85da6713410829b8edebfa6
+L0001 | // Exercise the real MV3 isolated world on non-localhost HTTP, not a main-world
+L0002 | // mock. Synthetic routes never contact a recruitment site or read user data.
 L0003 | import assert from "node:assert/strict";
-L0004 | import { readFile } from "node:fs/promises";
+L0004 | import { mkdtemp, cp, readFile, writeFile, rm } from "node:fs/promises";
 L0005 | import { createRequire } from "node:module";
-L0006 | import { homedir } from "node:os";
+L0006 | import { homedir, tmpdir } from "node:os";
 L0007 | import path from "node:path";
-L0008 | import { collectJobSignals } from "../src/jobInfo/collectSignals.js";
-L0009 | import { extractJobInfo } from "../src/jobInfo/extractJobInfo.js";
-L0010 | 
-L0011 | const require = createRequire(import.meta.url);
-L0012 | let playwright;
-L0013 | try { playwright = require("playwright"); } catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
-L0014 | const root = path.resolve(import.meta.dirname, "..");
-L0015 | const browser = await playwright.chromium.launch({ headless: true, ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : process.platform === "win32" ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" } : {}) });
-L0016 | let passed = 0;
-L0017 | 
-L0018 | try {
-L0019 |   const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: "block" });
-L0020 |   const responses = new Map();
-L0021 |   await context.route("**/*", (route) => {
-L0022 |     const body = responses.get(route.request().url());
-L0023 |     return body !== undefined
-L0024 |       ? route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body })
-L0025 |       : route.abort();
-L0026 |   });
-L0027 |   const page = await context.newPage();
-L0028 |   async function fixture(html, url = "https://careers.example.test/job/fixture") {
-L0029 |     const requestUrl = new URL(url);
-L0030 |     requestUrl.hash = "";
-L0031 |     responses.set(requestUrl.href, html);
-L0032 |     await page.goto(url, { waitUntil: "domcontentloaded" });
-L0033 |   }
-L0034 |   // Passing the function itself deliberately exercises Chrome-style function
-L0035 |   // serialization: any references to module-local helpers fail in the page.
-L0036 |   const collect = () => page.evaluate(collectJobSignals);
-L0037 |   async function check(name, fn) { await fn(); passed++; console.log(`PASS ${name}`); }
-L0038 |   const fields = ({ company, role, base }) => ({ company, role, base });
-L0039 |   const documentHtml = (body, head = "") => `<!doctype html><html><head><meta charset="utf-8"><title>Fixture</title>${head}</head><body>${body}</body></html>`;
-L0040 |   const posting = { "@type": "JobPosting", title: "财务实习生", hiringOrganization: { name: "示例科技有限公司" }, jobLocation: { address: { addressLocality: "深圳" } } };
-L0041 |   const jsonLd = (value) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
-L0042 | 
-L0043 |   for (const { file, url, company } of [
-L0044 |     { file: "huarun-runjob.html", url: "https://runjob.crc.com.cn/application/fixture", company: "华润集团" },
-L0045 |     { file: "chinahr-applyjob.html", url: "https://applyjob.chinahr.com/application/fixture" },
-L0046 |     { file: "wintalent-crc.html", url: "https://crc.wintalent.cn/application/fixture" }
-L0047 |   ]) {
-L0048 |     await check(`job identification on sanitized ${file}`, async () => {
-L0049 |       await fixture(await readFile(path.join(root, "test/fixtures/real-pages", file), "utf8"), url);
-L0050 |       const info = extractJobInfo(await collect());
-L0051 |       if (company) assert.equal(info.company, company);
-L0052 |       assert.equal(info.role, "", "Application form names must never be identified as job roles");
-L0053 |       assert.ok(!["填写简历", "简历填写"].includes(info.company));
-L0054 |     });
-L0055 |   }
-L0056 | 
-L0057 |   for (const [name, data] of [
-L0058 |     ["single object", posting],
-L0059 |     ["top-level array", [{ "@type": "WebSite", name: "Example" }, posting]],
-L0060 |     ["nested @graph", { "@context": "https://schema.org", "@graph": [{ "@type": "Organization" }, { "@graph": [posting] }] }]
-L0061 |   ]) {
-L0062 |     await check(`serialized collector reads JSON-LD ${name}`, async () => {
-L0063 |       await fixture(documentHtml("<h1>页面上的另一个职位</h1>", '<script type="application/ld+json">{invalid</script>' + jsonLd(data)));
-L0064 |       const info = extractJobInfo(await collect());
-L0065 |       assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "深圳" });
-L0066 |       assert.deepEqual(info.source, { company: "结构化数据", role: "结构化数据", base: "结构化数据" });
-L0067 |       assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0068 |     });
-L0069 |   }
-L0070 | 
-L0071 |   await check("JSON-LD handles type and jobLocation arrays", async () => {
-L0072 |     await fixture(documentHtml("", jsonLd({ ...posting, "@type": ["Thing", "JobPosting"], jobLocation: [
-L0073 |       { address: { addressRegion: "广东", addressLocality: "深圳" } },
-L0074 |       { address: { addressRegion: "香港", addressLocality: "香港" } }
-L0075 |     ] })));
-L0076 |     const info = extractJobInfo(await collect());
-L0077 |     assert.deepEqual(fields(info), { company: "示例科技有限公司", role: "财务实习生", base: "广东 深圳 / 香港" });
-L0078 |   });
-L0079 | 
-L0080 |   await check("explicit labels beat meta and nearby text is collected", async () => {
-L0081 |     await fixture(documentHtml('<div>公司名称：星海科技有限公司</div><dl><dt>岗位名称</dt><dd>审计助理</dd></dl><div><span>工作地点</span></div><p>深圳</p>', '<meta property="og:title" content="Graduate Analyst | Other Bank Careers"><meta property="og:site_name" content="Other Bank">'));
-L0082 |     const info = extractJobInfo(await collect());
-L0083 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "审计助理", base: "深圳" });
-L0084 |     assert.deepEqual(info.source, { company: "页面标签", role: "页面标签", base: "页面标签" });
-L0085 |   });
-L0086 | 
-L0087 |   await check("visible headings and metadata identify a generic job page", async () => {
-L0088 |     await fixture(documentHtml('<h1>Graduate Analyst</h1><h2 hidden>PRIVATE_HIDDEN_HEADING</h2><div style="display:none"><h1>PRIVATE_HIDDEN_PARENT</h1></div>', '<meta property="og:site_name" content="Fictional Bank"><meta name="twitter:title" content="Graduate Analyst | Fictional Bank Careers">'));
-L0089 |     const signals = await collect();
-L0090 |     const info = extractJobInfo(signals);
-L0091 |     assert.deepEqual(fields(info), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
-L0092 |     assert.equal(info.confidence.company, "medium");
-L0093 |     assert.equal(info.confidence.role, "medium");
-L0094 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_HIDDEN"), false);
-L0095 |   });
-L0096 | 
-L0097 |   await check("collection never reads input values or includes form and editable answers", async () => {
-L0098 |     await fixture(documentHtml(`
-L0099 |       <h1>Graduate Analyst</h1><div class="company-name">Fictional Bank</div>
-L0100 |       <input id="outside-input" value="PRIVATE_INPUT_VALUE">
-L0101 |       <textarea class="job-title">PRIVATE_TEXTAREA_ANSWER</textarea>
-L0102 |       <div contenteditable="true" class="company-name">PRIVATE_EDITABLE_ANSWER<h2>PRIVATE_EDITABLE_HEADING</h2></div>
-L0103 |       <div role="textbox"><h2>PRIVATE_TEXTBOX_HEADING</h2></div>
-L0104 |       <div class="logo" contenteditable="true"><img alt="PRIVATE_EDITABLE_LOGO" width="100" height="20"></div>
-L0105 |       <form><h2>PRIVATE_FORM_HEADING</h2><div>公司名称：PRIVATE_FORM_COMPANY</div><div class="job-title">PRIVATE_FORM_ROLE</div><p>PRIVATE_SAVED_ANSWER</p><label>姓名<input value="PRIVATE_FORM_INPUT"></label></form>
-L0106 |       <div role="form"><div class="company-name">PRIVATE_ROLE_FORM_COMPANY</div></div>
-L0107 |       <div class="ant-form-item"><div class="company-name">PRIVATE_COMPONENT_COMPANY</div><input></div>
-L0108 |       <div class="job-title">PRIVATE_CONTAINER_TEXT<input value="PRIVATE_CONTAINER_INPUT"></div>
-L0109 |     `), "https://careers.example.test/job/privacy?answer=PRIVATE_QUERY_VALUE#PRIVATE_HASH_VALUE");
-L0110 |     await page.evaluate(() => {
-L0111 |       for (const element of document.querySelectorAll("input,textarea")) {
-L0112 |         Object.defineProperty(element, "value", { get() { throw new Error("Job collection read a private input value"); } });
-L0113 |       }
-L0114 |     });
-L0115 |     const signals = await collect();
-L0116 |     assert.equal(JSON.stringify(signals).includes("PRIVATE_"), false, "Job signals must exclude personal answers and URL query/hash data");
-L0117 |     assert.equal(signals.hostname, "careers.example.test");
-L0118 |     assert.equal(signals.pathname, "/job/privacy");
-L0119 |     assert.deepEqual(fields(extractJobInfo(signals)), { company: "Fictional Bank", role: "Graduate Analyst", base: "" });
-L0120 |   });
-L0121 | 
-L0122 |   await check("CTgoodjobs keeps its role, company and location adapter", async () => {
-L0123 |     await fixture(documentHtml('<h1>Finance Intern</h1><div class="company"><a>Fictional Capital Limited</a></div><div class="job-location">Hong Kong</div>'), "https://www.ctgoodjobs.hk/job/fictional-role");
-L0124 |     const info = extractJobInfo(await collect());
-L0125 |     assert.deepEqual(fields(info), { company: "Fictional Capital Limited", role: "Finance Intern", base: "Hong Kong" });
-L0126 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0127 |   });
-L0128 | 
-L0129 |   await check("CTgoodjobs keeps the company next to the job heading fallback", async () => {
-L0130 |     await fixture(documentHtml('<section><h1>Finance Intern</h1><p>Fictional Capital Limited</p></section>'), "https://www.ctgoodjobs.hk/job/fictional-nearby");
-L0131 |     const info = extractJobInfo(await collect());
-L0132 |     assert.equal(info.company, "Fictional Capital Limited");
-L0133 |     assert.equal(info.source.company, "页面标签");
-L0134 |   });
-L0135 | 
-L0136 |   await check("JobsDB keeps data-automation selectors", async () => {
-L0137 |     await fixture(documentHtml('<div data-automation="job-detail-title">Graduate Analyst</div><a data-automation="advertiser-name">Fictional Bank Limited</a><span data-automation="job-detail-location">Hong Kong</span>'), "https://hk.jobsdb.com/job/fictional-role");
-L0138 |     const info = extractJobInfo(await collect());
-L0139 |     assert.deepEqual(fields(info), { company: "Fictional Bank Limited", role: "Graduate Analyst", base: "Hong Kong" });
-L0140 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0141 |   });
-L0142 | 
-L0143 |   await check("Moka keeps explicit job page selectors", async () => {
-L0144 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1 class="jobTitle">财务实习生</h1><span class="workLocation">上海</span>'), "https://app.mokahr.com/campus-recruitment/fictional/job");
-L0145 |     const info = extractJobInfo(await collect());
-L0146 |     assert.deepEqual(fields(info), { company: "星海科技有限公司", role: "财务实习生", base: "上海" });
-L0147 |     assert.deepEqual(info.confidence, { company: "high", role: "high", base: "high" });
-L0148 |   });
-L0149 | 
-L0150 |   await check("Moka application wishes take priority over generic campus headings", async () => {
-L0151 |     await fixture(documentHtml('<div class="companyName">星海科技有限公司</div><h1>投递记录</h1><div class="jobTitle">校园</div><article><span>第 1 志愿</span><strong>2027届-财务专员（上海）</strong><p>状态：投递成功</p></article>'), "https://app.mokahr.com/candidate/fictional/applications");
-L0152 |     const info = extractJobInfo(await collect());
+L0008 | 
+L0009 | const require = createRequire(import.meta.url);
+L0010 | let playwright;
+L0011 | try { playwright = require("playwright"); }
+L0012 | catch { playwright = require(path.join(homedir(), ".cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright")); }
+L0013 | const root = path.resolve(import.meta.dirname, "..");
+L0014 | const temporary = await mkdtemp(path.join(tmpdir(), "application-http-test-"));
+L0015 | const extensionPath = path.join(temporary, "extension");
+L0016 | const fixtures = [
+L0017 |   { url: "http://bank-fixture.test/apply", secure: false },
+L0018 |   { url: "http://127.0.0.1:8765/apply", secure: true },
+L0019 |   { url: "https://secure-fixture.test/apply", secure: true }
+L0020 | ];
+L0021 | const html = '<!doctype html><meta charset="utf-8"><title>HTTP fixture</title><form><label>姓名<input id="name"></label><label>开始时间<input id="start"></label><label>工作职责<textarea id="duties"></textarea></label><label>学历<select id="degree"><option value="">请选择</option><option>本科</option><option>硕士</option></select></label></form>';
+L0022 | const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+L0023 | let context;
+L0024 | let passed = 0;
+L0025 | try {
+L0026 |   await cp(path.join(root, "src"), path.join(extensionPath, "src"), { recursive: true });
+L0027 |   await cp(path.join(root, "vendor"), path.join(extensionPath, "vendor"), { recursive: true });
+L0028 |   const manifest = JSON.parse(await readFile(path.join(root, "manifest.json"), "utf8"));
+L0029 |   manifest.host_permissions = fixtures.map(({ url }) => new URL(url).origin + "/*");
+L0030 |   await writeFile(path.join(extensionPath, "manifest.json"), JSON.stringify(manifest));
+L0031 |   context = await playwright.chromium.launchPersistentContext(path.join(temporary, "profile"), {
+L0032 |     ...(process.env.BROWSER_EXECUTABLE ? { executablePath: process.env.BROWSER_EXECUTABLE } : { channel: process.platform === "win32" ? "chrome" : "chromium" }),
+L0033 |     headless: true, ignoreDefaultArgs: ["--disable-extensions"], args: ["--enable-unsafe-extension-debugging"]
+L0034 |   });
+L0035 |   const cdp = await context.browser().newBrowserCDPSession();
+L0036 |   const { id: extensionId } = await cdp.send("Extensions.loadUnpacked", { path: extensionPath });
+L0037 |   await cdp.detach();
+L0038 |   const controller = await context.newPage();
+L0039 |   await controller.goto(`chrome-extension://${extensionId}/src/records/records.html`);
+L0040 |   await controller.evaluate(async () => (await import(chrome.runtime.getURL("src/storage.js"))).replaceAllRecords([]));
+L0041 |   const worker = context.serviceWorkers().find((item) => item.url().startsWith("chrome-extension://")) || await context.waitForEvent("serviceworker");
+L0042 |   await context.route(/https?:\/\/(bank-fixture\.test|127\.0\.0\.1:8765|secure-fixture\.test)\//, (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: html }));
+L0043 |   const getTabId = (url) => worker.evaluate(async (url) => (await chrome.tabs.query({})).find((tab) => tab.url === url).id, url);
+L0044 |   console.log(`Runtime: Chrome ${context.browser().version()}, real MV3 isolated worlds, disposable profile`);
+L0045 | 
+L0046 |   for (const fixture of fixtures) {
+L0047 |     const page = await context.newPage(); await page.goto(fixture.url);
+L0048 |     const tabId = await getTabId(fixture.url);
+L0049 |     const result = await controller.evaluate(async (tabId) => {
+L0050 |       const [{ result: capabilities }] = await chrome.scripting.executeScript({ target: { tabId }, world: "ISOLATED", func: () => ({ secure: isSecureContext, uuid: typeof crypto.randomUUID, randomValues: typeof crypto.getRandomValues }) });
+L0051 |       const { scanPage, fieldAction, checkTarget, pageChanges, inspectOptions } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0052 |       const snapshot = await scanPage(tabId);
+L0053 |       const inspected = await inspectOptions(snapshot, snapshot.fields.find((item) => item.label === "学历"));
+L0054 |       const field = snapshot.fields.find((item) => item.label === "姓名");
+L0055 |       const filled = await fieldAction(snapshot, field, "fill", { operationId: crypto.randomUUID(), value: "Fixture Applicant" });
+L0056 |       const undone = await fieldAction(snapshot, field, "undo", { operationId: crypto.randomUUID(), value: filled.before, expected: filled.after });
+L0057 |       const changes = await pageChanges(snapshot);
+L0058 |       const next = await scanPage(tabId);
+L0059 |       let staleRejected = false; try { await checkTarget(snapshot); } catch { staleRejected = true; }
+L0060 |       return { capabilities, fields: snapshot.fields.length, fill: filled.status, undo: undone.status, changes, inspected: inspected.status, optionTexts: inspected.options.map((option) => option.text),
+L0061 |         token: snapshot.frames[0].token, scanId: snapshot.frames[0].scanId, nextToken: next.frames[0].token, nextScanId: next.frames[0].scanId, staleRejected, next };
+L0062 |     }, tabId);
+L0063 |     assert.equal(result.capabilities.secure, fixture.secure);
+L0064 |     assert.equal(result.capabilities.uuid, fixture.secure ? "function" : "undefined");
+L0065 |     assert.equal(result.capabilities.randomValues, "function");
+L0066 |     assert.equal(result.fields, 4); assert.equal(result.fill, "verified"); assert.equal(result.undo, "verified");
+L0067 |     assert.equal(result.inspected, "inspected"); assert.ok(result.optionTexts.includes("本科") && result.optionTexts.includes("硕士"));
+L0068 |     assert.equal(await page.locator("#degree").inputValue(), "");
+L0069 |     assert.equal(await page.locator("#name").inputValue(), "");
+L0070 |     assert.equal(result.changes.added, 0); assert.deepEqual(result.changes.changed, []);
+L0071 |     assert.equal(result.token, result.nextToken); assert.notEqual(result.scanId, result.nextScanId);
+L0072 |     assert.ok([result.token, result.scanId, result.nextScanId].every((id) => uuid.test(id))); assert.equal(result.staleRejected, true);
+L0073 |     await page.locator("#name").fill("Manual correction");
+L0074 |     const manual = await controller.evaluate(async (snapshot) => {
+L0075 |       const { fieldAction } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0076 |       return fieldAction(snapshot, snapshot.fields.find((item) => item.label === "姓名"), "fill", { operationId: crypto.randomUUID(), value: "Another answer" });
+L0077 |     }, result.next);
+L0078 |     assert.equal(manual.code, "USER_EDITED"); assert.equal(await page.locator("#name").inputValue(), "Manual correction");
+L0079 |     passed++; console.log(`PASS ${fixture.url}: scan, UUID v4, fill/undo, changes, stale snapshot and manual-edit protection`);
+L0080 |     if (!fixture.secure) {
+L0081 |       await page.locator("#name").fill("");
+L0082 |       await worker.evaluate(async (tabId) => {
+L0083 |         const tab = await chrome.tabs.get(tabId);
+L0084 |         await chrome.storage.local.set({ "applicationTracker.profile": { fullNameZh: "Fixture Applicant" }, "applicationTracker.aiSettings": { enabled: false } });
+L0085 |         await chrome.storage.session.set({ [`applicationTracker.assistant.target.${tab.windowId}`]: tabId });
+L0086 |       }, tabId);
+L0087 |       const panel = await context.newPage();
+L0088 |       await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/assistant.html`);
+L0089 |       await panel.locator("#prepare").click();
+L0090 |       await panel.waitForFunction(() => !document.getElementById("fill").hidden && !document.getElementById("fill").disabled);
+L0091 |       assert.equal(await panel.locator(".question").count(), 4);
+L0092 |       assert.equal(await panel.locator(".question").filter({ hasText: "姓名" }).locator("[data-answer]").inputValue(), "Fixture Applicant");
+L0093 |       assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L0094 |       assert.equal(await page.locator("#name").inputValue(), "");
+L0095 |       passed++; console.log("PASS real side panel prepares an HTTP preview without writing or asking for additional access");
+L0096 |       await panel.close();
+L0097 |     }
+L0098 |     await page.close();
+L0099 |   }
+L0100 | 
+L0101 |   for (const fault of ["init", "discover", "describe", "arbitrary-name"]) {
+L0102 |     const page = await context.newPage(); const url = `http://bank-fixture.test/${fault}?token=private-fixture-token`;
+L0103 |     await page.goto(url); const tabId = await getTabId(url);
+L0104 |     await controller.evaluate(async ({ tabId, fault }) => chrome.scripting.executeScript({ target: { tabId }, world: "ISOLATED", func: (fault) => {
+L0105 |       const fail = () => { const error = new TypeError("private-field-value https://private.example/?token=private-fixture-token"); if (fault === "arbitrary-name") error.name = "private-fixture-token"; throw error; };
+L0106 |       if (fault === "init" || fault === "arbitrary-name") crypto.getRandomValues = fail;
+L0107 |       if (fault === "discover") document.querySelectorAll = fail;
+L0108 |       if (fault === "describe") Object.defineProperty(document.getElementById("name"), "value", { get: fail });
+L0109 |     }, args: [fault] }), { tabId, fault });
+L0110 |     const result = await controller.evaluate(async (tabId) => {
+L0111 |       const { pageBridge } = await import(chrome.runtime.getURL("src/assistant/pageBridge.js"));
+L0112 |       const { scanPage, checkTarget, pageChanges, fieldAction } = await import(chrome.runtime.getURL("src/assistant/session.js"));
+L0113 |       const [{ result: bridge, documentId }] = await chrome.scripting.executeScript({ target: { tabId }, world: "ISOLATED", func: pageBridge, args: [{ action: "scan" }] });
+L0114 |       let session; try { await scanPage(tabId); } catch (error) { session = { code: error.code, message: error.message }; }
+L0115 |       let initialization;
+L0116 |       if (bridge.stage === "init") {
+L0117 |         const snapshot = { tabId, url: (await chrome.tabs.get(tabId)).url, frames: [{ frameId: 0, documentId, token: "absent", scanId: "absent" }] };
+L0118 |         initialization = [];
+L0119 |         for (const action of ["ping", "changes", "fill", "undo", "inspect-options"]) {
+L0120 |           const [{ result }] = await chrome.scripting.executeScript({ target: { tabId }, world: "ISOLATED", func: pageBridge, args: [{ action }] });
+L0121 |           initialization.push({ action, code: result?.code, stage: result?.stage });
+L0122 |         }
+L0123 |         for (const action of ["ping", "changes", "fill"]) {
+L0124 |           try {
+L0125 |             if (action === "ping") await checkTarget(snapshot);
+L0126 |             else if (action === "changes") await pageChanges(snapshot);
+L0127 |             else await fieldAction(snapshot, { documentId }, "fill", { value: "must not be written" });
+L0128 |           } catch (error) { initialization.push({ client: action, code: error.code }); }
+L0129 |         }
+L0130 |       }
+L0131 |       return { bridge, session, ...(initialization ? { initialization } : {}) };
+L0132 |     }, tabId);

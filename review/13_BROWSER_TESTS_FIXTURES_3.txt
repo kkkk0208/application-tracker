@@ -1,72 +1,295 @@
 
 ========================================================================
 FILE: application-tracker-extension/scripts/ui-tests.mjs (continued)
-SHA256: 4b93378e31f79b36a1cfa5636abd331f4bc221c459bad1836b1b2d91f2139bac
-L0946 |   await completePanelAction("#prepare"); await expandQuestions();
-L0947 |   assert.equal(await panel.locator("[data-draft]").count(), 1);
-L0948 |   assert.equal(await panel.locator("[data-draft]").isDisabled(), true);
-L0949 |   assert.match(await panel.locator("#questions").textContent(), /暂无可引用资料/);
-L0950 |   assert.equal(broadDraftRequests, 1);
-L0951 |   console.log("PASS UI an arbitrary long-text question sends only its confirmed fact batch and waits for fill confirmation");
-L0952 | 
-L0953 |   await writeStorage("local", { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false } });
-L0954 |   await target.setContent('<!doctype html><title>站点访问恢复</title><label>姓名<input id="permission-name"></label>');
-L0955 |   const permissionsBefore = permissionRequests.length;
-L0956 |   mainPermissionDenied = true;
-L0957 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
-L0958 |   assert.match(await panel.locator("#message").textContent(), /尚未获得.*读取权限/);
-L0959 |   assert.equal(await panel.locator("#targetTitle").textContent(), "站点访问恢复");
-L0960 |   assert.equal(permissionRequests.length, permissionsBefore, "Scanning must never request a permission");
-L0961 |   assert.equal(await panel.locator("#fill").isDisabled(), true, "An unsuccessful rescan invalidates the old preview");
-L0962 |   await panel.locator("#allowPageAccess").click();
-L0963 |   await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
-L0964 |   assert.match(await panel.locator("#message").textContent(), /尚未允许/);
-L0965 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
-L0966 |   assert.deepEqual(permissionRequests.at(-1).request, { origins: [origin + "/*"] });
-L0967 |   assert.equal(permissionRequests.at(-1).userGesture, true);
-L0968 |   allowMainPermission = true;
+SHA256: f9a31efa5a79bb17ed81ab2bdf47678ab5a4d8ab6a439d871dcdf8f8a5a44bba
+L0747 |   await staleIntro.locator("[data-draft]").click();
+L0748 |   await staleIntro.locator("[data-draft-confirmation]").waitFor();
+L0749 |   const draftCountBeforeStale = visualTextRequests.filter((request) => request.text.format.name === "application_suggestions").length;
+L0750 |   await target.reload();
+L0751 |   await panel.waitForFunction(() => document.getElementById("fill").disabled && document.getElementById("message").textContent.includes("变化"));
+L0752 |   const sendAfterStale = staleIntro.locator("[data-draft-send]");
+L0753 |   assert.ok(await sendAfterStale.count() === 0 || await sendAfterStale.isDisabled());
+L0754 |   if (await sendAfterStale.count()) await sendAfterStale.dispatchEvent("click");
+L0755 |   assert.equal(visualTextRequests.filter((request) => request.text.format.name === "application_suggestions").length, draftCountBeforeStale);
+L0756 |   assert.equal(await target.locator("#intro").inputValue(), "");
+L0757 |   console.log("PASS UI revokes a draft confirmation after page changes and a queued send cannot issue an AI request");
+L0758 |   await writeStorage("local", { "applicationTracker.aiSettings": { enabled: false } });
+L0759 | 
+L0760 |   await target.goto(origin + "/apply");
+L0761 |   await target.evaluate(() => {
+L0762 |     document.body.innerHTML = `<form><section><h2>申请问题</h2>${Array.from({ length: 25 }, (_, index) => `<label>补充说明 ${index + 1}<textarea required></textarea></label>`).join("")}</section></form>`;
+L0763 |   });
+L0764 |   await completePanelAction("#prepare");
+L0765 |   const visibleQuestionCount = () => panel.locator(".question").evaluateAll((nodes) => nodes.filter((node) => node.getBoundingClientRect().height > 0).length);
+L0766 |   assert.equal(await panel.locator('.question').count(), 25);
+L0767 |   assert.equal(await visibleQuestionCount(), 15);
+L0768 |   await panel.locator("#showAll").click();
+L0769 |   assert.equal(await panel.locator('.question').count(), 25);
+L0770 |   assert.equal(await visibleQuestionCount(), 25);
+L0771 |   await panel.locator("#showAll").click();
+L0772 |   assert.equal(await visibleQuestionCount(), 15);
+L0773 |   await panel.locator("[data-more-toggle]").click();
+L0774 |   assert.equal(await panel.locator('.question').count(), 25);
+L0775 |   assert.equal(await visibleQuestionCount(), 25);
+L0776 |   console.log("PASS UI renders all 25 attention questions while hiding overflow, and normal expand controls reveal them without deleting rows");
+L0777 | 
+L0778 |   const recordCount = () => (storage.local["applicationTracker.records"] || []).length;
+L0779 |   const recordBaseline = recordCount();
+L0780 |   const recordFixture = async (structured = true) => {
+L0781 |     await target.goto(origin + "/apply");
+L0782 |     await target.evaluate((structured) => {
+L0783 |       document.title = "填写简历";
+L0784 |       document.body.innerHTML = '<form><section><h2>基本信息</h2><label>姓名<input id="record-name"></label><label>邮箱<input id="record-email" type="email"></label></section></form>';
+L0785 |       if (structured) {
+L0786 |         const node = document.createElement("script"); node.type = "application/ld+json";
+L0787 |         node.textContent = JSON.stringify({ "@type": "JobPosting", title: "分析师", hiringOrganization: { name: "示例投递公司" }, jobLocation: { address: { addressLocality: "香港" } } });
+L0788 |         document.head.appendChild(node);
+L0789 |       }
+L0790 |     }, structured);
+L0791 |   };
+L0792 |   await recordFixture();
+L0793 |   await completePanelAction("#prepare");
+L0794 |   assert.equal(await panel.locator("#recordCard").isVisible(), false);
+L0795 |   assert.equal(recordCount(), recordBaseline);
+L0796 |   await completePanelAction("#fill");
+L0797 |   await panel.waitForFunction(() => document.getElementById("recordRole")?.value === "分析师");
+L0798 |   assert.equal(await panel.locator("#recordCard").isVisible(), true);
+L0799 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "示例投递公司");
+L0800 |   assert.match(await panel.locator("#recordCard [data-record-origin]").textContent(), /结构化数据/);
+L0801 |   assert.equal(recordCount(), recordBaseline);
+L0802 |   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+L0803 |   await panel.locator("#recordCard").scrollIntoViewIfNeeded();
+L0804 |   await panel.screenshot({ path: path.join(artifacts, "assistant-record-card.png"), fullPage: true });
+L0805 |   console.log("PASS UI prepares structured job information without saving and shows its source in the record card only after filling");
+L0806 | 
+L0807 |   await panel.locator("#saveRecord").click();
+L0808 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓") && !document.getElementById("prepare").disabled);
+L0809 |   assert.equal(recordCount(), recordBaseline + 1);
+L0810 |   const savedRecord = storage.local["applicationTracker.records"].at(-1);
+L0811 |   assert.deepEqual([savedRecord.company, savedRecord.role, savedRecord.portalLink, savedRecord.status, savedRecord.appliedDate], ["示例投递公司", "分析师", target.url(), "applied", toDateInputValue()]);
+L0812 |   await panel.reload();
+L0813 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓"));
+L0814 |   assert.equal(await panel.locator("#recordCard #saveRecord, #recordCard #saveRecordAnyway").count(), 0);
+L0815 |   assert.equal(recordCount(), recordBaseline + 1);
+L0816 |   console.log("PASS UI saves a record only after a click, preserves the correct page and date, and restores its saved state on panel reload");
+L0817 | 
+L0818 |   await recordFixture();
+L0819 |   await completePanelAction("#prepare");
+L0820 |   await completePanelAction("#fill");
+L0821 |   await panel.locator("#saveRecordAnyway").waitFor();
+L0822 |   assert.match(await panel.locator("#recordCard").textContent(), /已记录过：示例投递公司.*分析师/);
+L0823 |   assert.equal(recordCount(), recordBaseline + 1);
+L0824 |   await panel.locator("#recordRole").fill("人工核对岗位");
+L0825 |   assert.equal(await panel.locator("#saveRecordAnyway").isDisabled(), true);
+L0826 |   await panel.locator("#recordRole").press("Tab");
+L0827 |   await panel.waitForFunction(() => document.getElementById("saveRecordAnyway") && !document.getElementById("saveRecordAnyway").disabled);
+L0828 |   assert.equal(await panel.locator("#recordRole").inputValue(), "人工核对岗位");
+L0829 |   assert.equal(recordCount(), recordBaseline + 1);
+L0830 |   await panel.locator("#saveRecordAnyway").click();
+L0831 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓") && !document.getElementById("prepare").disabled);
+L0832 |   assert.equal(recordCount(), recordBaseline + 2);
+L0833 |   assert.equal(storage.local["applicationTracker.records"].at(-1).role, "人工核对岗位");
+L0834 |   console.log("PASS UI rechecks duplicates after an edit and blur, and records again only after the separate still-record confirmation");
+L0835 | 
+L0836 |   await recordFixture(false);
+L0837 |   await completePanelAction("#prepare");
+L0838 |   await completePanelAction("#fill");
+L0839 |   await panel.locator("#recordRecent").waitFor();
+L0840 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "");
+L0841 |   assert.equal(await panel.locator("#recordRole").inputValue(), "");
+L0842 |   await panel.locator("#saveRecordAnyway").click();
+L0843 |   await panel.locator("#recordCard [data-record-error]").waitFor();
+L0844 |   assert.match(await panel.locator("#recordCard [data-record-error]").textContent(), /请填写公司.*请填写岗位/);
+L0845 |   assert.equal(recordCount(), recordBaseline + 2);
+L0846 |   await panel.locator("#recordRecent").selectOption("0");
+L0847 |   await panel.waitForFunction(() => document.getElementById("recordRole")?.value === "分析师");
+L0848 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "示例投递公司");
+L0849 |   assert.match(await panel.locator("#recordCard [data-record-origin]").textContent(), /最近岗位/);
+L0850 |   assert.equal(recordCount(), recordBaseline + 2);
+L0851 |   console.log("PASS UI keeps recent jobs as unselected candidates, reports empty required record fields inline and fills a recent job only after selection");
+L0852 | 
+L0853 |   await panel.unroute("https://api.openai.com/v1/responses");
+L0854 |   let releaseJobInfo;
+L0855 |   let jobRequested = false;
+L0856 |   const jobGate = new Promise((resolve) => { releaseJobInfo = resolve; });
+L0857 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0858 |     const payload = route.request().postDataJSON(), batch = JSON.parse(payload.input[1].content);
+L0859 |     const format = payload.text.format.name;
+L0860 |     let output;
+L0861 |     if (format === "job_page_information") {
+L0862 |       jobRequested = true; await jobGate;
+L0863 |       output = { company: "AI 识别公司", role: "AI 识别岗位", base: "香港", confidence: "medium" };
+L0864 |     } else if (format === "application_field_pairing") output = { pairs: batch.fields.map((field) => ({ fieldId: field.fieldId, source: "none", factId: null, memoryId: null, transform: "none" })) };
+L0865 |     else output = { items: [] };
+L0866 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0867 |   });
+L0868 |   await recordFixture(false);
+L0869 |   await writeStorage("local", { "applicationTracker.aiSettings": { ...visualSettings, visionEnabled: false } });
+L0870 |   const jobStarted = panel.waitForRequest((request) => request.url() === "https://api.openai.com/v1/responses" && request.postDataJSON().text.format.name === "job_page_information");
+L0871 |   await completePanelAction("#prepare");
+L0872 |   await jobStarted;
+L0873 |   await completePanelAction("#fill");
+L0874 |   assert.equal(jobRequested, true);
+L0875 |   await panel.locator("#recordCompany").fill("手动填写公司");
+L0876 |   await panel.locator("#recordRole").fill("手动填写岗位");
+L0877 |   await panel.locator("#recordRole").fill("");
+L0878 |   releaseJobInfo();
+L0879 |   await panel.waitForFunction(async () => {
+L0880 |     const key = "applicationTracker.assistant.session.1";
+L0881 |     return (await chrome.storage.session.get(key))[key]?.recordDraft?.base === "香港";
+L0882 |   });
+L0883 |   assert.equal(await panel.locator("#recordCompany").inputValue(), "手动填写公司");
+L0884 |   assert.equal(await panel.locator("#recordRole").inputValue(), "");
+L0885 |   assert.equal(recordCount(), recordBaseline + 2);
+L0886 |   console.log("PASS UI a late public job AI response preserves manual company edits and a deliberately cleared role");
+L0887 | 
+L0888 |   await panel.locator("#recordRole").fill("人工岗位");
+L0889 |   await panel.locator("#recordRole").press("Tab");
+L0890 |   await panel.waitForFunction(() => document.getElementById("saveRecordAnyway") && !document.getElementById("saveRecordAnyway").disabled);
+L0891 |   let releaseRecord;
+L0892 |   const recordEntered = new Promise((resolve) => { recordGate = { entered: resolve, wait: new Promise((release) => { releaseRecord = release; }) }; });
+L0893 |   await panel.locator("#saveRecordAnyway").click();
+L0894 |   await recordEntered;
+L0895 |   assert.equal(await panel.locator("#recordCompany").isDisabled(), true);
+L0896 |   assert.equal(await panel.locator("#recordRole").isDisabled(), true);
+L0897 |   assert.equal(await panel.locator("#prepare").isDisabled(), true);
+L0898 |   await panel.locator("#saveRecordAnyway").dispatchEvent("click");
+L0899 |   await target.reload();
+L0900 |   await panel.evaluate(() => chrome.tabs.onUpdated.emit(1, { status: "loading" }));
+L0901 |   releaseRecord();
+L0902 |   await panel.waitForFunction(() => document.getElementById("recordCard")?.textContent.includes("已记录 ✓") && !document.getElementById("prepare").disabled);
+L0903 |   assert.equal(recordCount(), recordBaseline + 3);
+L0904 |   assert.match(await panel.locator("#recordCard").textContent(), /已记录.*页面已变化/);
+L0905 |   assert.ok(storage.session[sessionKey].recordSaved?.id);
+L0906 |   assert.equal(storage.local["applicationTracker.records"].at(-1).role, "人工岗位");
+L0907 |   console.log("PASS UI freezes record saving, rejects duplicate clicks and keeps a committed save marked successful when navigation precedes its response");
+L0908 |   await panel.unroute("https://api.openai.com/v1/responses");
+L0909 |   const aliasLabel = "请举例说明你是如何解决问题的", broadLabel = "你如何处理工作中信息不完整的情况？";
+L0910 |   const openMemory = { id: "open-memory-review", question: "分享一个克服困难的经历", answer: "已确认的解决问题经历", language: "zh", entityId: "self", scope: "global", confirmed: true, updatedAt: "2026-10-14T00:00:00Z" };
+L0911 |   let broadDraftRequests = 0;
+L0912 |   await panel.route("https://api.openai.com/v1/responses", async (route) => {
+L0913 |     const payload = route.request().postDataJSON(), batch = JSON.parse(payload.input[1].content), format = payload.text.format.name;
+L0914 |     let output;
+L0915 |     if (format === "application_field_pairing") {
+L0916 |       assert.ok(!JSON.stringify(batch).includes(openMemory.answer));
+L0917 |       output = { pairs: batch.fields.map((field) => ({ fieldId: field.fieldId, source: field.label === aliasLabel ? "memory" : "none", memoryId: field.label === aliasLabel ? openMemory.id : null, factId: null, transform: "none" })) };
+L0918 |     } else if (format === "application_suggestions") {
+L0919 |       broadDraftRequests++;
+L0920 |       assert.equal(batch.fields.length, 1); assert.equal(batch.fields[0].label, broadLabel);
+L0921 |       assert.ok(batch.facts.length); assert.equal(Object.hasOwn(batch, "url"), false);
+L0922 |       assert.ok(!JSON.stringify(batch).includes(profile.email));
+L0923 |       output = { items: [{ fieldId: batch.fields[0].fieldId, entityId: "self", kind: "draft", factIds: [batch.facts[0].id], text: "经确认资料整理的长文本草稿。", optionId: null }] };
+L0924 |     } else output = { company: null, role: null, base: null, confidence: "low" };
+L0925 |     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "completed", output_text: JSON.stringify(output) }) });
+L0926 |   });
+L0927 |   await writeStorage("local", { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: true, apiKey: "fixture-key", model: "fixture-model", visionEnabled: false }, "applicationTracker.assistant.memories.v2": [openMemory] });
+L0928 |   await target.setContent(`<!doctype html><title>申请表</title><label>${aliasLabel}<textarea id="alias-memory"></textarea></label><label>${broadLabel}<textarea id="broad-text"></textarea></label>`);
+L0929 |   await completePanelAction("#prepare"); await expandQuestions();
+L0930 |   const alias = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: aliasLabel + "的答案", exact: true }) });
+L0931 |   assert.equal(await alias.locator("[data-answer]").inputValue(), openMemory.answer);
+L0932 |   assert.equal(await alias.locator("[data-selected]").isChecked(), false);
+L0933 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0934 |   assert.equal(await target.locator("#alias-memory").inputValue(), "");
+L0935 |   await alias.locator("[data-selected]").check(); await completePanelAction("#fill");
+L0936 |   assert.equal(await target.locator("#alias-memory").inputValue(), openMemory.answer);
+L0937 |   assert.equal(await target.locator("#broad-text").inputValue(), "");
+L0938 |   assert.equal(await panel.locator("#countSkip").textContent(), "不填 1");
+L0939 |   assert.equal(await panel.locator("#barActions #prepare").count(), 0);
+L0940 |   console.log("PASS UI rephrased prose memory stays unselected until checked, and filled answers leave the skip count");
+L0941 |   const broad = panel.locator(".question").filter({ has: panel.getByRole("textbox", { name: broadLabel + "的答案", exact: true }) });
+L0942 |   await broad.locator("[data-draft]").click(); await broad.locator("[data-draft-confirmation]").waitFor();
+L0943 |   assert.equal(broadDraftRequests, 0);
+L0944 |   await broad.locator("[data-draft-cancel]").click(); assert.equal(broadDraftRequests, 0);
+L0945 |   await broad.locator("[data-draft]").click(); await broad.locator("[data-draft-confirmation]").waitFor();
+L0946 |   await broad.locator("[data-draft-send]").click(); await panel.waitForFunction(() => !document.getElementById("prepare").disabled);
+L0947 |   assert.equal(broadDraftRequests, 1);
+L0948 |   assert.equal(await broad.locator("[data-answer]").inputValue(), "经确认资料整理的长文本草稿。");
+L0949 |   assert.equal(await target.locator("#broad-text").inputValue(), "");
+L0950 |   await completePanelAction("#fill"); assert.equal(await target.locator("#broad-text").inputValue(), "经确认资料整理的长文本草稿。");
+L0951 |   await writeStorage("local", { "applicationTracker.profile": { email: profile.email } });
+L0952 |   await target.setContent('<!doctype html><title>申请表</title><label>请说明你的解决问题思路<textarea id="no-draft-facts"></textarea></label>');
+L0953 |   await completePanelAction("#prepare"); await expandQuestions();
+L0954 |   assert.equal(await panel.locator("[data-draft]").count(), 1);
+L0955 |   assert.equal(await panel.locator("[data-draft]").isDisabled(), true);
+L0956 |   assert.match(await panel.locator("#questions").textContent(), /暂无可引用资料/);
+L0957 |   assert.equal(broadDraftRequests, 1);
+L0958 |   console.log("PASS UI an arbitrary long-text question sends only its confirmed fact batch and waits for fill confirmation");
+L0959 | 
+L0960 |   await writeStorage("local", { "applicationTracker.profile": profile, "applicationTracker.aiSettings": { enabled: false } });
+L0961 |   await target.setContent('<!doctype html><title>站点访问恢复</title><label>姓名<input id="permission-name"></label>');
+L0962 |   const permissionsBefore = permissionRequests.length;
+L0963 |   mainPermissionDenied = true;
+L0964 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+L0965 |   assert.match(await panel.locator("#message").textContent(), /尚未获得.*读取权限/);
+L0966 |   assert.equal(await panel.locator("#targetTitle").textContent(), "站点访问恢复");
+L0967 |   assert.equal(permissionRequests.length, permissionsBefore, "Scanning must never request a permission");
+L0968 |   assert.equal(await panel.locator("#fill").isDisabled(), true, "An unsuccessful rescan invalidates the old preview");
 L0969 |   await panel.locator("#allowPageAccess").click();
-L0970 |   await panel.waitForFunction(() => document.getElementById("allowPageAccess").hidden && !document.getElementById("prepare").disabled && !document.getElementById("fill").disabled);
-L0971 |   assert.equal(await target.locator("#permission-name").inputValue(), "", "A grant prepares a preview without filling");
-L0972 |   assert.equal(permissionRequests.length, permissionsBefore + 2);
-L0973 |   console.log("PASS UI requests only the failed main site after a user click, supports denial and retry, and previews without filling");
-L0974 | 
-L0975 |   mainScriptFault = true;
-L0976 |   await completePanelAction("#prepare");
-L0977 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED"));
-L0978 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
-L0979 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
-L0980 |   assert.equal((await panel.locator("#message").textContent()).includes("private-token"), false);
-L0981 |   assert.equal(permissionRequests.length, permissionsBefore + 2);
-L0982 |   // A grant may succeed while the page's scan itself still fails. Report that
-L0983 |   // separate failure rather than leaving the panel stuck on 'scanning'.
-L0984 |   mainPermissionDenied = true;
-L0985 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
-L0986 |   await panel.locator("#allowPageAccess").click();
-L0987 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED") && !document.getElementById("prepare").disabled);
-L0988 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
-L0989 |   assert.equal(permissionRequests.length, permissionsBefore + 3);
-L0990 |   mainScriptFault = false;
-L0991 |   console.log("PASS UI keeps script failures separate from access requests and disables the old preview");
-L0992 | 
-L0993 |   mainPermissionDenied = true;
-L0994 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
-L0995 |   let releasePermission;
-L0996 |   const permissionEntered = new Promise((resolve) => { mainPermissionGate = { entered: resolve, wait: new Promise((release) => { releasePermission = release; }) }; });
-L0997 |   await panel.locator("#allowPageAccess").click(); await permissionEntered;
-L0998 |   const scansBeforeGrant = mainScanCalls;
-L0999 |   await panel.evaluate(() => chrome.tabs.onUpdated.emit(1, { status: "loading" }));
-L1000 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
-L1001 |   releasePermission();
-L1002 |   await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
-L1003 |   assert.equal(mainScanCalls, scansBeforeGrant, "A grant for an obsolete recovery cannot trigger a new scan");
-L1004 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
-L1005 |   await panel.locator("#allowPageAccess").dispatchEvent("click");
-L1006 |   assert.equal(permissionRequests.length, permissionsBefore + 4);
-L1007 |   console.log("PASS UI clears access recovery on navigation and ignores a late grant or stale click");
-L1008 |   assert.deepEqual(errors, []);
-L1009 |   console.log("UI integration cases passed: 48 (Chrome API adapter and local AI stub; not live-model validation)");
-L1010 | } finally { await browser.close(); await new Promise((r) => server.close(r)); }
+L0970 |   await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
+L0971 |   assert.match(await panel.locator("#message").textContent(), /尚未允许/);
+L0972 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
+L0973 |   assert.deepEqual(permissionRequests.at(-1).request, { origins: [origin + "/*"] });
+L0974 |   assert.equal(permissionRequests.at(-1).userGesture, true);
+L0975 |   allowMainPermission = true;
+L0976 |   await panel.locator("#allowPageAccess").click();
+L0977 |   await panel.waitForFunction(() => document.getElementById("allowPageAccess").hidden && !document.getElementById("prepare").disabled && !document.getElementById("fill").disabled);
+L0978 |   assert.equal(await target.locator("#permission-name").inputValue(), "", "A grant prepares a preview without filling");
+L0979 |   assert.equal(permissionRequests.length, permissionsBefore + 2);
+L0980 |   console.log("PASS UI requests only the failed main site after a user click, supports denial and retry, and previews without filling");
+L0981 | 
+L0982 |   mainScriptFault = true;
+L0983 |   await completePanelAction("#prepare");
+L0984 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED"));
+L0985 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L0986 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L0987 |   assert.equal((await panel.locator("#message").textContent()).includes("private-token"), false);
+L0988 |   assert.equal(permissionRequests.length, permissionsBefore + 2);
+L0989 |   // A grant may succeed while the page's scan itself still fails. Report that
+L0990 |   // separate failure rather than leaving the panel stuck on 'scanning'.
+L0991 |   mainPermissionDenied = true;
+L0992 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+L0993 |   await panel.locator("#allowPageAccess").click();
+L0994 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("PAGE_SCAN_FAILED") && !document.getElementById("prepare").disabled);
+L0995 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L0996 |   assert.equal(permissionRequests.length, permissionsBefore + 3);
+L0997 |   mainScriptFault = false;
+L0998 |   console.log("PASS UI keeps script failures separate from access requests and disables the old preview");
+L0999 | 
+L1000 |   mainPermissionDenied = true;
+L1001 |   await completePanelAction("#prepare"); await panel.locator("#allowPageAccess").waitFor();
+L1002 |   let releasePermission;
+L1003 |   const permissionEntered = new Promise((resolve) => { mainPermissionGate = { entered: resolve, wait: new Promise((release) => { releasePermission = release; }) }; });
+L1004 |   await panel.locator("#allowPageAccess").click(); await permissionEntered;
+L1005 |   const scansBeforeGrant = mainScanCalls;
+L1006 |   await panel.evaluate(() => chrome.tabs.onUpdated.emit(1, { status: "loading" }));
+L1007 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L1008 |   releasePermission();
+L1009 |   await panel.waitForFunction(() => !document.getElementById("allowPageAccess").disabled);
+L1010 |   assert.equal(mainScanCalls, scansBeforeGrant, "A grant for an obsolete recovery cannot trigger a new scan");
+L1011 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
+L1012 |   await panel.locator("#allowPageAccess").dispatchEvent("click");
+L1013 |   assert.equal(permissionRequests.length, permissionsBefore + 4);
+L1014 |   console.log("PASS UI clears access recovery on navigation and ignores a late grant or stale click");
+L1015 |   mainPermissionDenied = false;
+L1016 |   await completePanelAction("#prepare");
+L1017 |   changesBusy = true;
+L1018 |   await new Promise((resolve, reject) => {
+L1019 |     const timeout = setTimeout(() => { onChangesBusy = null; reject(new Error("Busy poll was not observed")); }, 15000);
+L1020 |     onChangesBusy = () => { clearTimeout(timeout); resolve(); };
+L1021 |   });
+L1022 |   await panel.waitForFunction(() => !document.getElementById("fill").disabled);
+L1023 |   changesBusy = false; changesFault = true;
+L1024 |   await panel.waitForFunction(() => document.getElementById("message").textContent.includes("BRIDGE_EXCEPTION"));
+L1025 |   assert.match(await panel.locator("#message").textContent(), /字段描述.*TypeError.*非安全页面/);
+L1026 |   assert.equal((await panel.locator("#message").textContent()).includes("private-diagnostic-token"), false);
+L1027 |   assert.equal(await panel.locator("#fill").isDisabled(), true);
+L1028 |   assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+L1029 |   assert.equal(await target.locator("#permission-name").inputValue(), "");
+L1030 |   changesFault = false;
+L1031 |   console.log("PASS UI keeps a busy poll retryable and displays sanitized read-only diagnostics when polling fails");
+L1032 |   assert.deepEqual(errors, []);
+L1033 |   console.log("UI integration cases passed: 49 (Chrome API adapter and local AI stub; not live-model validation)");
+L1034 | } finally { await browser.close(); await new Promise((r) => server.close(r)); }
 
 ========================================================================
 FILE: application-tracker-extension/scripts/vision-browser-tests.mjs

@@ -2,6 +2,115 @@
 ========================================================================
 FILE: application-tracker-extension/package-lock.json (continued)
 SHA256: f76ed988797974d9f4c36bb4d70e1ab9ccf9d6f0cf4f210d30ea05b50f788245
+L0767 |         "rc-textarea": "~1.10.2",
+L0768 |         "rc-tooltip": "~6.4.0",
+L0769 |         "rc-tree": "~5.13.1",
+L0770 |         "rc-tree-select": "~5.27.0",
+L0771 |         "rc-upload": "~4.11.0",
+L0772 |         "rc-util": "^5.44.4",
+L0773 |         "scroll-into-view-if-needed": "^3.1.0",
+L0774 |         "throttle-debounce": "^5.0.2"
+L0775 |       },
+L0776 |       "funding": {
+L0777 |         "type": "opencollective",
+L0778 |         "url": "https://opencollective.com/ant-design"
+L0779 |       },
+L0780 |       "peerDependencies": {
+L0781 |         "react": ">=16.9.0",
+L0782 |         "react-dom": ">=16.9.0"
+L0783 |       }
+L0784 |     },
+L0785 |     "node_modules/antd5/node_modules/@ant-design/colors": {
+L0786 |       "version": "7.2.1",
+L0787 |       "resolved": "https://registry.npmjs.org/@ant-design/colors/-/colors-7.2.1.tgz",
+L0788 |       "integrity": "sha512-lCHDcEzieu4GA3n8ELeZ5VQ8pKQAWcGGLRTQ50aQM2iqPpq2evTxER84jfdPvsPAtEcZ7m44NI45edFMo8oOYQ==",
+L0789 |       "dev": true,
+L0790 |       "license": "MIT",
+L0791 |       "dependencies": {
+L0792 |         "@ant-design/fast-color": "^2.0.6"
+L0793 |       }
+L0794 |     },
+L0795 |     "node_modules/antd5/node_modules/@ant-design/icons": {
+L0796 |       "version": "5.6.1",
+L0797 |       "resolved": "https://registry.npmjs.org/@ant-design/icons/-/icons-5.6.1.tgz",
+L0798 |       "integrity": "sha512-0/xS39c91WjPAZOWsvi1//zjx6kAp4kxWwctR6kuU6p133w8RU0D2dSCvZC19uQyharg/sAvYxGYWl01BbZZfg==",
+L0799 |       "dev": true,
+L0800 |       "license": "MIT",
+L0801 |       "dependencies": {
+L0802 |         "@ant-design/colors": "^7.0.0",
+L0803 |         "@ant-design/icons-svg": "^4.4.0",
+L0804 |         "@babel/runtime": "^7.24.8",
+L0805 |         "classnames": "^2.2.6",
+L0806 |         "rc-util": "^5.31.1"
+L0807 |       },
+L0808 |       "engines": {
+L0809 |         "node": ">=8"
+L0810 |       },
+L0811 |       "peerDependencies": {
+L0812 |         "react": ">=16.0.0",
+L0813 |         "react-dom": ">=16.0.0"
+L0814 |       }
+L0815 |     },
+L0816 |     "node_modules/antd5/node_modules/classnames": {
+L0817 |       "version": "2.5.1",
+L0818 |       "resolved": "https://registry.npmjs.org/classnames/-/classnames-2.5.1.tgz",
+L0819 |       "integrity": "sha512-saHYOzhIQs6wy2sVxTM6bUDsQO4F50V9RQ22qBpEdCW+I+/Wmke2HOl6lS6dTpdxVhb88/I6+Hs+438c3lfUow==",
+L0820 |       "dev": true,
+L0821 |       "license": "MIT"
+L0822 |     },
+L0823 |     "node_modules/antd5/node_modules/rc-cascader": {
+L0824 |       "version": "3.34.0",
+L0825 |       "resolved": "https://registry.npmjs.org/rc-cascader/-/rc-cascader-3.34.0.tgz",
+L0826 |       "integrity": "sha512-KpXypcvju9ptjW9FaN2NFcA2QH9E9LHKq169Y0eWtH4e/wHQ5Wh5qZakAgvb8EKZ736WZ3B0zLLOBsrsja5Dag==",
+L0827 |       "dev": true,
+L0828 |       "license": "MIT",
+L0829 |       "dependencies": {
+L0830 |         "@babel/runtime": "^7.25.7",
+L0831 |         "classnames": "^2.3.1",
+L0832 |         "rc-select": "~14.16.2",
+L0833 |         "rc-tree": "~5.13.0",
+L0834 |         "rc-util": "^5.43.0"
+L0835 |       },
+L0836 |       "peerDependencies": {
+L0837 |         "react": ">=16.9.0",
+L0838 |         "react-dom": ">=16.9.0"
+L0839 |       }
+L0840 |     },
+L0841 |     "node_modules/antd5/node_modules/rc-checkbox": {
+L0842 |       "version": "3.5.0",
+L0843 |       "resolved": "https://registry.npmjs.org/rc-checkbox/-/rc-checkbox-3.5.0.tgz",
+L0844 |       "integrity": "sha512-aOAQc3E98HteIIsSqm6Xk2FPKIER6+5vyEFMZfo73TqM+VVAIqOkHoPjgKLqSNtVLWScoaM7vY2ZrGEheI79yg==",
+L0845 |       "dev": true,
+L0846 |       "license": "MIT",
+L0847 |       "dependencies": {
+L0848 |         "@babel/runtime": "^7.10.1",
+L0849 |         "classnames": "^2.3.2",
+L0850 |         "rc-util": "^5.25.2"
+L0851 |       },
+L0852 |       "peerDependencies": {
+L0853 |         "react": ">=16.9.0",
+L0854 |         "react-dom": ">=16.9.0"
+L0855 |       }
+L0856 |     },
+L0857 |     "node_modules/antd5/node_modules/rc-collapse": {
+L0858 |       "version": "3.9.0",
+L0859 |       "resolved": "https://registry.npmjs.org/rc-collapse/-/rc-collapse-3.9.0.tgz",
+L0860 |       "integrity": "sha512-swDdz4QZ4dFTo4RAUMLL50qP0EY62N2kvmk2We5xYdRwcRn8WcYtuetCJpwpaCbUfUt5+huLpVxhvmnK+PHrkA==",
+L0861 |       "dev": true,
+L0862 |       "license": "MIT",
+L0863 |       "dependencies": {
+L0864 |         "@babel/runtime": "^7.10.1",
+L0865 |         "classnames": "2.x",
+L0866 |         "rc-motion": "^2.3.4",
+L0867 |         "rc-util": "^5.27.0"
+L0868 |       },
+L0869 |       "peerDependencies": {
+L0870 |         "react": ">=16.9.0",
+L0871 |         "react-dom": ">=16.9.0"
+L0872 |       }
+L0873 |     },
+L0874 |     "node_modules/antd5/node_modules/rc-dialog": {
+L0875 |       "version": "9.6.0",
 L0876 |       "resolved": "https://registry.npmjs.org/rc-dialog/-/rc-dialog-9.6.0.tgz",
 L0877 |       "integrity": "sha512-ApoVi9Z8PaCQg6FsUzS8yvBEQy0ZL2PkuvAgrmohPkN3okps5WZ5WQWPc1RNuiOKaAYv8B97ACdsFU5LizzCqg==",
 L0878 |       "dev": true,
@@ -2296,7 +2405,7 @@ L3166 | }
 
 ========================================================================
 FILE: application-tracker-extension/package.json
-SHA256: c3e7e1414eaa240e4c4635dd4009fef52c3962dedd161618563506dcfe7f8bd6
+SHA256: 5b8659fcef7de154a5c5f1bdf85a430872569ee029d7ffd302e7ff4f431a5163
 L0001 | {
 L0002 |   "name": "application-tracker-extension",
 L0003 |   "version": "0.4.0",
@@ -2307,23 +2416,24 @@ L0007 |     "test": "node --test test/*.test.js",
 L0008 |     "test:browser": "node scripts/browser-tests.mjs && node scripts/job-info-browser-tests.mjs && node scripts/component-browser-tests.mjs && node scripts/choice-browser-tests.mjs && node scripts/date-format-browser-tests.mjs && node scripts/scan-context-browser-tests.mjs",
 L0009 |     "test:components": "node scripts/component-browser-tests.mjs",
 L0010 |     "test:extension": "node scripts/extension-tests.mjs",
-L0011 |     "test:ui": "node scripts/ui-tests.mjs",
-L0012 |     "test:data-ui": "node scripts/data-ui-tests.mjs",
-L0013 |     "test:vision-browser": "node scripts/vision-browser-tests.mjs",
-L0014 |     "test:real-pages": "node scripts/real-page-tests.mjs",
-L0015 |     "test:slow": "node scripts/scan-scaling-check.mjs && node scripts/slow-cpu-date-check.mjs"
-L0016 |   },
-L0017 |   "devDependencies": {
-L0018 |     "antd3": "npm:antd@3.26.20",
-L0019 |     "antd5": "npm:antd@5.29.3",
-L0020 |     "dayjs": "1.11.19",
-L0021 |     "element-ui": "2.15.14",
-L0022 |     "moment": "2.30.1",
-L0023 |     "react": "16.14.0",
-L0024 |     "react-dom": "16.14.0",
-L0025 |     "vue": "2.7.16"
-L0026 |   }
-L0027 | }
+L0011 |     "test:http": "node scripts/http-context-browser-tests.mjs",
+L0012 |     "test:ui": "node scripts/ui-tests.mjs",
+L0013 |     "test:data-ui": "node scripts/data-ui-tests.mjs",
+L0014 |     "test:vision-browser": "node scripts/vision-browser-tests.mjs",
+L0015 |     "test:real-pages": "node scripts/real-page-tests.mjs",
+L0016 |     "test:slow": "node scripts/scan-scaling-check.mjs && node scripts/slow-cpu-date-check.mjs"
+L0017 |   },
+L0018 |   "devDependencies": {
+L0019 |     "antd3": "npm:antd@3.26.20",
+L0020 |     "antd5": "npm:antd@5.29.3",
+L0021 |     "dayjs": "1.11.19",
+L0022 |     "element-ui": "2.15.14",
+L0023 |     "moment": "2.30.1",
+L0024 |     "react": "16.14.0",
+L0025 |     "react-dom": "16.14.0",
+L0026 |     "vue": "2.7.16"
+L0027 |   }
+L0028 | }
 
 ========================================================================
 FILE: docs/2026-09-22-preview-confirmation.md
@@ -2523,74 +2633,3 @@ L0049 | 交付包按工作区结构放好，解压到 `投递记录/` 根目录�
 L0050 | 
 L0051 | | 路径 | 用途 |
 L0052 | |---|---|
-L0053 | | `docs/2026-09-28-improvement-plan.md` | 本文 |
-L0054 | | `docs/reference/pageBridge-scan.patch` | 扫描层参考补丁，已验证（见 4.1） |
-L0055 | | `application-tracker-extension/scripts/real-page-tests.mjs` | 真实页面验收测试 |
-L0056 | | `application-tracker-extension/scripts/sanitize-real-page.mjs` | 清理新保存的网页，去掉个人信息 |
-L0057 | | `application-tracker-extension/test/fixtures/real-pages/*.html` | 三个真实网申页的清理版 |
-L0058 | | `application-tracker-extension/test/fixtures/real-pages/*.expected.json` | 人工核对的标准答案 |
-L0059 | 
-L0060 | `*.expected.json` 每道题包含：`question`（去掉星号和冒号的题目）、`section`（所属分区）、`occurrence`（同一分区里第几次出现）、`required`、`control`（`text`、`textarea`、`select`、`select-2level`、`select+text`、`date`、`cascader`、`radio`、`checkbox`、`popup-chooser`、`file`、`none`）。`none` 表示该题当时处于只显示状态，要先点“添加/编辑”才出现输入框；`none` 和 `file` 不计分。
-L0061 | 
-L0062 | 验收测试的四项指标：
-L0063 | 
-L0064 | - `questionText`：扫描出的题目文字与标准答案一致的比例，要求 ≥ 95%。
-L0065 | - `section`：题目文字和分区都对上的比例，要求 ≥ 90%。
-L0066 | - `repeats`：同一分区里重复出现的题（如两段教育经历），扫描结果能用 `groupIndex` 分开的比例，要求 100%。
-L0067 | - `controls`：控件类型对、而且可填的比例，要求 ≥ 90%。日期必须是 `kind: "date"` 或 adapter 含 date；级联必须是 `kind: "cascader"`；弹窗选择允许暂不可填，但要给出原因。
-L0068 | 
-L0069 | 以后加新页面：用户在还没填内容时按 Ctrl+S 保存网页；执行 `node scripts/sanitize-real-page.mjs "<保存的网页>" <英文短名> --scrub "用户姓名,其他敏感词"`；脚本检查不通过就人工处理；再参照现有 expected 文件手写标准答案。标准答案必须人工核对，不能用扫描结果直接生成。
-L0070 | 
-L0071 | ## 2. 阶段 0：准备和清理
-L0072 | 
-L0073 | 1. 放入交付包文件。在 `package.json` 的 scripts 里加 `"test:real-pages": "node scripts/real-page-tests.mjs"`。
-L0074 | 2. 运行 `npm.cmd run test:real-pages -- --report`，确认看到 0.3 节的基线数字。
-L0075 | 3. 删除没有任何页面加载的旧模块和它们的测试。删除前按 import 关系再确认一次，入口是 `popup/popup.js`、`sidepanel/assistant.js`、`records/records.js`、`board/board.js`、`profile/profile.js`、`memory/memory.js`、`ai/ai.js`、`assistant/background.js` 和两个 content script。截至 0.4.0 的结果：
-L0076 | 
-L0077 | | 删除的模块 | 大小 | 对应测试 |
-L0078 | |---|---|---|
-L0079 | | `src/aiFormAnalysis.js` | 18.7 KB | `test/aiFormAnalysis.test.js` |
-L0080 | | `src/aiMemoryCleanup.js` | 9.3 KB | `test/aiMemoryCleanup.test.js` |
-L0081 | | `src/questionScan.js` | 8.0 KB | `test/questionScan.test.js` |
-L0082 | | `src/autofill.js` | 3.5 KB | `test/autofill.test.js` |
-L0083 | | `src/mokaFields.js` | 3.2 KB | `test/mokaFields.test.js` |
-L0084 | | `src/compositeDate.js` | 2.6 KB | `test/compositeDate.test.js` |
-L0085 | | `src/pageFieldDebug.js` | 1.2 KB | `test/pageFieldDebug.test.js` |
-L0086 | | `src/ctgoodjobsExtractor.js` | 0.4 KB | `test/ctgoodjobsExtractor.test.js` |
-L0087 | | `src/jobsdbExtractor.js` | 0.4 KB | `test/jobsdbExtractor.test.js` |
-L0088 | | `src/frameScan.js` | 0.4 KB | `test/frameScan.test.js` |
-L0089 | 
-L0090 | `src/aiSuggest.js` 仍被 `aiProfileMemory.js` 使用，保留。
-L0091 | 
-L0092 | 验收：`npm.cmd test` 通过（测试总数会相应减少），其他套件结果不变。
-L0093 | 
-L0094 | ## 3. 阶段 1：功能一，通用抓取公司和岗位
-L0095 | 
-L0096 | ### 3.1 新文件
-L0097 | 
-L0098 | `src/jobInfo/collectSignals.js`：导出 `collectJobSignals()`。这个函数会被 `chrome.scripting.executeScript` 序列化注入页面，必须自包含，不能引用外部变量。它只读页面文字和结构，不读任何输入框的值。按下面顺序收集：
-L0099 | 
-L0100 | 1. JSON-LD：遍历 `script[type="application/ld+json"]`，逐个 `JSON.parse`（失败就跳过），在对象、数组和 `@graph` 里找 `@type` 为 `JobPosting` 的项，取 `title`、`hiringOrganization.name`，以及 `jobLocation`（可能是数组）里的 `address.addressLocality` 和 `addressRegion`。
-L0101 | 2. meta：`og:title`、`og:site_name`、`twitter:title`、`application-name`。
-L0102 | 3. `document.title`。
-L0103 | 4. 可见的 h1、h2 文字，各取前 5 个，每个不超过 80 字。
-L0104 | 5. 标签文字：页面上自身文字匹配下列标签的元素，取冒号后的内容，或下一个兄弟元素、父元素下一个兄弟元素的文字（不超过 80 字，不含输入框）：
-L0105 |    - 公司：公司名称、招聘单位、单位名称、企业名称、用人单位、所属公司、Company、Employer
-L0106 |    - 岗位：职位名称、岗位名称、招聘职位、应聘职位、申请职位、投递职位、应聘岗位、Position、Job title、Role
-L0107 |    - 地点：工作地点、工作城市、办公地点、Location、Base
-L0108 | 6. class 猜测：class 含 `company-name`、`companyName`、`company_name`、`corp-name`、`employer` 的元素；class 含 `job-title`、`jobTitle`、`position-name`、`positionName`、`job-name`、`jobName`、`post-name` 的元素；class 含 `location`、`work-place`、`workCity` 的元素。只取可见、不含输入框、不超过 80 字的文字。
-L0109 | 7. 面包屑：`nav[aria-label*="breadcrumb"]`、`[class*="breadcrumb"]` 的文字。
-L0110 | 8. logo 图片的 alt：`header img[alt]`、`[class*="logo"] img[alt]`。
-L0111 | 9. `location.hostname` 和 `location.pathname`（不要 query）。
-L0112 | 10. 站点适配：把 `popup.js` 里 CTgoodjobs、JobsDB 的选择器和 `collectMokaJobPageCandidates` 的收集逻辑合并进来，作为 `siteCandidates`。
-L0113 | 
-L0114 | `src/jobInfo/extractJobInfo.js`：纯函数 `extractJobInfo(signals, { recentJobs = [] } = {})`，返回 `{ company, role, base, source: { company, role, base }, confidence: { company, role, base } }`。每项按优先级取第一个有效值：
-L0115 | 
-L0116 | | 来源 | 可信度 | 界面显示的来源标签 |
-L0117 | |---|---|---|
-L0118 | | JSON-LD JobPosting | high | 结构化数据 |
-L0119 | | 标签文字（公司名称：xxx） | high | 页面标签 |
-L0120 | | 站点适配（CTgoodjobs、JobsDB、Moka） | high | 页面标签 |
-L0121 | | og 信息、h1、拆网页标题 | medium | 网页标题 |
-L0122 | | class 猜测、logo alt | low | 页面文字 |
-L0123 | 

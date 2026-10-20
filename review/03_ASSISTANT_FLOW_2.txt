@@ -1,7 +1,41 @@
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/assistant.js (continued)
-SHA256: d4642631c05cb27192137676c4ce374a18e7257d78e87c52351938cb48acc940
+SHA256: 094f486b975ef9bba39dda42ee5597921777fbc5546c1e4a412d47a422794015
+L0573 |     if (tab.url !== recovery.pageUrl) { clearPageAccessRecovery(); tell("目标页面已变化，请重新识别。"); return; }
+L0574 |     await prepare(false, true).catch(handleError);
+L0575 |   }).catch(() => { if (pageAccessRecovery === recovery) tell("站点访问恢复未完成，请重新识别后重试。"); }).finally(() => {
+L0576 |     $("allowPageAccess").disabled = busy;
+L0577 |   });
+L0578 | });
+L0579 | $("useCurrent").addEventListener("click", run(bindCurrent));
+L0580 | $("prepare").addEventListener("click", run(() => prepare(false, !!session?.stale && !!session?.snapshot)));
+L0581 | $("framePermissions").addEventListener("click", (event) => {
+L0582 |   const button = event.target.closest("[data-frame-origin]");
+L0583 |   if (!button || busy || !session?.snapshot) return;
+L0584 |   const origin = button.dataset.frameOrigin;
+L0585 |   const snapshot = session.snapshot;
+L0586 |   if (!snapshot.failedFrames?.some((frame) => frame.frameId !== 0 && frame.origin === origin) || !/^https?:\/\//.test(origin)) return;
+L0587 |   // Call request directly in the click handler so Chrome sees the user gesture.
+L0588 |   let pending;
+L0589 |   try { pending = chrome.permissions.request({ origins: [origin + "/*"] }); }
+L0590 |   catch (error) { handleError(error); return; }
+L0591 |   button.disabled = true;
+L0592 |   Promise.resolve(pending).then(async (granted) => {
+L0593 |     if (session?.snapshot !== snapshot || targetId !== snapshot.tabId) return;
+L0594 |     if (!granted) { tell("尚未允许读取该内嵌表单，已保留当前预览；可以稍后重试。"); return; }
+L0595 |     tell("已获得内嵌表单访问权限，正在重新识别。");
+L0596 |     await prepare(false, true);
+L0597 |   }).catch(handleError).finally(() => { if (button.isConnected) button.disabled = busy; });
+L0598 | });
+L0599 | $("refresh").addEventListener("click", run(() => prepare(false, true)));
+L0600 | for (const [id, selected] of [["selectAll", true], ["clearSelection", false]]) $(id).addEventListener("click", run(async () => {
+L0601 |   if (busy || !session || session.stale) return;
+L0602 |   session.plan = session.plan.map((item) => isFillable(item) ? { ...item, selected, selectionExplicit: true } : item);
+L0603 |   render(); await persist();
+L0604 | }));
+L0605 | $("showAll").addEventListener("click", run(async () => {
+L0606 |   if (busy || !session || session.stale) return;
 L0607 |   session.showAll = !session.showAll;
 L0608 |   session.openGroups = session.showAll ? [...panelGroups] : ["attention"];
 L0609 |   session.attentionMore = session.showAll;
@@ -183,14 +217,15 @@ L0784 |       }
 L0785 |       tell(`网页表单有变化（新增 ${changes.added} 项、变化 ${changes.changed.length} 项）。点“更新”查看后再统一确认。`);
 L0786 |       render();
 L0787 |     }
-L0788 |   } catch {
-L0789 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
-L0790 |       clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell("目标页面已变化，请重新识别。");
-L0791 |     }
-L0792 |   }
-L0793 |   finally { checkingChanges = false; }
-L0794 | }, 2500);
-L0795 | window.addEventListener("pagehide", () => { clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel(); });
+L0788 |   } catch (error) {
+L0789 |     if (error.code === "BRIDGE_BUSY") return;
+L0790 |     if (!busy && session === checkedSession && session.snapshot === checkedSnapshot) {
+L0791 |       clearDraftConfirmation(); recordCard.cancel(); session.stale = true; render(); tell(["BRIDGE_EXCEPTION", "BRIDGE_NO_RESULT"].includes(error.code) ? error.message : "目标页面已变化，请重新识别。");
+L0792 |     }
+L0793 |   }
+L0794 |   finally { checkingChanges = false; }
+L0795 | }, 2500);
+L0796 | window.addEventListener("pagehide", () => { clearDraftConfirmation(); cancelled = true; aborter?.abort(); recordCard.cancel(); });
 
 ========================================================================
 FILE: application-tracker-extension/src/sidepanel/recordCard.js

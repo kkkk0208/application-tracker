@@ -1,6 +1,24 @@
 // Self-contained: Chrome serializes this function into the isolated content world.
 export async function pageBridge(request) {
   const KEY = "__applicationAssistantV2";
+  // An isolated world still inherits the page's secure-context status. Ordinary
+  // HTTP exposes getRandomValues, but not randomUUID (unlike localhost tests).
+  const randomId = () => {
+    if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+    return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+  };
+  const scanFailure = (error, stage) => {
+    // Error names are arbitrary strings too. Only fixed categories may cross
+    // this boundary; never send messages, stacks, selectors or page values.
+    const allowedNames = ["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "SecurityError", "InvalidStateError", "NotSupportedError", "DataCloneError", "AbortError"];
+    let errorName = "Error";
+    try { if (allowedNames.includes(error?.name)) errorName = error.name; } catch { /* Keep the fixed fallback. */ }
+    return { status: "failed", code: "BRIDGE_EXCEPTION", stage, errorName, secureContext: globalThis.isSecureContext === true };
+  };
   const clean = (v) => String(v ?? "").replace(/\s+/g, " ").trim();
   const norm = (v) => clean(v).normalize("NFKC").toLowerCase();
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,7 +42,13 @@ export async function pageBridge(request) {
     for (const host of root.querySelectorAll("*")) if (host.shadowRoot) result.push(...all(selector, host.shadowRoot));
     return result;
   };
-  const state = globalThis[KEY] ||= { token: crypto.randomUUID(), nodes: new Map(), ids: new WeakMap(), sequence: 0, scanId: "", operations: new Map(), busy: false };
+  let state;
+  try {
+    state = globalThis[KEY] ||= { token: randomId(), nodes: new Map(), ids: new WeakMap(), sequence: 0, scanId: "", operations: new Map(), busy: false };
+  } catch (error) {
+    // This runs before any action starts a write transaction.
+    return scanFailure(error, "init");
+  }
   const idFor = (node) => {
     if (!state.ids.has(node)) state.ids.set(node, `f${++state.sequence}`);
     return state.ids.get(node);
@@ -1000,11 +1024,16 @@ function optionMatch(options, value, { location = false } = {}) {
     return verified ? { status: "verified", code: "VERIFIED", retryable: false, reason: "已在稳定窗口内回读核验" } : fail("网站未保留填写值，请核对", "failed", "VALUE_NOT_RETAINED");
   }
   if (request.action === "scan") {
-    if (state.busy) throw new Error("正在填写，请稍后重新识别");
+    if (state.busy) return fail("正在填写，请稍后重新识别", "skipped", "BRIDGE_BUSY", true);
+    let stage = "init";
+    try {
     state.visualWatch?.release();
-    state.scanId = crypto.randomUUID();
+    state.scanId = randomId();
     state.nodes.clear();
-    const fields = discover().map((entry, order) => {
+    stage = "discover";
+    const entries = discover();
+    stage = "describe";
+    const fields = entries.map((entry, order) => {
       entry.order = order;
       const field = descriptor(entry);
       entry.baseline = field.value;
@@ -1020,6 +1049,7 @@ function optionMatch(options, value, { location = false } = {}) {
     const login = !hasApplication && fields.some((f) => f.type === "password" || /验证码|captcha/i.test(f.label));
     const jobText = all('[class*="job-description"], [class*="jobDescription"], [data-job-description]').filter(visible).filter((el) => !el.querySelector('input, textarea, select, [contenteditable="true"]')).map((el) => clean(el.textContent)).join("\n").slice(0, 5000);
     return { token: state.token, scanId: state.scanId, url: location.href, title, headings, fields, jobText, pageType: login ? "login" : hasApplication ? "application" : fields.filter((f) => f.supported && !/search|搜索/i.test(f.label)).length > 1 ? "form" : jobText ? "job" : "unknown", iframeCount: all("iframe").length };
+    } catch (error) { return scanFailure(error, stage); }
   }
   if (request.action === "ping") return { token: state.token, scanId: state.scanId, url: location.href };
   if (request.action === "visual-layout") {
@@ -1100,12 +1130,17 @@ function optionMatch(options, value, { location = false } = {}) {
     return { viewport, fields, redactions: unique, ...(state.visualWatch ? { watchId: state.visualWatch.id, changed: state.visualWatch.changed } : {}) };
   }
   if (request.action === "changes") {
-    assertTarget();
-    const currentEntries = discover();
-    return {
-      added: currentEntries.filter((entry) => !state.nodes.has(idFor(entry.el))).length,
-      changed: [...state.nodes.entries()].filter(([, entry]) => !entry.el.isConnected || signature(descriptor(entry)) !== entry.signature || !visible(entry.el)).map(([id]) => id)
-    };
+    if (request.token !== state.token || request.scanId !== state.scanId || request.url !== location.href) return fail("页面快照已过期，请重新识别", "failed", "SNAPSHOT_STALE");
+    if (state.busy) return fail("正在填写，请稍后检查变化", "skipped", "BRIDGE_BUSY", true);
+    let stage = "discover";
+    try {
+      const currentEntries = discover();
+      stage = "describe";
+      return {
+        added: currentEntries.filter((entry) => !state.nodes.has(idFor(entry.el))).length,
+        changed: [...state.nodes.entries()].filter(([, entry]) => !entry.el.isConnected || signature(descriptor(entry)) !== entry.signature || !visible(entry.el)).map(([id]) => id)
+      };
+    } catch (error) { return scanFailure(error, stage); }
   }
   if (request.action === "operation-result") {
     assertTarget();

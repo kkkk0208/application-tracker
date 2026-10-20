@@ -52,6 +52,9 @@ try {
   let mainScriptFault = false;
   let mainPermissionGate;
   let mainScanCalls = 0;
+  let changesBusy = false;
+  let changesFault = false;
+  let onChangesBusy;
   const permissionRequests = [];
   const documentIds = new Map();
   await panel.exposeBinding("testApi", async (source, method, args) => {
@@ -79,6 +82,10 @@ try {
         mainScanCalls++;
         if (mainPermissionDenied) throw new Error("Cannot access contents of url " + target.url() + ". Extension manifest must request permission to access this host.");
         if (mainScriptFault) throw new TypeError("Scan failed at https://private.example/?token=private-token");
+      }
+      if (index === 0 && request?.action === "changes" && (changesBusy || changesFault)) {
+        onChangesBusy?.(); onChangesBusy = null;
+        return [{ frameId: 0, documentId: documentIds.get(0), result: changesBusy ? { status: "skipped", code: "BRIDGE_BUSY" } : { status: "failed", code: "BRIDGE_EXCEPTION", stage: "describe", errorName: "TypeError", secureContext: false, message: "private-diagnostic-token" } }];
       }
       if (index === 1 && childPermissionDenied) throw new Error("Cannot access this frame without host permission");
       const frame = target.frames()[index];
@@ -1005,6 +1012,23 @@ try {
   await panel.locator("#allowPageAccess").dispatchEvent("click");
   assert.equal(permissionRequests.length, permissionsBefore + 4);
   console.log("PASS UI clears access recovery on navigation and ignores a late grant or stale click");
+  mainPermissionDenied = false;
+  await completePanelAction("#prepare");
+  changesBusy = true;
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => { onChangesBusy = null; reject(new Error("Busy poll was not observed")); }, 15000);
+    onChangesBusy = () => { clearTimeout(timeout); resolve(); };
+  });
+  await panel.waitForFunction(() => !document.getElementById("fill").disabled);
+  changesBusy = false; changesFault = true;
+  await panel.waitForFunction(() => document.getElementById("message").textContent.includes("BRIDGE_EXCEPTION"));
+  assert.match(await panel.locator("#message").textContent(), /字段描述.*TypeError.*非安全页面/);
+  assert.equal((await panel.locator("#message").textContent()).includes("private-diagnostic-token"), false);
+  assert.equal(await panel.locator("#fill").isDisabled(), true);
+  assert.equal(await panel.locator("#allowPageAccess").isVisible(), false);
+  assert.equal(await target.locator("#permission-name").inputValue(), "");
+  changesFault = false;
+  console.log("PASS UI keeps a busy poll retryable and displays sanitized read-only diagnostics when polling fails");
   assert.deepEqual(errors, []);
-  console.log("UI integration cases passed: 48 (Chrome API adapter and local AI stub; not live-model validation)");
+  console.log("UI integration cases passed: 49 (Chrome API adapter and local AI stub; not live-model validation)");
 } finally { await browser.close(); await new Promise((r) => server.close(r)); }
